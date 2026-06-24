@@ -23,11 +23,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">{children}</body>
+    <html lang="en">
+      <head>
+        <meta charSet="utf-8" />
+        <title>AdminLTE 3 | Dashboard</title>
+      </head>
+      <body>{children}</body>
     </html>
   );
 }
