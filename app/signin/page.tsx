@@ -1,6 +1,42 @@
 "use client";
 
+import { useState } from "react";
+import Swal from "sweetalert2";
+import axios from "axios";
+import config from "../config";
+
+
 export default function page() {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+
+  const signIn = async () => {
+    try {
+      const payload = {
+        username: username,
+        password: password,
+      };
+      const res = await axios.post(
+        config.apiServer + "/api/user/signIn",
+        payload,
+      );
+      if (res.data.token !== undefined) {
+        localStorage.setItem(config.token, res.data.token);
+      } else {
+        Swal.fire({
+          title: "Check username",
+          text: "username ไม่ถูกต้อง",
+          icon: "error",
+        });
+      }
+    } catch (e: any) {
+      Swal.fire({
+        title: "error",
+        text: e.messege,
+        icon: "error",
+      });
+    }
+  };
   return (
     <>
       <div className="login-box">
@@ -14,12 +50,13 @@ export default function page() {
           <div className="card-body login-card-body">
             <p className="login-box-msg">Sign in to start your session</p>
 
-            <form action="../../index3.html" method="post">
+           <div>
               <div className="input-group mb-3">
                 <input
                   type="email"
                   className="form-control"
                   placeholder="Email"
+                  onChange={(e) => setUsername(e.target.value)}
                 />
                 <div className="input-group-append">
                   <div className="input-group-text">
@@ -32,6 +69,7 @@ export default function page() {
                   type="password"
                   className="form-control"
                   placeholder="Password"
+                  onChange={(e) => setPassword(e.target.value)}
                 />
                 <div className="input-group-append">
                   <div className="input-group-text">
@@ -48,12 +86,16 @@ export default function page() {
                 </div>
 
                 <div className="col-4">
-                  <button type="submit" className="btn btn-primary btn-block">
+                  <button
+                    type="submit"
+                    className="btn btn-primary btn-block"
+                    onClick={signIn}
+                  >
                     Sign In
                   </button>
                 </div>
               </div>
-            </form>
+          </div>
 
             <div className="social-auth-links text-center mb-3">
               <p>- OR -</p>
