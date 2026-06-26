@@ -5,11 +5,19 @@ import Swal from "sweetalert2";
 import axios from "axios";
 import config from "../config";
 import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 export default function page() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const router = useRouter();
+  useEffect(() => {
+    const token = localStorage.getItem(config.token);
+    if (token) {
+      // ถ้าพบว่ามี Token อยู่แล้ว แปลว่าล็อกอินค้างไว้ ให้ดีดไปหน้าหลังบ้านทันที
+      router.push("/backoffice");
+    }
+  }, [router]);
   const signIn = async () => {
     try {
       const payload = {
@@ -31,7 +39,7 @@ export default function page() {
       if (e.response.status == 401) {
         Swal.fire({
           title: "error",
-          text: e.messege,
+          text: e.message,
           icon: "error",
         });
       } else {

@@ -8,10 +8,25 @@ import Link from "next/link";
 export default function Sidebar() {
   const [name, setName] = useState("");
   const router = useRouter();
+
   useEffect(() => {
-    const name = localStorage.getItem("next_name");
-    setName(name ?? "");
-  }, []);
+    const token = localStorage.getItem(config.token);
+
+    if (!token) {
+      Swal.fire({
+        title: "กรุณาล็อกอิน",
+        text: "คุณไม่มีสิทธิ์เข้าถึงหน้านี้",
+        icon: "warning",
+        confirmButtonText: "ตกลง",
+      }).then(() => {
+        router.push("/signin");
+      });
+      return;
+    }
+
+    const savedName = localStorage.getItem("next_name");
+    setName(savedName ?? "");
+  }, [router]);
 
   const signOut = async () => {
     try {
@@ -26,8 +41,8 @@ export default function Sidebar() {
         localStorage.removeItem(config.token);
         localStorage.removeItem("next_name");
         localStorage.removeItem("next_user_id");
-        
-        router.push("/signin")
+
+        router.push("/signin");
       }
     } catch (e: any) {
       Swal.fire({
@@ -69,8 +84,6 @@ export default function Sidebar() {
             </div>
           </div>
 
-     
-
           <nav className="mt-2">
             <ul
               className="nav nav-pills nav-sidebar flex-column"
@@ -79,9 +92,9 @@ export default function Sidebar() {
               data-accordion="false"
             >
               <li className="nav-item">
-                <Link href='/backoffice/food-type' className="nav-link">
-                <i className="nav-icon fas fa-th"></i>
-                <p>ประเภท</p>
+                <Link href="/backoffice/food-type" className="nav-link">
+                  <i className="nav-icon fas fa-th"></i>
+                  <p>ประเภท</p>
                 </Link>
               </li>
             </ul>
