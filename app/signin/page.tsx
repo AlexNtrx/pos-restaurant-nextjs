@@ -4,12 +4,12 @@ import { useState } from "react";
 import Swal from "sweetalert2";
 import axios from "axios";
 import config from "../config";
-
+import { useRouter } from "next/navigation";
 
 export default function page() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-
+  const router = useRouter();
   const signIn = async () => {
     try {
       const payload = {
@@ -22,6 +22,18 @@ export default function page() {
       );
       if (res.data.token !== undefined) {
         localStorage.setItem(config.token, res.data.token);
+        localStorage.setItem("next_name", res.data.name);
+        localStorage.setItem("next_user_id", res.data.id);
+
+        router.push("/backoffice");
+      }
+    } catch (e: any) {
+      if (e.response.status == 401) {
+        Swal.fire({
+          title: "error",
+          text: e.messege,
+          icon: "error",
+        });
       } else {
         Swal.fire({
           title: "Check username",
@@ -29,12 +41,6 @@ export default function page() {
           icon: "error",
         });
       }
-    } catch (e: any) {
-      Swal.fire({
-        title: "error",
-        text: e.messege,
-        icon: "error",
-      });
     }
   };
   return (
@@ -50,7 +56,7 @@ export default function page() {
           <div className="card-body login-card-body">
             <p className="login-box-msg">Sign in to start your session</p>
 
-           <div>
+            <div>
               <div className="input-group mb-3">
                 <input
                   type="email"
@@ -95,7 +101,7 @@ export default function page() {
                   </button>
                 </div>
               </div>
-          </div>
+            </div>
 
             <div className="social-auth-links text-center mb-3">
               <p>- OR -</p>

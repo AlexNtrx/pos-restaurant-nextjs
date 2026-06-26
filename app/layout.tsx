@@ -28,7 +28,7 @@ export default function RootLayout({
         <meta charSet="utf-8" />
         <title>AdminLTE 3 | Dashboard</title>
       </head>
-      <body>{children}</body>
+      <body className="hold-transition sidebar-mini layout-fixed">{children}</body>
     </html>
   );
 }
