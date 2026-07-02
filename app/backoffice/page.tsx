@@ -1,3 +1,9 @@
-export default function page() {
-  return <></>;
+'use client';
+export default function Page(){
+
+
+    return(
+        <>
+        </>
+    )
 }
