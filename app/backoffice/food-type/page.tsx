@@ -78,6 +78,11 @@ export default function Page() {
     setName(item.name);
     setRemark(item.remark);
   };
+  const clearForm = () =>{
+    setName('');
+    setRemark('');
+    setId(0);
+  }
   return (
     <>
       <div className="card mt-3">
@@ -87,6 +92,7 @@ export default function Page() {
             className="btn btn-primary"
             data-bs-toggle="modal"
             data-bs-target="#modalFoodType"
+            onClick={clearForm}
           >
             <i className="fa fa-plus me-2"> </i>เพิ่มรายการ
           </button>
