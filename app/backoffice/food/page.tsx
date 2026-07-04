@@ -151,6 +151,15 @@ export default function Page() {
     setFoodType(item.foodType);
     setImg(item.img);
   };
+  const clearForm = () => {
+    setId(0);
+    setName("");
+    setRemark("");
+    setPrice(0);
+    setFoodType("food");
+    setImg("");
+    document.getElementById("myFile")?.setAttribute("value", "");
+  }
   return (
     <>
       <div className="mt-3 card">
@@ -160,6 +169,7 @@ export default function Page() {
             className="btn btn-primary"
             data-bs-toggle="modal"
             data-bs-target="#modalFood"
+            onClick={(e) => clearForm()}
           >
             <i className="fa fa-plus me-2"></i>add
           </button>
@@ -236,6 +246,7 @@ export default function Page() {
           ></img>
         )}
         <input
+        id="myFile"
           type="file"
           className="form-control"
           onChange={(e) => handleSelectedFile(e)}
