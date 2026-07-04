@@ -12,8 +12,9 @@ export default function Page() {
   const [id, setId] = useState(0);
   const [foodTypeId, setFoodTypeId] = useState(0);
   const [moneyAdded, setMoneyAdded] = useState(0);
-  const [foodType, setFoodType] = useState([]);
+  const [foodTypes, setFoodTypes] = useState([]);
   const [foodSizes, setFoodSizes] = useState([]);
+
 
   useEffect(() => {
     fetchData();
@@ -34,7 +35,7 @@ export default function Page() {
   const fetchDataFoodSize = async () => {
     try {
       const res = await axios.get(config.apiServer + "/api/foodType/list");
-      setFoodType(res.data.results);
+      setFoodTypes(res.data.results);
       setFoodTypeId(res.data.results[0].id);
     } catch (e: any) {
       Swal.fire({
@@ -146,7 +147,7 @@ export default function Page() {
                       <i className="fa fa-edit"></i>
                     </button>
                     <button
-                      className="btn btn-danger ms-2"
+                      className="btn btn-danger me-2"
                       onClick={(e) => remove(item)}
                     >
                       <i className="fa fa-times"></i>
@@ -165,7 +166,7 @@ export default function Page() {
           className="form-control"
           onChange={(e) => setFoodTypeId(parseInt(e.target.value))}
         >
-          {foodType.map((item: any) => (
+          {foodTypes.map((item: any) => (
             <option value={item.id} key={item.id}>
               {item.name}
             </option>
@@ -191,7 +192,6 @@ export default function Page() {
           value={remark}
           onChange={(e) => setRemark(e.target.value)}
         />
-
         <button className="mt-3 btn btn-primary" onClick={save}>
           <i className="fa fa-save mr-2"></i>บันทึก
         </button>

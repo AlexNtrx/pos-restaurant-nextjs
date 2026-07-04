@@ -91,6 +91,12 @@ export default function Sidebar() {
               role="menu"
               data-accordion="false"
             >
+               <li className="nav-item">
+                <Link href="/backoffice/sale" className="nav-link">
+                  <i className="nav-icon fas fa-list"></i>
+                  <p>sale</p>
+                </Link>
+              </li>
               <li className="nav-item">
                 <Link href="/backoffice/food-type" className="nav-link">
                   <i className="nav-icon fas fa-th"></i>
@@ -107,6 +113,12 @@ export default function Sidebar() {
                 <Link href="/backoffice/taste" className="nav-link">
                   <i className="nav-icon fas fa-list"></i>
                   <p>รสชาติอาหาร</p>
+                </Link>
+              </li>
+              <li className="nav-item">
+                <Link href="/backoffice/food" className="nav-link">
+                  <i className="nav-icon fas fa-list"></i>
+                  <p>อาหาร</p>
                 </Link>
               </li>
             </ul>
