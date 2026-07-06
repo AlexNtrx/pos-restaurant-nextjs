@@ -231,7 +231,7 @@ export default function Page() {
           onChange={(e) => setFoodTypeId(parseInt(e.target.value))}
         >
           {foodTypes.map((item: any) => (
-            <option value={item.id} key={item.id}>
+            <option value={item.id} key={item.id }>
               {item.name}
             </option>
           ))}

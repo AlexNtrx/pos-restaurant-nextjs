@@ -1,13 +1,18 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, use } from "react";
 import config from "@/app/config";
 import Swal from "sweetalert2";
 import axios from "axios";
+import MyModal from "../components/mymodal";
 
 export default function Page() {
-  const [table, setTable] = useState("");
+  const [table, setTable] = useState(1);
   const [foods, setFoods] = useState([]);
+  const [saleTemps, setSaleTemps] = useState([]);
+  const [amount, setAmount] = useState(0);
+  const [tasted, setTasted] = useState([]);
+  const [sizes, setSized] = useState(0);
   const [saleTempDetails, setSaleTempDetails] = useState([]);
   const myRef = useRef<HTMLInputElement>(null);
 
@@ -17,6 +22,13 @@ export default function Page() {
     (myRef.current as HTMLInputElement).focus();
   }, []);
 
+  const sumAmount = (saleTemps: any) => {
+    let sum = 0;
+    saleTemps.forEach((item: any) => {
+      sum += item.Food.price * item.qty;
+    });
+    setAmount(sum);
+  };
   const getFoods = async () => {
     try {
       const res = await axios.get(config.apiServer + "/api/food/list");
@@ -44,9 +56,61 @@ export default function Page() {
   };
   const fetchDataSaleTemp = async () => {
     try {
-     const res = await axios.get(config.apiServer + "/api/saleTemp/list"
-      );
-      setSaleTempDetails(res.data.results[0].saleTempDetails);
+      const res = await axios.get(config.apiServer + "/api/saleTemp/list/");
+      setSaleTemps(res.data.results);
+      sumAmount(res.data.results);
+      console.log(res.data.results);
+    } catch (e: any) {
+      Swal.fire({
+        title: "error",
+        text: e.message,
+        icon: "error",
+      });
+    }
+  };
+  const removeSaleTempDetail = async (id: number) => {
+    console.log("Delete id =", id);
+    try {
+      const button = await Swal.fire({
+        title: "Do you want to delete this item?",
+        icon: "warning",
+        showCancelButton: true,
+        showConfirmButton: true,
+      });
+      if (button.isConfirmed) {
+        await axios.delete(config.apiServer + "/api/saleTemp/remove/" + id);
+        fetchDataSaleTemp();
+      }
+    } catch (e: any) {
+      Swal.fire({
+        title: "error",
+        text: e.message,
+        icon: "error",
+      });
+    }
+  };
+  const removeAllSaleTempDetail = async () => {
+    try {
+      const button = await Swal.fire({
+        title: "Do you want to delete all items?",
+        icon: "warning",
+        showCancelButton: true,
+        showConfirmButton: true,
+      });
+      if (button.isConfirmed) {
+        const payload = {
+          tableNo: Number(table), // ครอบ Number() ให้ชัวร์ว่าเป็นตัวเลขแน่ๆ
+          userId: Number(localStorage.getItem("next_user_id")),
+        };
+
+        // 💡 เพิ่มบรรทัดนี้ เพื่อดูในหน้าจอ F12 (Console) ว่าได้เลขอะไรออกมา!
+        console.log("ข้อมูลที่กำลังจะส่งไปหลังบ้าน:", payload);
+
+        await axios.delete(config.apiServer + "/api/saleTemp/removeAll", {
+          data: payload,
+        });
+        fetchDataSaleTemp();
+      }
     } catch (e: any) {
       Swal.fire({
         title: "error",
@@ -66,6 +130,66 @@ export default function Page() {
       fetchDataSaleTemp();
     } catch (e: any) {
       console.log(e);
+      Swal.fire({
+        title: "error",
+        text: e.message,
+        icon: "error",
+      });
+    }
+  };
+  const updateQty = async (id: number, qty: number) => {
+    try {
+      const payload = {
+        qty: qty,
+        id: id,
+      };
+      await axios.put(config.apiServer + "/api/saleTemp/updateQty", payload);
+      fetchDataSaleTemp();
+    } catch (e: any) {
+      console.log(e);
+      Swal.fire({
+        title: "error",
+        text: e.message,
+        icon: "error",
+      });
+    }
+  };
+  const openModalEdit = (item: any) => {
+    if (item && item.id) {
+      generateSaleTempDetail(item.id);
+    } else {
+      console.error("item.id ไม่มีค่า:", item);
+    }
+  };
+const fetchDataSaleTempInfo = async (saleTempId: number) => {
+  try {
+    const res = await axios.get(
+      config.apiServer + "/api/saleTemp/info/" + saleTempId,
+    );
+    setSaleTempDetails(res.data.results.saleTempDetails);
+    setTasted(res.data.results.Food?.FoodType?.tastes || []);
+    setSized(res.data.results.Food?.FoodType?.foodSizes || []);
+  } catch (e: any) {
+    console.log(e);
+    Swal.fire({
+      title: "error",
+      text: e.message,
+      icon: "error",
+    });
+  }
+};
+  const generateSaleTempDetail = async (saleTempId: number) => {
+    try {
+      const payload = {
+        saleTempId: saleTempId,
+      };
+      await axios.post(
+        config.apiServer + "/api/saleTemp/generateSaleTempDetail",
+        payload,
+      );
+      await fetchDataSaleTemp();
+      fetchDataSaleTempInfo(saleTempId);
+    } catch (e: any) {
       Swal.fire({
         title: "error",
         text: e.message,
@@ -113,7 +237,11 @@ export default function Page() {
                 <i className="fa fa-list me-2"></i>
                 Total
               </button>
-              <button className="btn btn-danger">
+              <button
+                disabled={saleTemps.length === 0}
+                className="btn btn-danger"
+                onClick={() => removeAllSaleTempDetail()}
+              >
                 <i className="fa fa-times me-2"></i>
                 Clear
               </button>
@@ -148,22 +276,40 @@ export default function Page() {
             </div>
             <div className="col-md-3">
               <div className="alert p-3 text-end h1 text-white bg-dark">
-                0.00
+                {amount.toLocaleString("th-TH")}
               </div>
-              {saleTempDetails.map((item: any) => (
+              {saleTemps.map((item: any) => (
                 <div className="d-grid mt-2" key={item.id}>
                   <div className="card">
                     <div className="card-body">
                       <div className="fw-bold">{item.Food.name}</div>
-                      <div> {item.Food.price} x 1 = {item.Food.price * 1}</div>
+                      <div>
+                        {" "}
+                        {item.Food.price} x {item.qty} ={" "}
+                        {item.Food.price * item.qty}
+                      </div>
                     </div>
                     <div className="mt-1">
                       <div className="input-group">
-                        <button className="input-group-text btn btn-primary">
+                        <button
+                          disabled={
+                            item.saleTempDetails?.length > 0 || item.qty <= 1
+                          }
+                          className="input-group-text btn btn-primary"
+                          onClick={(e) => updateQty(item.id, item.qty - 1)}
+                        >
                           <i className="fa fa-minus"></i>
                         </button>
-                        <input type="text" className="form-control text-center fw-bold" value="1" disabled />
-                        <button className="input-group-text btn btn-primary">
+                        <input
+                          type="text"
+                          className="form-control text-center fw-bold"
+                          value={item.qty}
+                          disabled
+                        />
+                        <button
+                          className="input-group-text btn btn-primary"
+                          onClick={(e) => updateQty(item.id, item.qty + 1)}
+                        >
                           <i className="fa fa-plus"></i>
                         </button>
                       </div>
@@ -171,13 +317,21 @@ export default function Page() {
                     <div className="card-footer p-1">
                       <div className="row g-1">
                         <div className="col-md-6">
-                          <button className="btn btn-danger btn-blocker">
+                          <button
+                            className="btn btn-danger btn-blocker"
+                            onClick={(e) => removeSaleTempDetail(item.id)}
+                          >
                             <i className="fa fa-times me-2"></i>
                             Cancel
                           </button>
                         </div>
                         <div className="col-md-6">
-                          <button className="btn btn-success btn-block">
+                          <button
+                            className="btn btn-success btn-block"
+                            data-bs-toggle="modal"
+                            data-bs-target="#modalEdit"
+                            onClick={(e) => openModalEdit(item)}
+                          >
                             <i className="fa fa-cog me-2"></i>
                             edit
                           </button>
@@ -191,6 +345,55 @@ export default function Page() {
           </div>
         </div>
       </div>
+      <MyModal id="modalEdit" title="edit" modalSize="modal-xl">
+        <div>
+          <button className="btn btn-primary">
+            <i className="fa fa-plus me-2">Add</i>
+          </button>
+        </div>
+        <table className="table table-bordered mt-3">
+          <thead>
+            <tr>
+              <th style={{ width: "60px" }}></th>
+              <th>Name</th>
+              <th style={{ width: "300px" }}>taste</th>
+              <th style={{ width: "350px" }}>size</th>
+            </tr>
+          </thead>
+          <tbody>
+            {saleTempDetails.map((item: any) => (
+              <tr key={item.id}>
+                <td className="text-center">
+                  <button className="btn btn-danger">
+                    <i className="fa fa-times"></i>
+                  </button>
+                </td>
+                <td>{item.Food.name}</td>
+                <td className="text-center">
+                  {tasted.map((taste: any) => (
+                    <button
+                      className="btn btn-outline-danger me-1"
+                      key={taste.id}
+                    >
+                      {taste.name}
+                    </button>
+                  ))}
+                </td>
+                <td className="text-center">
+                  {sizes.map((size: any) => (
+                    <button
+                      className="btn btn-outline-success me-1"
+                      key={size.id}
+                    >
+                  +{size.moneyAdded} {size.name}
+                    </button>
+                  ))}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </MyModal>
     </>
   );
 }

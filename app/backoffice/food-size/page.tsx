@@ -183,7 +183,7 @@ export default function Page() {
           className="form-control"
           value={moneyAdded}
           type="number"
-          onChange={(e) => setMoneyAdded(parseInt(e.target.value))}
+          onChange={(e) => setMoneyAdded(Number(e.target.value))}
         />
 
         <div className="mt-3">หมายเหตุ</div>
