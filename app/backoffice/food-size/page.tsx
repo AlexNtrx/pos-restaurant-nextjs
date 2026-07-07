@@ -160,7 +160,7 @@ export default function Page() {
         </div>
       </div>
 
-      <Mymodal id="modalFoodSize" title="ขนาดอาหาร">
+      <Mymodal id="modalFoodSize" title="ขนาดอาหาร" modalSize="">
         <div>ประเภท</div>
         <select
           className="form-control"

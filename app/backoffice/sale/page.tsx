@@ -161,23 +161,24 @@ export default function Page() {
       console.error("item.id ไม่มีค่า:", item);
     }
   };
-const fetchDataSaleTempInfo = async (saleTempId: number) => {
-  try {
-    const res = await axios.get(
-      config.apiServer + "/api/saleTemp/info/" + saleTempId,
-    );
-    setSaleTempDetails(res.data.results.saleTempDetails);
-    setTasted(res.data.results.Food?.FoodType?.tastes || []);
-    setSized(res.data.results.Food?.FoodType?.foodSizes || []);
-  } catch (e: any) {
-    console.log(e);
-    Swal.fire({
-      title: "error",
-      text: e.message,
-      icon: "error",
-    });
-  }
-};
+
+  const fetchDataSaleTempInfo = async (saleTempId: number) => {
+    try {
+      const res = await axios.get(
+        config.apiServer + "/api/saleTemp/info/" + saleTempId,
+      );
+      setSaleTempDetails(res.data.results.saleTempDetails);
+      setTasted(res.data.results.Food?.FoodType?.tastes || []);
+      setSized(res.data.results.Food?.FoodType?.foodSizes || []);
+    } catch (e: any) {
+      console.log(e);
+      Swal.fire({
+        title: "error",
+        text: e.message,
+        icon: "error",
+      });
+    }
+  };
   const generateSaleTempDetail = async (saleTempId: number) => {
     try {
       const payload = {
@@ -188,6 +189,67 @@ const fetchDataSaleTempInfo = async (saleTempId: number) => {
         payload,
       );
       await fetchDataSaleTemp();
+      fetchDataSaleTempInfo(saleTempId);
+    } catch (e: any) {
+      Swal.fire({
+        title: "error",
+        text: e.message,
+        icon: "error",
+      });
+    }
+  };
+  const selectTaste = async (
+    tasteId: number,
+    saleTempDetailId: number,
+    saleTempId: Number,
+  ) => {
+    try {
+      const payload = {
+        saleTempDetailId: saleTempDetailId,
+        tasteId: tasteId,
+      };
+      await axios.put(config.apiServer + "/api/saleTemp/selectTaste", payload);
+      fetchDataSaleTempInfo(saleTempId);
+    } catch (e: any) {
+      Swal.fire({
+        title: "error",
+        text: e.message,
+        icon: "error",
+      });
+    }
+  };
+  const unSelectTaste = async (
+    saleTempDetailId: number,
+    saleTempId: number,
+  ) => {
+    try {
+      const payload = {
+        saleTempDetailId: saleTempDetailId,
+      };
+      await axios.put(
+        config.apiServer + "/api/saleTemp/unSelectTaste",
+        payload,
+      );
+      fetchDataSaleTempInfo(saleTempId);
+    } catch (e: any) {
+      Swal.fire({
+        title: "error",
+        text: e.message,
+        icon: "error",
+      });
+    }
+  };
+  const selectSize = async (
+    sizeId: number,
+    saleTempDetailId: number,
+    saleTempId: number,
+  ) => {
+    try {
+      const payload = {
+        sizeId: sizeId,
+        saleTempDetailId: saleTempDetailId,
+      };
+      await axios.put(config.apiServer + "/api/saleTemp/selectSize", payload);
       fetchDataSaleTempInfo(saleTempId);
     } catch (e: any) {
       Swal.fire({
@@ -370,24 +432,39 @@ const fetchDataSaleTempInfo = async (saleTempId: number) => {
                 </td>
                 <td>{item.Food.name}</td>
                 <td className="text-center">
-                  {tasted.map((taste: any) => (
-                    <button
-                      className="btn btn-outline-danger me-1"
-                      key={taste.id}
-                    >
-                      {taste.name}
-                    </button>
-                  ))}
+                  {tasted.map((taste: any) => {
+                    const isSelected = item.tasteId === taste.id;
+
+                    return (
+                      <button
+                        key={taste.id}
+                        onClick={() =>
+                          isSelected
+                            ? unSelectTaste(item.id, item.saleTempId)
+                            : selectTaste(taste.id, item.id, item.saleTempId)
+                        }
+                        className={`btn me-1 ${isSelected ? "btn-danger" : "btn-outline-danger"}`}
+                      >
+                        {taste.name}
+                      </button>
+                    );
+                  })}
                 </td>
                 <td className="text-center">
-                  {sizes.map((size: any) => (
-                    <button
-                      className="btn btn-outline-success me-1"
-                      key={size.id}
-                    >
-                  +{size.moneyAdded} {size.name}
-                    </button>
-                  ))}
+                {(sizes as any)?.filter((size: any) => size.moneyAdded > 0)?.map((size: any) =>{
+                      const isSelected = item.foodSizeId === size.id;
+                      return (
+                        <button
+                          key={size.id}
+                          onClick={() =>
+                            selectSize(size.id, item.id, item.saleTempId)
+                          }
+                          className={`btn me-1 ${isSelected ? "btn-success" : "btn-outline-success"}`}
+                        >
+                          +{size.moneyAdded} {size.name}
+                        </button>
+                      );
+                    })}
                 </td>
               </tr>
             ))}
