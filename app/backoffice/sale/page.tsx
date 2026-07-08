@@ -13,7 +13,9 @@ export default function Page() {
   const [amount, setAmount] = useState(0);
   const [tasted, setTasted] = useState([]);
   const [sizes, setSized] = useState(0);
+  const [amountAdded, setAmountAdded] = useState(0);
   const [saleTempDetails, setSaleTempDetails] = useState([]);
+  const [saleTempId, setSaleTempId] = useState(0);
   const myRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -59,7 +61,12 @@ export default function Page() {
       const res = await axios.get(config.apiServer + "/api/saleTemp/list/");
       setSaleTemps(res.data.results);
       sumAmount(res.data.results);
-      console.log(res.data.results);
+      const results = res.data.results;
+      let sum = 0;
+      results.forEach((item: any) => {
+        sum += sumMoneyAdded(item.saleTempDetails);
+      });
+      setAmountAdded(sum);
     } catch (e: any) {
       Swal.fire({
         title: "error",
@@ -155,11 +162,8 @@ export default function Page() {
     }
   };
   const openModalEdit = (item: any) => {
-    if (item && item.id) {
-      generateSaleTempDetail(item.id);
-    } else {
-      console.error("item.id ไม่มีค่า:", item);
-    }
+    setSaleTempId(item.id);
+    generateSaleTempDetail(item.id);
   };
 
   const fetchDataSaleTempInfo = async (saleTempId: number) => {
@@ -178,6 +182,14 @@ export default function Page() {
         icon: "error",
       });
     }
+  };
+  const sumMoneyAdded = (saleTempDetails: any) => {
+    let sum = 0;
+    for (let i = 0; i < saleTempDetails.length; i++) {
+      const detail = saleTempDetails[i];
+      sum += detail.FoodSize?.moneyAdded ?? 0;
+    }
+    return sum;
   };
   const generateSaleTempDetail = async (saleTempId: number) => {
     try {
@@ -250,6 +262,26 @@ export default function Page() {
         saleTempDetailId: saleTempDetailId,
       };
       await axios.put(config.apiServer + "/api/saleTemp/selectSize", payload);
+      await fetchDataSaleTempInfo(saleTempId);
+      await fetchDataSaleTemp();
+    } catch (e: any) {
+      Swal.fire({
+        title: "error",
+        text: e.message,
+        icon: "error",
+      });
+    }
+  };
+  const createSaleTempDetail = async () => {
+    try {
+      const payload = {
+        saleTempId: saleTempId,
+      };
+      await axios.post(
+        config.apiServer + "/api/saleTemp/createSaleTempDetail",
+        payload,
+      );
+      await fetchDataSaleTemp();
       fetchDataSaleTempInfo(saleTempId);
     } catch (e: any) {
       Swal.fire({
@@ -338,7 +370,7 @@ export default function Page() {
             </div>
             <div className="col-md-3">
               <div className="alert p-3 text-end h1 text-white bg-dark">
-                {amount.toLocaleString("th-TH")}
+                {(amount + amountAdded).toLocaleString("th-TH")}
               </div>
               {saleTemps.map((item: any) => (
                 <div className="d-grid mt-2" key={item.id}>
@@ -354,9 +386,7 @@ export default function Page() {
                     <div className="mt-1">
                       <div className="input-group">
                         <button
-                          disabled={
-                            item.saleTempDetails?.length > 0 || item.qty <= 1
-                          }
+                          disabled={item.qty <= 1}
                           className="input-group-text btn btn-primary"
                           onClick={(e) => updateQty(item.id, item.qty - 1)}
                         >
@@ -409,7 +439,10 @@ export default function Page() {
       </div>
       <MyModal id="modalEdit" title="edit" modalSize="modal-xl">
         <div>
-          <button className="btn btn-primary">
+          <button
+            className="btn btn-primary"
+            onClick={(e) => createSaleTempDetail()}
+          >
             <i className="fa fa-plus me-2">Add</i>
           </button>
         </div>
@@ -419,7 +452,7 @@ export default function Page() {
               <th style={{ width: "60px" }}></th>
               <th>Name</th>
               <th style={{ width: "300px" }}>taste</th>
-              <th style={{ width: "350px" }}>size</th>
+              <th style={{ width: "450px" }}>size</th>
             </tr>
           </thead>
           <tbody>
@@ -451,7 +484,9 @@ export default function Page() {
                   })}
                 </td>
                 <td className="text-center">
-                {(sizes as any)?.filter((size: any) => size.moneyAdded > 0)?.map((size: any) =>{
+                  {(sizes as any)
+                    ?.filter((size: any) => size.moneyAdded >= 0)
+                    ?.map((size: any) => {
                       const isSelected = item.foodSizeId === size.id;
                       return (
                         <button
