@@ -16,6 +16,8 @@ export default function Page() {
   const [amountAdded, setAmountAdded] = useState(0);
   const [saleTempDetails, setSaleTempDetails] = useState([]);
   const [saleTempId, setSaleTempId] = useState(0);
+  const [payType, setPayType] = useState("cash");
+  const [receivedAmount, setReceivedAmount] = useState(0);
   const myRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -67,6 +69,7 @@ export default function Page() {
         sum += sumMoneyAdded(item.saleTempDetails);
       });
       setAmountAdded(sum);
+      sumAmount(results);
     } catch (e: any) {
       Swal.fire({
         title: "error",
@@ -106,12 +109,9 @@ export default function Page() {
       });
       if (button.isConfirmed) {
         const payload = {
-          tableNo: Number(table), // ครอบ Number() ให้ชัวร์ว่าเป็นตัวเลขแน่ๆ
+          tableNo: Number(table),
           userId: Number(localStorage.getItem("next_user_id")),
         };
-
-        // 💡 เพิ่มบรรทัดนี้ เพื่อดูในหน้าจอ F12 (Console) ว่าได้เลขอะไรออกมา!
-        console.log("ข้อมูลที่กำลังจะส่งไปหลังบ้าน:", payload);
 
         await axios.delete(config.apiServer + "/api/saleTemp/removeAll", {
           data: payload,
@@ -291,6 +291,25 @@ export default function Page() {
       });
     }
   };
+  const removeAllSaleTempDetailModal = async (saleTempDetailId: number) => {
+    try {
+      const payload = {
+        saleTempDetailId: saleTempDetailId,
+      };
+      await axios.delete(
+        config.apiServer + "/api/saleTemp/removeSaleTempDetailModal",
+        { data: payload },
+      );
+      await fetchDataSaleTemp();
+      fetchDataSaleTempInfo(saleTempId);
+    } catch (e: any) {
+      Swal.fire({
+        title: "error",
+        text: e.message,
+        icon: "error",
+      });
+    }
+  };
   return (
     <>
       <div className="card mt-3">
@@ -372,6 +391,16 @@ export default function Page() {
               <div className="alert p-3 text-end h1 text-white bg-dark">
                 {(amount + amountAdded).toLocaleString("th-TH")}
               </div>
+              {amount > 0 ?
+              <button
+                className="btn btn-success btn-lg w-100 mb-2"
+                data-bs-toggle="modal"
+                            data-bs-target="#modalSale">
+                <i className="fa fa-money-bill me-2"></i>
+                Pay
+              </button>
+              : <></>
+              }
               {saleTemps.map((item: any) => (
                 <div className="d-grid mt-2" key={item.id}>
                   <div className="card">
@@ -459,7 +488,10 @@ export default function Page() {
             {saleTempDetails.map((item: any) => (
               <tr key={item.id}>
                 <td className="text-center">
-                  <button className="btn btn-danger">
+                  <button
+                    className="btn btn-danger"
+                    onClick={(e) => removeAllSaleTempDetailModal(item.id)}
+                  >
                     <i className="fa fa-times"></i>
                   </button>
                 </td>
@@ -505,6 +537,60 @@ export default function Page() {
             ))}
           </tbody>
         </table>
+      </MyModal>
+      <MyModal id="modalSale" title="Summary" modalSize="modal-lg">
+      <div className="fw-bold">Pay</div>
+      <div className="row mt-1">
+        <div className="col-md-6">
+          <button className={payType === "cash" ? "btn btn-success btn-block btn-lg" : "btn btn-outline-secondary btn-block btn-lg"} onClick={() => setPayType("cash")}>
+            <span className="h3">Cash</span>
+          </button>
+        </div>
+        <div className="col-md-6">
+          <button className={payType === "bank" ? "btn btn-success btn-block btn-lg" : "btn btn-outline-secondary btn-block btn-lg"} onClick={() => setPayType("bank")}>
+            <span className="h3">Bank Tranfer</span>
+          </button>
+        </div>
+      </div>
+      <div className="mt-3 fw-bold">Total</div>
+      <div className="h1">
+        <input type="text" className="form-control text-end fs-4 p-4" 
+        value={(amount + amountAdded).toLocaleString('th-Th')} disabled />
+      </div>
+      <div className="mt-3 fw-bold">Received</div>
+      <div className="row mt-1">
+        <div className="col-md-3">
+          <button className="btn btn-outline-secondary btn-block btn-lg" onClick={() => setReceivedAmount((prev) => prev + 10)}>
+            <span className="h3">10</span>
+          </button>
+        </div>
+        <div className="col-md-3">
+          <button className="btn btn-outline-secondary btn-block btn-lg" onClick={() => setReceivedAmount((prev) => prev + 20)}>
+            <span className="h3">20</span>
+          </button>
+        </div>
+        <div className="col-md-3">
+          <button className="btn btn-outline-secondary btn-block btn-lg" onClick={() => setReceivedAmount((prev) => prev + 50)}>
+            <span className="h3">50</span>
+          </button>
+        </div>
+        <div className="col-md-3">
+          <button className="btn btn-outline-secondary btn-block btn-lg" onClick={() => setReceivedAmount((prev) => prev + 100)}>
+            <span className="h3">100</span>
+          </button>
+        </div>
+      </div>
+      <input type="text" className="form-control text-end fs-4 p-4 mt-3" placeholder="0.00" value={receivedAmount} onChange={(e) => setReceivedAmount(parseFloat(e.target.value) || 0)} />
+      <div className="mt-3 fw-bold">Change</div>
+      <div className="h1">
+        <input type="text" className="form-control text-end fs-4 p-4" value={(receivedAmount - (amount + amountAdded)).toLocaleString('th-Th')} disabled />
+      </div>
+      <div className="mt-3">
+        <button className="btn btn-success btn-lg w-100">
+          <i className="fa fa-money-bill me-2"></i>
+          Paid
+        </button>
+      </div>
       </MyModal>
     </>
   );
