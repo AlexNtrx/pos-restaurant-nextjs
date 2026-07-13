@@ -18,6 +18,7 @@ export default function Page() {
   const [saleTempId, setSaleTempId] = useState(0);
   const [payType, setPayType] = useState("cash");
   const [receivedAmount, setReceivedAmount] = useState(0);
+  const [billUrl, setBillUrl] = useState("");
   const myRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -316,10 +317,16 @@ export default function Page() {
         tableNo: table,
         userId: Number(localStorage.getItem("next_user_id")),
       };
-      await axios.post(
+      const res = await axios.post(
         config.apiServer + "/api/saleTemp/printBillBeforePay",
         payload,
       );
+      setTimeout(() => {
+        setBillUrl(res.data.fileName);
+
+        const button = document.getElementById("btnPrint") as HTMLButtonElement;
+        button.click();
+      }, 300);
     } catch (e: any) {
       Swal.fire({
         title: "error",
@@ -328,6 +335,62 @@ export default function Page() {
       });
     }
   };
+  const printBillAfterPay = async () => {
+    try {
+      const payload = {
+        tableNo: table,
+        userId: Number(localStorage.getItem("next_user_id")),
+      };
+      const res = await axios.post(
+        config.apiServer + "/api/saleTemp/printBillAfterPay",
+        payload,
+      );
+      setTimeout(() => {
+        setBillUrl(res.data.fileName);
+
+        const button = document.getElementById("btnPrint") as HTMLButtonElement;
+        button.click();
+      }, 300);
+    } catch (e: any) {
+      Swal.fire({
+        title: "error",
+        text: e.message,
+        icon: "error",
+      });
+    }
+  };
+  const endSale = async () => {
+    try {
+      const button = await Swal.fire({
+        title: "Please check before Confirm bill",
+        icon: "warning",
+        showCancelButton: true,
+        showConfirmButton: true,
+      });
+      if (button.isConfirmed) {
+        const payload = {
+          tableNo: table,
+          userId: Number(localStorage.getItem("next_user_id")),
+          payType: payType,
+          inputMoney: receivedAmount,
+          amount: amount + amountAdded,
+          returnMoney: receivedAmount - (amount + amountAdded),
+        };
+        await axios.post(config.apiServer + "/api/saleTemp/endSale", payload);
+        fetchDataSaleTemp();
+
+        document.getElementById("modalSale_btnClose")?.click();
+        printBillAfterPay();
+      }
+    } catch (e: any) {
+      Swal.fire({
+        title: "error",
+        text: e.message,
+        icon: "error",
+      });
+    }
+  };
+
   return (
     <>
       <div className="card mt-3">
@@ -660,11 +723,30 @@ export default function Page() {
           />
         </div>
         <div className="mt-3">
-          <button className="btn btn-success btn-lg w-100">
+          <button
+            disabled={receivedAmount - (amount + amountAdded) < 0}
+            onClick={(e) => endSale()}
+            className="btn btn-success btn-lg w-100"
+          >
             <i className="fa fa-money-bill me-2"></i>
             Paid
           </button>
         </div>
+      </MyModal>
+      <button
+        id="btnPrint"
+        style={{ display: "none" }}
+        data-bs-toggle="modal"
+        data-bs-target="#modalPrint"
+      ></button>
+      <MyModal id="modalPrint" title="print" modalSize="">
+        {billUrl && (
+          <iframe
+            src={config.apiServer + "/" + billUrl}
+            width="100%"
+            height="600px"
+          ></iframe>
+        )}
       </MyModal>
     </>
   );
