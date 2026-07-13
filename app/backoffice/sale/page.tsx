@@ -310,6 +310,24 @@ export default function Page() {
       });
     }
   };
+  const printBillBeforePay = async () => {
+    try {
+      const payload = {
+        tableNo: table,
+        userId: Number(localStorage.getItem("next_user_id")),
+      };
+      await axios.post(
+        config.apiServer + "/api/saleTemp/printBillBeforePay",
+        payload,
+      );
+    } catch (e: any) {
+      Swal.fire({
+        title: "error",
+        text: e.message,
+        icon: "error",
+      });
+    }
+  };
   return (
     <>
       <div className="card mt-3">
@@ -358,6 +376,17 @@ export default function Page() {
                 <i className="fa fa-times me-2"></i>
                 Clear
               </button>
+              {amount > 0 ? (
+                <button
+                  className="btn btn-success ms-1"
+                  onClick={(e) => printBillBeforePay()}
+                >
+                  <i className="fa fa-print me-2"></i>
+                  Print Bill
+                </button>
+              ) : (
+                <></>
+              )}
             </div>
           </div>
           <div className="row mt-3">
@@ -391,16 +420,18 @@ export default function Page() {
               <div className="alert p-3 text-end h1 text-white bg-dark">
                 {(amount + amountAdded).toLocaleString("th-TH")}
               </div>
-              {amount > 0 ?
-              <button
-                className="btn btn-success btn-lg w-100 mb-2"
-                data-bs-toggle="modal"
-                            data-bs-target="#modalSale">
-                <i className="fa fa-money-bill me-2"></i>
-                Pay
-              </button>
-              : <></>
-              }
+              {amount > 0 ? (
+                <button
+                  className="btn btn-success btn-lg w-100 mb-2"
+                  data-bs-toggle="modal"
+                  data-bs-target="#modalSale"
+                >
+                  <i className="fa fa-money-bill me-2"></i>
+                  Pay
+                </button>
+              ) : (
+                <></>
+              )}
               {saleTemps.map((item: any) => (
                 <div className="d-grid mt-2" key={item.id}>
                   <div className="card">
@@ -539,58 +570,101 @@ export default function Page() {
         </table>
       </MyModal>
       <MyModal id="modalSale" title="Summary" modalSize="modal-lg">
-      <div className="fw-bold">Pay</div>
-      <div className="row mt-1">
-        <div className="col-md-6">
-          <button className={payType === "cash" ? "btn btn-success btn-block btn-lg" : "btn btn-outline-secondary btn-block btn-lg"} onClick={() => setPayType("cash")}>
-            <span className="h3">Cash</span>
+        <div className="fw-bold">Pay</div>
+        <div className="row mt-1">
+          <div className="col-md-6">
+            <button
+              className={
+                payType === "cash"
+                  ? "btn btn-success btn-block btn-lg"
+                  : "btn btn-outline-secondary btn-block btn-lg"
+              }
+              onClick={() => setPayType("cash")}
+            >
+              <span className="h3">Cash</span>
+            </button>
+          </div>
+          <div className="col-md-6">
+            <button
+              className={
+                payType === "bank"
+                  ? "btn btn-success btn-block btn-lg"
+                  : "btn btn-outline-secondary btn-block btn-lg"
+              }
+              onClick={() => setPayType("bank")}
+            >
+              <span className="h3">Bank Tranfer</span>
+            </button>
+          </div>
+        </div>
+        <div className="mt-3 fw-bold">Total</div>
+        <div className="h1">
+          <input
+            type="text"
+            className="form-control text-end fs-4 p-4"
+            value={(amount + amountAdded).toLocaleString("th-Th")}
+            disabled
+          />
+        </div>
+        <div className="mt-3 fw-bold">Received</div>
+        <div className="row mt-1">
+          <div className="col-md-3">
+            <button
+              className="btn btn-outline-secondary btn-block btn-lg"
+              onClick={() => setReceivedAmount((prev) => prev + 10)}
+            >
+              <span className="h3">10</span>
+            </button>
+          </div>
+          <div className="col-md-3">
+            <button
+              className="btn btn-outline-secondary btn-block btn-lg"
+              onClick={() => setReceivedAmount((prev) => prev + 20)}
+            >
+              <span className="h3">20</span>
+            </button>
+          </div>
+          <div className="col-md-3">
+            <button
+              className="btn btn-outline-secondary btn-block btn-lg"
+              onClick={() => setReceivedAmount((prev) => prev + 50)}
+            >
+              <span className="h3">50</span>
+            </button>
+          </div>
+          <div className="col-md-3">
+            <button
+              className="btn btn-outline-secondary btn-block btn-lg"
+              onClick={() => setReceivedAmount((prev) => prev + 100)}
+            >
+              <span className="h3">100</span>
+            </button>
+          </div>
+        </div>
+        <input
+          type="text"
+          className="form-control text-end fs-4 p-4 mt-3"
+          placeholder="0.00"
+          value={receivedAmount}
+          onChange={(e) => setReceivedAmount(parseFloat(e.target.value) || 0)}
+        />
+        <div className="mt-3 fw-bold">Change</div>
+        <div className="h1">
+          <input
+            type="text"
+            className="form-control text-end fs-4 p-4"
+            value={(receivedAmount - (amount + amountAdded)).toLocaleString(
+              "th-Th",
+            )}
+            disabled
+          />
+        </div>
+        <div className="mt-3">
+          <button className="btn btn-success btn-lg w-100">
+            <i className="fa fa-money-bill me-2"></i>
+            Paid
           </button>
         </div>
-        <div className="col-md-6">
-          <button className={payType === "bank" ? "btn btn-success btn-block btn-lg" : "btn btn-outline-secondary btn-block btn-lg"} onClick={() => setPayType("bank")}>
-            <span className="h3">Bank Tranfer</span>
-          </button>
-        </div>
-      </div>
-      <div className="mt-3 fw-bold">Total</div>
-      <div className="h1">
-        <input type="text" className="form-control text-end fs-4 p-4" 
-        value={(amount + amountAdded).toLocaleString('th-Th')} disabled />
-      </div>
-      <div className="mt-3 fw-bold">Received</div>
-      <div className="row mt-1">
-        <div className="col-md-3">
-          <button className="btn btn-outline-secondary btn-block btn-lg" onClick={() => setReceivedAmount((prev) => prev + 10)}>
-            <span className="h3">10</span>
-          </button>
-        </div>
-        <div className="col-md-3">
-          <button className="btn btn-outline-secondary btn-block btn-lg" onClick={() => setReceivedAmount((prev) => prev + 20)}>
-            <span className="h3">20</span>
-          </button>
-        </div>
-        <div className="col-md-3">
-          <button className="btn btn-outline-secondary btn-block btn-lg" onClick={() => setReceivedAmount((prev) => prev + 50)}>
-            <span className="h3">50</span>
-          </button>
-        </div>
-        <div className="col-md-3">
-          <button className="btn btn-outline-secondary btn-block btn-lg" onClick={() => setReceivedAmount((prev) => prev + 100)}>
-            <span className="h3">100</span>
-          </button>
-        </div>
-      </div>
-      <input type="text" className="form-control text-end fs-4 p-4 mt-3" placeholder="0.00" value={receivedAmount} onChange={(e) => setReceivedAmount(parseFloat(e.target.value) || 0)} />
-      <div className="mt-3 fw-bold">Change</div>
-      <div className="h1">
-        <input type="text" className="form-control text-end fs-4 p-4" value={(receivedAmount - (amount + amountAdded)).toLocaleString('th-Th')} disabled />
-      </div>
-      <div className="mt-3">
-        <button className="btn btn-success btn-lg w-100">
-          <i className="fa fa-money-bill me-2"></i>
-          Paid
-        </button>
-      </div>
       </MyModal>
     </>
   );
