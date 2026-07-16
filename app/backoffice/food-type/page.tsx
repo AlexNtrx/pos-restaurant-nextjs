@@ -130,7 +130,7 @@ export default function Page() {
             </tbody>
           </table>
         </div>
-        <Mymodal id="modalFoodType" title="ประเภทอาหาร/เครื่องดื่ม">
+        <Mymodal id="modalFoodType" title="ประเภทอาหาร/เครื่องดื่ม" >
           <div>ชื่อ</div>
           <input
             className="form-control"

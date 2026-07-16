@@ -127,6 +127,24 @@ export default function Sidebar() {
                   <p>Organization</p>
                 </Link>
               </li>
+                <li className="nav-item">
+                <Link href="/backoffice/salereport" className="nav-link">
+                  <i className="nav-icon fas fa-list"></i>
+                  <p>Sale Report</p>
+                </Link>
+              </li>
+                <li className="nav-item">
+                <Link href="/backoffice/dailysales" className="nav-link">
+                  <i className="nav-icon fas fa-list"></i>
+                  <p>Daily Sales</p>
+                </Link>
+              </li>
+               <li className="nav-item">
+                <Link href="/backoffice/monthlysales" className="nav-link">
+                  <i className="nav-icon fas fa-list"></i>
+                  <p>Monthly Sales</p>
+                </Link>
+              </li>
             </ul>
           </nav>
         </div>

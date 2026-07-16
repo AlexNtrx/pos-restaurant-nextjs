@@ -4,7 +4,7 @@ interface ModalProps {
   id: string;
   title: string;
   children: ReactNode;
-  modalSize:string;
+  modalSize?:string;
 }
 
 const Modal: React.FC<ModalProps> = ({ id, title, children,modalSize}) => {

@@ -222,7 +222,7 @@ export default function Page() {
         tasteId: tasteId,
       };
       await axios.put(config.apiServer + "/api/saleTemp/selectTaste", payload);
-      fetchDataSaleTempInfo(saleTempId);
+      fetchDataSaleTempInfo(Number(saleTempId));
     } catch (e: any) {
       Swal.fire({
         title: "error",
