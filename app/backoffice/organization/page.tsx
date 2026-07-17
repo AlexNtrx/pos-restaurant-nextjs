@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import axios from "axios";
+import api from "@/lib/api";
 import Swal from "sweetalert2";
 import config from "@/app/config";
 const OrganizationPage = () => {
@@ -15,22 +15,22 @@ const OrganizationPage = () => {
   const [taxCode, setTaxcode] = useState("");
   const [fileSelected, setFileSelected] = useState<File | null>(null);
 
-   const handleFileChange = (e:any) =>{
+  const handleFileChange = (e: any) => {
     setFileSelected(e.target.files[0]);
-  }
-  const uploadFile = async () =>{
+  };
+  const uploadFile = async () => {
     const formData = new FormData();
-    formData.append('file', fileSelected as Blob);
+    formData.append("file", fileSelected as Blob);
 
-    const respone = await axios.post(config.apiServer + '/api/organization/upload', formData)
+    const respone = await api.post("/organization/upload", formData);
     return respone.data.fileName;
-  }
+  };
   useEffect(() => {
     fetchData();
   }, []);
- 
+
   const fetchData = async () => {
-    const res = await axios.get(config.apiServer + "/api/organization/info");
+    const res = await api.get("/organization/info");
     setName(res.data.result.name);
     setAddress(res.data.result.address);
     setPhone(res.data.result.phone);
@@ -53,7 +53,7 @@ const OrganizationPage = () => {
         bankNo: bankNo,
         taxCode: taxCode,
       };
-      await axios.post(config.apiServer + "/api/organization/create", payload);
+      await api.post("/organization/create", payload);
       Swal.fire({
         title: "success",
         text: "บันทึกข้อมูลเรียบร้อย",
@@ -110,7 +110,14 @@ const OrganizationPage = () => {
             onChange={(e) => setWebsite(e.target.value)}
           />
           <div className="mt-3">logo</div>
-          {logo && <img src={config.apiServer + '/uploads/' + logo} alt="logo" className="img-fluid mb-2 mt-2" width={100}/>}
+          {logo && (
+            <img
+              src={config.apiServer + "/uploads/" + logo}
+              alt="logo"
+              className="img-fluid mb-2 mt-2"
+              width={100}
+            />
+          )}
           <input
             type="file"
             className="form-control"

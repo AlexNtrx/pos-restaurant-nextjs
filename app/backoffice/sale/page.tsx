@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState, useRef,} from "react";
+import { useEffect, useState, useRef } from "react";
 import config from "@/app/config";
 import Swal from "sweetalert2";
-import axios from "axios";
+import api from "@/lib/api";
 import MyModal from "../components/mymodal";
 
 export default function Page() {
@@ -36,7 +36,7 @@ export default function Page() {
   };
   const getFoods = async () => {
     try {
-      const res = await axios.get(config.apiServer + "/api/food/list");
+      const res = await api.get("/food/list");
       setFoods(res.data.results);
     } catch (e: any) {
       Swal.fire({
@@ -48,9 +48,7 @@ export default function Page() {
   };
   const filterFood = async (foodType: string) => {
     try {
-      const res = await axios.get(
-        ` ${config.apiServer}/api/food/filter/${foodType}`,
-      );
+      const res = await api.get(` /food/filter/${foodType}`);
     } catch (e: any) {
       Swal.fire({
         title: "error",
@@ -61,7 +59,7 @@ export default function Page() {
   };
   const fetchDataSaleTemp = async () => {
     try {
-      const res = await axios.get(config.apiServer + "/api/saleTemp/list/");
+      const res = await api.get("/saleTemp/list/");
       setSaleTemps(res.data.results);
       sumAmount(res.data.results);
       const results = res.data.results;
@@ -89,7 +87,7 @@ export default function Page() {
         showConfirmButton: true,
       });
       if (button.isConfirmed) {
-        await axios.delete(config.apiServer + "/api/saleTemp/remove/" + id);
+        await api.delete("/saleTemp/remove/" + id);
         fetchDataSaleTemp();
       }
     } catch (e: any) {
@@ -114,7 +112,7 @@ export default function Page() {
           userId: Number(localStorage.getItem("next_user_id")),
         };
 
-        await axios.delete(config.apiServer + "/api/saleTemp/removeAll", {
+        await api.delete("/saleTemp/removeAll", {
           data: payload,
         });
         fetchDataSaleTemp();
@@ -134,7 +132,7 @@ export default function Page() {
         userId: Number(localStorage.getItem("next_user_id")),
         foodId: foodId,
       };
-      await axios.post(config.apiServer + "/api/saleTemp/create", payload);
+      await api.post("/saleTemp/create", payload);
       fetchDataSaleTemp();
     } catch (e: any) {
       console.log(e);
@@ -151,7 +149,7 @@ export default function Page() {
         qty: qty,
         id: id,
       };
-      await axios.put(config.apiServer + "/api/saleTemp/updateQty", payload);
+      await api.put("/saleTemp/updateQty", payload);
       fetchDataSaleTemp();
     } catch (e: any) {
       console.log(e);
@@ -169,9 +167,7 @@ export default function Page() {
 
   const fetchDataSaleTempInfo = async (saleTempId: number) => {
     try {
-      const res = await axios.get(
-        config.apiServer + "/api/saleTemp/info/" + saleTempId,
-      );
+      const res = await api.get("/saleTemp/info/" + saleTempId);
       setSaleTempDetails(res.data.results.saleTempDetails);
       setTasted(res.data.results.Food?.FoodType?.tastes || []);
       setSized(res.data.results.Food?.FoodType?.foodSizes || []);
@@ -197,10 +193,7 @@ export default function Page() {
       const payload = {
         saleTempId: saleTempId,
       };
-      await axios.post(
-        config.apiServer + "/api/saleTemp/generateSaleTempDetail",
-        payload,
-      );
+      await api.post("/saleTemp/generateSaleTempDetail", payload);
       await fetchDataSaleTemp();
       fetchDataSaleTempInfo(saleTempId);
     } catch (e: any) {
@@ -221,7 +214,7 @@ export default function Page() {
         saleTempDetailId: saleTempDetailId,
         tasteId: tasteId,
       };
-      await axios.put(config.apiServer + "/api/saleTemp/selectTaste", payload);
+      await api.put("/saleTemp/selectTaste", payload);
       fetchDataSaleTempInfo(Number(saleTempId));
     } catch (e: any) {
       Swal.fire({
@@ -239,10 +232,7 @@ export default function Page() {
       const payload = {
         saleTempDetailId: saleTempDetailId,
       };
-      await axios.put(
-        config.apiServer + "/api/saleTemp/unSelectTaste",
-        payload,
-      );
+      await api.put("/saleTemp/unSelectTaste", payload);
       fetchDataSaleTempInfo(saleTempId);
     } catch (e: any) {
       Swal.fire({
@@ -262,7 +252,7 @@ export default function Page() {
         sizeId: sizeId,
         saleTempDetailId: saleTempDetailId,
       };
-      await axios.put(config.apiServer + "/api/saleTemp/selectSize", payload);
+      await api.put("/saleTemp/selectSize", payload);
       await fetchDataSaleTempInfo(saleTempId);
       await fetchDataSaleTemp();
     } catch (e: any) {
@@ -278,10 +268,7 @@ export default function Page() {
       const payload = {
         saleTempId: saleTempId,
       };
-      await axios.post(
-        config.apiServer + "/api/saleTemp/createSaleTempDetail",
-        payload,
-      );
+      await api.post("/saleTemp/createSaleTempDetail", payload);
       await fetchDataSaleTemp();
       fetchDataSaleTempInfo(saleTempId);
     } catch (e: any) {
@@ -297,10 +284,9 @@ export default function Page() {
       const payload = {
         saleTempDetailId: saleTempDetailId,
       };
-      await axios.delete(
-        config.apiServer + "/api/saleTemp/removeSaleTempDetailModal",
-        { data: payload },
-      );
+      await api.delete("/saleTemp/removeSaleTempDetailModal", {
+        data: payload,
+      });
       await fetchDataSaleTemp();
       fetchDataSaleTempInfo(saleTempId);
     } catch (e: any) {
@@ -317,10 +303,7 @@ export default function Page() {
         tableNo: table,
         userId: Number(localStorage.getItem("next_user_id")),
       };
-      const res = await axios.post(
-        config.apiServer + "/api/saleTemp/printBillBeforePay",
-        payload,
-      );
+      const res = await api.post("/saleTemp/printBillBeforePay", payload);
       setTimeout(() => {
         setBillUrl(res.data.fileName);
 
@@ -341,10 +324,7 @@ export default function Page() {
         tableNo: table,
         userId: Number(localStorage.getItem("next_user_id")),
       };
-      const res = await axios.post(
-        config.apiServer + "/api/saleTemp/printBillAfterPay",
-        payload,
-      );
+      const res = await api.post("/saleTemp/printBillAfterPay", payload);
       setTimeout(() => {
         setBillUrl(res.data.fileName);
 
@@ -376,7 +356,7 @@ export default function Page() {
           amount: amount + amountAdded,
           returnMoney: receivedAmount - (amount + amountAdded),
         };
-        await axios.post(config.apiServer + "/api/saleTemp/endSale", payload);
+        await api.post("/saleTemp/endSale", payload);
         fetchDataSaleTemp();
 
         document.getElementById("modalSale_btnClose")?.click();

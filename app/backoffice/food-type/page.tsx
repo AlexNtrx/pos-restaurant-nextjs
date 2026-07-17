@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import Mymodal from "../components/mymodal";
 import Swal from "sweetalert2";
-import axios from "axios";
-import config from "@/app/config";
+import api from "@/lib/api";
 
 export default function Page() {
   const [id, setId] = useState(0);
@@ -22,9 +21,9 @@ export default function Page() {
         id: id,
       };
       if (id == 0) {
-        await axios.post(config.apiServer + "/api/foodType/create", payload);
+        await api.post("foodType/create", payload);
       } else {
-        await axios.put(config.apiServer + "/api/foodType/update", payload);
+        await api.put("/foodType/update", payload);
         setId(0);
       }
 
@@ -40,7 +39,7 @@ export default function Page() {
   };
   const fetchData = async () => {
     try {
-      const res = await axios.get(config.apiServer + "/api/foodType/list");
+      const res = await api.get("/foodType/list");
       setFoodTypes(res.data.results);
     } catch (e: any) {
       Swal.fire({
@@ -60,9 +59,7 @@ export default function Page() {
         showConfirmButton: true,
       });
       if (button.isConfirmed) {
-        await axios.delete(
-          config.apiServer + "/api/foodType/remove/" + item.id,
-        );
+        await api.delete("/foodType/remove/" + item.id);
         fetchData();
       }
     } catch (e: any) {
@@ -78,11 +75,11 @@ export default function Page() {
     setName(item.name);
     setRemark(item.remark);
   };
-  const clearForm = () =>{
-    setName('');
-    setRemark('');
+  const clearForm = () => {
+    setName("");
+    setRemark("");
     setId(0);
-  }
+  };
   return (
     <>
       <div className="card mt-3">
@@ -130,7 +127,7 @@ export default function Page() {
             </tbody>
           </table>
         </div>
-        <Mymodal id="modalFoodType" title="ประเภทอาหาร/เครื่องดื่ม" >
+        <Mymodal id="modalFoodType" title="ประเภทอาหาร/เครื่องดื่ม">
           <div>ชื่อ</div>
           <input
             className="form-control"

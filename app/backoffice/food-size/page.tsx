@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import Mymodal from "../components/mymodal";
 import Swal from "sweetalert2";
-import axios from "axios";
-import config from "@/app/config";
+import api from "@/lib/api";
 
 export default function Page() {
   const [name, setName] = useState("");
@@ -15,14 +14,13 @@ export default function Page() {
   const [foodTypes, setFoodTypes] = useState([]);
   const [foodSizes, setFoodSizes] = useState([]);
 
-
   useEffect(() => {
     fetchData();
     fetchDataFoodSize();
   }, []);
   const fetchData = async () => {
     try {
-      const res = await axios.get(config.apiServer + "/api/foodSize/list");
+      const res = await api.get("/foodSize/list");
       setFoodSizes(res.data.results);
     } catch (e: any) {
       Swal.fire({
@@ -34,7 +32,7 @@ export default function Page() {
   };
   const fetchDataFoodSize = async () => {
     try {
-      const res = await axios.get(config.apiServer + "/api/foodType/list");
+      const res = await api.get("/foodType/list");
       setFoodTypes(res.data.results);
       setFoodTypeId(res.data.results[0].id);
     } catch (e: any) {
@@ -83,9 +81,9 @@ export default function Page() {
         moneyAdded: moneyAdded,
       };
       if (id == 0) {
-        await axios.post(config.apiServer + "/api/foodSize/create", payload);
+        await api.post("/foodSize/create", payload);
       } else {
-        await axios.put(config.apiServer + "/api/foodSize/update", payload);
+        await api.put("/foodSize/update", payload);
         setId(0);
       }
 

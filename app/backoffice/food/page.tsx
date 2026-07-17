@@ -1,9 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
-import axios from "axios";
+import api from "@/lib/api";
 import Swal from "sweetalert2";
-import config from "@/app/config";
 import MyModal from "../components/mymodal";
+import config from "@/app/config";
 
 export default function Page() {
   const [foodTypeId, setFoodTypeId] = useState(0);
@@ -23,7 +23,7 @@ export default function Page() {
   }, []);
   const fetchData = async () => {
     try {
-      const res = await axios.get(config.apiServer + "/api/food/list");
+      const res = await api.get("/food/list");
       setFoods(res.data.results);
     } catch (e: any) {
       Swal.fire({
@@ -35,7 +35,7 @@ export default function Page() {
   };
   const fetchDataFoodTypes = async () => {
     try {
-      const res = await axios.get(config.apiServer + "/api/foodType/list");
+      const res = await api.get("/foodType/list");
 
       if (res.data.results.length > 0) {
         setFoodTypes(res.data.results);
@@ -67,21 +67,15 @@ export default function Page() {
         foodType: foodType,
       };
       if (id == 0) {
-        const res = await axios.post(
-          config.apiServer + "/api/food/create",
-          payload,
-        );
+        const res = await api.post("/food/create", payload);
       } else {
-        const res = await axios.put(
-          config.apiServer + "/api/food/update",
-          payload,
-        );
+        const res = await api.put("/food/update", payload);
         setId(0);
       }
 
       Swal.fire({
         icon: "success",
-        title: 'saving',
+        title: "saving",
         text: "save success",
         timer: 1000,
       });
@@ -100,10 +94,7 @@ export default function Page() {
       const formData = new FormData();
       formData.append("file", myFile as Blob);
 
-      const res = await axios.post(
-        config.apiServer + "/api/food/upload",
-        formData,
-      );
+      const res = await api.post("/food/upload", formData);
       return res.data.fileName;
     } catch (e: any) {
       Swal.fire({
@@ -131,7 +122,7 @@ export default function Page() {
         showConfirmButton: true,
       });
       if (button.isConfirmed) {
-        await axios.delete(config.apiServer + "/api/food/remove/" + id);
+        await api.delete("/food/remove/" + id);
         fetchData();
       }
     } catch (e: any) {
@@ -159,7 +150,7 @@ export default function Page() {
     setFoodType("food");
     setImg("");
     document.getElementById("myFile")?.setAttribute("value", "");
-  }
+  };
   return (
     <>
       <div className="mt-3 card">
@@ -231,7 +222,7 @@ export default function Page() {
           onChange={(e) => setFoodTypeId(parseInt(e.target.value))}
         >
           {foodTypes.map((item: any) => (
-            <option value={item.id} key={item.id }>
+            <option value={item.id} key={item.id}>
               {item.name}
             </option>
           ))}
@@ -246,7 +237,7 @@ export default function Page() {
           ></img>
         )}
         <input
-        id="myFile"
+          id="myFile"
           type="file"
           className="form-control"
           onChange={(e) => handleSelectedFile(e)}
@@ -269,7 +260,7 @@ export default function Page() {
         <input
           type="text"
           className="form-control"
-        onChange={(e) => setPrice(parseInt(e.target.value) || 0)}
+          onChange={(e) => setPrice(parseInt(e.target.value) || 0)}
           value={price}
         />
         <div className="mt-3">ประเภทอาหาร </div>

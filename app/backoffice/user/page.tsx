@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import config from "@/app/config";
 import Swal from "sweetalert2";
-import axios from "axios";
+import api from "@/lib/api";
 import MyModal from "../components/mymodal";
 
 export default function UserPage() {
@@ -22,7 +22,7 @@ export default function UserPage() {
 
   const fetchData = async () => {
     try {
-      const res = await axios.get(`${config.apiServer}/api/user/list`);
+      const res = await api.get(`/user/list`);
       setUsers(res.data.results);
     } catch (e: any) {
       Swal.fire({
@@ -43,9 +43,9 @@ export default function UserPage() {
       };
 
       if (id === 0) {
-        await axios.post(`${config.apiServer}/api/user/create`, payload);
+        await api.post(`/user/create`, payload);
       } else {
-        await axios.put(`${config.apiServer}/api/user/update`, payload);
+        await api.put(`/user/update`, payload);
         setId(0);
       }
       fetchData();
@@ -86,7 +86,7 @@ export default function UserPage() {
       });
 
       if (button.isConfirmed) {
-        await axios.delete(`${config.apiServer}/api/user/remove/${id}`);
+        await api.delete(`/user/remove/${id}`);
         fetchData();
       }
     } catch (e: any) {

@@ -1,8 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Swal from "sweetalert2";
-import config from "@/app/config";
-import axios from "axios";
+import api from "@/lib/api";
 import dayjs from "dayjs";
 
 export default function MonthlySales() {
@@ -20,14 +19,8 @@ export default function MonthlySales() {
       const payload = {
         year: selectedYear,
       };
-      const headers = {
-        Authorization: `Bearer ${localStorage.getItem(config.token)}`,
-      };
-      const res = await axios.post(
-        config.apiServer + "/api/report/sumMonthly",
-        payload,
-        { headers },
-      );
+
+      const res = await api.post("/report/sumMonthly", payload);
       setData(res.data.results);
       setTotalAmount(sumTotalAmount(res.data.results));
     } catch (e: any) {

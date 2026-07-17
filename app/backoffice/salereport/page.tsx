@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import axios from "axios";
+import api from "@/lib/api";
 import Swal from "sweetalert2";
 import config from "@/app/config";
 import dayjs from "dayjs";
@@ -30,7 +30,7 @@ export default function Page() {
       });
 
       if (button.isConfirmed) {
-        await axios.delete(`${config.apiServer}/api/billSale/remove/${id}`);
+        await api.delete(`/billSale/remove/${id}`);
         fetchData();
       }
     } catch (e: any) {
@@ -48,8 +48,8 @@ export default function Page() {
         startDate: new Date(fromDate),
         endDate: new Date(toDate),
       };
-      const response = await axios.post(
-        `${config.apiServer}/api/billSale/list`,
+      const response = await api.post(
+        `/billSale/list`,
         payload,
       );
       setBillSales(response.data.results);

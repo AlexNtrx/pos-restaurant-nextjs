@@ -2,7 +2,7 @@
 import MyModal from "../components/mymodal";
 import { useEffect, useState } from "react";
 import Swal from "sweetalert2";
-import axios from "axios";
+import api from "@/lib/api";
 import config from "@/app/config";
 
 export default function Page() {
@@ -19,7 +19,7 @@ export default function Page() {
   }, []);
   const fechData = async () => {
     try {
-      const res = await axios.get(config.apiServer + "/api/taste/list");
+      const res = await api.get("/taste/list");
       setTastes(res.data.results);
     } catch (e: any) {
       Swal.fire({
@@ -37,14 +37,13 @@ export default function Page() {
         remark: remark,
         id: id,
       };
-        if (id === 0) {
-        await axios.post(config.apiServer + "/api/taste/create", payload);
+      if (id === 0) {
+        await api.post(config.apiServer + "/taste/create", payload);
       } else {
-        await axios.put(config.apiServer + "/api/taste/update", payload);
+        await api.put(config.apiServer + "/taste/update", payload);
         setId(0);
       }
 
-     
       fechData();
       document.getElementById("modalTaste_btnClose")?.click();
     } catch (e: any) {
@@ -57,7 +56,7 @@ export default function Page() {
   };
   const fechDataFoodTypes = async () => {
     try {
-      const res = await axios.get(config.apiServer + "/api/foodType/list");
+      const res = await api.get("/foodType/list");
       if (res.data.results.length > 0) {
         setFoodTypes(res.data.results);
         setFoodTypeId(res.data.results[0].id);
@@ -80,7 +79,7 @@ export default function Page() {
     setName("");
     setRemark("");
   };
-  const handleRemove = async (item:any) => {
+  const handleRemove = async (item: any) => {
     try {
       const button = await Swal.fire({
         title: "ยืนยันการลบ",
@@ -89,10 +88,10 @@ export default function Page() {
         showCancelButton: true,
         showConfirmButton: true,
       });
-      if(button.isConfirmed){
-            await axios.delete( config.apiServer + "/api/taste/remove/" + item.id)
-            fechData();
-        }
+      if (button.isConfirmed) {
+        await api.delete("/taste/remove/" + item.id);
+        fechData();
+      }
     } catch (e: any) {
       Swal.fire({
         title: "error",

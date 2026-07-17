@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import dayjs from "dayjs";
 import { Chart as ChartJS } from "chart.js/auto";
 import Swal from "sweetalert2";
-import axios from "axios";
+import api from "@/lib/api";
 import config from "@/app/config";
 
 export default function Dashboard() {
@@ -85,10 +85,7 @@ export default function Dashboard() {
         year: selectedYear,
         month: month,
       };
-      const res = await axios.post(
-        config.apiServer + "/api/report/dailySales",
-        payload,
-      );
+      const res = await api.post("/report/dailySales", payload);
       setIncomDaily(res.data.results);
       creatBarChartDays(res.data.results);
     } catch (e: any) {
@@ -135,10 +132,7 @@ export default function Dashboard() {
       const payload = {
         year: selectedYear,
       };
-      const res = await axios.post(
-        config.apiServer + "/api/report/sumMonthly",
-        payload,
-      );
+      const res = await api.post("/report/sumMonthly", payload);
       setIncomeMonthly(res.data.results);
       creatBarChartMonths(res.data.results);
     } catch (e: any) {
@@ -165,7 +159,9 @@ export default function Dashboard() {
                   onChange={(e) => setSelectedYear(parseInt(e.target.value))}
                 >
                   {years.map((year) => (
-                    <option  key={year} value={year}>{year}</option>
+                    <option key={year} value={year}>
+                      {year}
+                    </option>
                   ))}
                 </select>
               </div>
