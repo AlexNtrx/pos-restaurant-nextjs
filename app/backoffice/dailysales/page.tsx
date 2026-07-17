@@ -40,9 +40,12 @@ export default function DailySales() {
         year: selectedYear,
         month: selectedMonth,
       };
+        const headers = {
+          'Authorization': `Bearer ${localStorage.getItem(config.token)}`
+        }
       const res = await axios.post(
         `${config.apiServer}/api/report/dailySales`,
-        payload,
+        payload,{headers},
       );
       setData(res.data.results);
       setTotalAmount(sumTotalAmount(res.data.results));
