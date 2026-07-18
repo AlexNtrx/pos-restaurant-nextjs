@@ -58,8 +58,8 @@ export default function Page() {
         showConfirmButton: true,
       });
       if (button.isConfirmed) {
-        await axios.delete(
-          config.apiServer + "/api/foodSize/remove/" + item.id,
+        await api.delete(
+          "/foodSize/remove/" + item.id,
         );
         fetchData();
       }
