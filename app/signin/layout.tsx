@@ -1,5 +1,4 @@
 import "../../public/plugins/fontawesome-free/css/all.min.css";
-import "../../public/dist/css/adminlte.min.css";
 
 export default function SignInLayout({
   children,

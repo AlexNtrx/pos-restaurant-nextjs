@@ -1,9 +1,5 @@
-'use client';
-export default function Page(){
+import { redirect } from "next/navigation";
 
-
-    return(
-        <>
-        </>
-    )
+export default function BackofficePage() {
+  redirect("/backoffice/dashboard");
 }

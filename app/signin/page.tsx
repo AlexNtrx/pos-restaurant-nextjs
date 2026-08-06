@@ -3,7 +3,8 @@
 import { useState } from "react";
 import Swal from "sweetalert2";
 import axios from "axios";
-import config from "../config";
+import api from "@/lib/api";
+import config from "@/lib/config";
 import { useRouter } from "next/navigation";
 
 export default function page() {
@@ -16,8 +17,7 @@ export default function page() {
         username: username,
         password: password,
       };
-      const res = await axios.post(
-        config.apiServer + "/api/user/signIn",
+      const res = await api.post( "/user/signIn",
         payload,
       );
       if (res.data.token !== undefined) {

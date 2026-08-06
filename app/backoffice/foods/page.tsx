@@ -2,8 +2,9 @@
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
 import Swal from "sweetalert2";
-import MyModal from "../components/mymodal";
-import config from "@/app/config";
+import MyModal from "../_components/mymodal";
+import FoodPagination from "../_components/food-pagination";
+import config from "@/lib/config";
 
 export default function Page() {
   const [foodTypeId, setFoodTypeId] = useState(0);
@@ -153,6 +154,7 @@ export default function Page() {
   };
   return (
     <>
+      <FoodPagination />
       <div className="mt-3 card">
         <div className="card-header">food</div>
         <div className="card-body">

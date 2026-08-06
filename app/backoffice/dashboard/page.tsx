@@ -4,7 +4,7 @@ import dayjs from "dayjs";
 import { Chart as ChartJS } from "chart.js/auto";
 import Swal from "sweetalert2";
 import api from "@/lib/api";
-import config from "@/app/config";
+import config from "@/lib/config";
 
 export default function Dashboard() {
   const [incomeDaily, setIncomDaily] = useState<any[]>([]);

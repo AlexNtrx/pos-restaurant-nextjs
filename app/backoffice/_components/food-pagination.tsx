@@ -1,7 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
-import Mymodal from "../components/mymodal";
+import { useEffect, useState } from "react";
 import Swal from "sweetalert2";
 import api from "@/lib/api";
 

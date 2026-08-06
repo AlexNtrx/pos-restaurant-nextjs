@@ -1,9 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
-import config from "@/app/config";
+import config from "@/lib/config";
 import Swal from "sweetalert2";
 import api from "@/lib/api";
-import MyModal from "../components/mymodal";
+import MyModal from "../_components/mymodal";
 
 export default function UserPage() {
   const [users, setUsers] = useState<any[]>([]);

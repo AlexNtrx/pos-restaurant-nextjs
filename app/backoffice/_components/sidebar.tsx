@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Swal from "sweetalert2";
-import config from "@/app/config";
+import config from "@/lib/config";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import axios from "axios";
@@ -129,7 +129,7 @@ export default function Sidebar() {
 
               {(userLevel === "admin" || userLevel === "user") && (
                 <li className="nav-item">
-                  <Link href="/backoffice/sale" className="nav-link">
+                  <Link href="/backoffice/sales" className="nav-link">
                     <i className="nav-icon fas fa-list"></i>
                     <p>sale</p>
                   </Link>
@@ -139,61 +139,55 @@ export default function Sidebar() {
                 <>
                   {" "}
                   <li className="nav-item">
-                    <Link href="/backoffice/user" className="nav-link">
+                    <Link href="/backoffice/users" className="nav-link">
                       <i className="nav-icon fas fa-list"></i>
                       <p>User</p>
                     </Link>
                   </li>
                   <li className="nav-item">
-                    <Link href="/backoffice/food-type" className="nav-link">
+                    <Link href="/backoffice/food-types" className="nav-link">
                       <i className="nav-icon fas fa-th"></i>
                       <p>ประเภท</p>
                     </Link>
                   </li>
                   <li className="nav-item">
-                    <Link href="/backoffice/food-size" className="nav-link">
+                    <Link href="/backoffice/food-sizes" className="nav-link">
                       <i className="nav-icon fas fa-list"></i>
                       <p>ขนาด</p>
                     </Link>
                   </li>
                   <li className="nav-item">
-                    <Link href="/backoffice/taste" className="nav-link">
+                    <Link href="/backoffice/tastes" className="nav-link">
                       <i className="nav-icon fas fa-list"></i>
                       <p>รสชาติอาหาร</p>
                     </Link>
                   </li>
                   <li className="nav-item">
-                    <Link href="/backoffice/food" className="nav-link">
+                    <Link href="/backoffice/foods" className="nav-link">
                       <i className="nav-icon fas fa-list"></i>
                       <p>อาหาร</p>
                     </Link>
                   </li>
-                      <li className="nav-item">
-                    <Link href="/backoffice/food-paginate" className="nav-link">
-                      <i className="nav-icon fas fa-list"></i>
-                      <p>FOOD LIST</p>
-                    </Link>
-                  </li>
                   <li className="nav-item">
-                    <Link href="/backoffice/organization" className="nav-link">
+                    <Link href="/backoffice/organizations" className="nav-link">
                       <i className="nav-icon fas fa-list"></i>
                       <p>Organization</p>
                     </Link>
                   </li>
                   <li className="nav-item">
-                    <Link href="/backoffice/salereport" className="nav-link">
+                    <Link href="/backoffice/sales-report" className="nav-link">
                       <i className="nav-icon fas fa-list"></i>
                       <p>Sale Report</p>
                     </Link>
                   </li>
                   <li className="nav-item">
-                    <Link href="/backoffice/dailysales" className="nav-link">
+                    <Link href="/backoffice/daily-sales" className="nav-link">
                       <i className="nav-icon fas fa-list"></i>
                       <p>Daily Sales</p>
                     </Link>
                   </li>
                   <li className="nav-item">
-                    <Link href="/backoffice/monthlysales" className="nav-link">
+                    <Link href="/backoffice/monthly-sales" className="nav-link">
                       <i className="nav-icon fas fa-list"></i>
                       <p>Monthly Sales</p>
                     </Link>

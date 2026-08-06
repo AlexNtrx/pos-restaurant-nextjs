@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
 import Swal from "sweetalert2";
-import config from "@/app/config";
+import config from "@/lib/config";
 const OrganizationPage = () => {
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");

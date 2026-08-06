@@ -1,9 +1,9 @@
 "use client";
-import MyModal from "../components/mymodal";
+import MyModal from "../_components/mymodal";
 import { useEffect, useState } from "react";
 import Swal from "sweetalert2";
 import api from "@/lib/api";
-import config from "@/app/config";
+import config from "@/lib/config";
 
 export default function Page() {
   const [foodTypes, setFoodTypes] = useState([]);

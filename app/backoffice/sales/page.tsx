@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import config from "@/app/config";
+import config from "@/lib/config";
 import Swal from "sweetalert2";
 import api from "@/lib/api";
-import MyModal from "../components/mymodal";
+import MyModal from "../_components/mymodal";
 
 export default function Page() {
   const [table, setTable] = useState(1);
