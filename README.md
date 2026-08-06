@@ -1,36 +1,48 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# POS Restaurant Workshop
 
-## Getting Started
+A restaurant POS and backoffice workshop project built with Next.js and a separate Node.js/Express backend.
 
-First, run the development server:
+This project is currently under improvement. It is used for learning, refactoring, and practicing full-stack development.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Tech Stack
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- Next.js 16 App Router
+- React 19
+- TypeScript
+- Axios
+- AdminLTE 3
+- Bootstrap 5
+- Tailwind CSS 4
+- Chart.js
+- Day.js
+- SweetAlert2
+- ESLint
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Main Features
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- Sign-in page
+- Custom Bearer-token authentication flow
+- Role-based back-office access
+- Dashboard
+- Food management
+- Food type and food size management
+- Taste management
+- Organization management
+- Sales management
+- Daily and monthly sales reports
+- General sales report
+- Food list pagination
+- Redirects from legacy routes
 
-## Learn More
+## Architecture
 
-To learn more about Next.js, take a look at the following resources:
+This repository contains only the frontend application.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The frontend communicates with a separate REST API through Axios.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```text
+Next.js frontend
+        ↓
+Axios REST requests
+        ↓
+Separate backend API
