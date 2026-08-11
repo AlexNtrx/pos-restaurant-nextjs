@@ -1,41 +1,202 @@
 @import "tailwindcss";
-
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-action: var(--action);
+  --color-action-foreground: var(--action-foreground);
+  --color-ivory: var(--canvas);
+  --color-ink: var(--foreground);
+  --color-olive: var(--primary);
+  --color-brass: var(--action);
+  --color-clay: var(--destructive);
+  --color-stone: var(--secondary);
+  --font-sans: "Instrument Sans", "Instrument Sans Fallback", Arial, sans-serif;
+  --font-heading:
+    "Cormorant Garamond", "Cormorant Garamond Fallback", Georgia, serif;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.625rem;
+  --radius-xl: 0.75rem;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+:root {
+  --canvas: #f5f3ef;
+  --surface: #fbfaf7;
+  --background: #f5f3ef;
+  --foreground: #1f201d;
+  --card: #fbfaf7;
+  --card-foreground: #1f201d;
+  --popover: #fbfaf7;
+  --popover-foreground: #1f201d;
+  --primary: #706f5e;
+  --primary-foreground: #fbfaf7;
+  --secondary: #e7e5de;
+  --secondary-foreground: #2c2b27;
+  --muted: #e7e5de;
+  --muted-foreground: #6e6a62;
+  --accent: #a68c62;
+  --accent-foreground: #1f201d;
+  --action: #a68c62;
+  --action-foreground: #1f201d;
+  --destructive: #8b5b52;
+  --destructive-foreground: #fbfaf7;
+  --border: #d8d4cc;
+  --input: #d8d4cc;
+  --ring: #706f5e;
+  --radius: 0.625rem;
 }
 
 body {
   margin: 0;
+  background: #ffffff;
+  color: #171717;
+  font-family: Arial, Helvetica, sans-serif;
 }
 
 @layer components {
   .signin-ui {
-    font-family: "Instrument Sans", Arial, Helvetica, sans-serif;
+    font-family: var(--font-instrument-sans), Arial, Helvetica, sans-serif;
   }
 
   .signin-display {
-    font-family: "Cormorant Garamond", Georgia, serif;
+    font-family: var(--font-cormorant-garamond), Georgia, serif;
+  }
+}
+
+/* EN: Counter content is full-bleed inside the unchanged shared staff shell. */
+/* FI: Kassan sisältö ulottuu reunoihin muuttumattoman jaetun henkilökuntakehyksen sisällä. */
+body:has(.counter-pos) #main-content {
+  padding: 0 !important;
+}
+
+.catalog-navigation {
+  scrollbar-width: none;
+}
+
+.catalog-navigation::-webkit-scrollbar {
+  display: none;
+}
+
+.daily-sales-report .daily-zero-control-header {
+  display: none !important;
+}
+
+.daily-sales-report .daily-zero-control-footer {
+  display: flex !important;
+}
+
+.daily-sales-report .daily-chart-legend {
+  display: none !important;
+}
+
+.daily-sales-report .daily-breakdown-scroll {
+  scrollbar-width: none;
+}
+
+.daily-sales-report .daily-breakdown-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .daily-sales-report .daily-zero-control-header {
+    display: flex !important;
   }
 
+  .daily-sales-report .daily-zero-control-footer {
+    display: none !important;
+  }
+
+  .daily-sales-report .daily-chart-legend {
+    display: flex !important;
+  }
+}
+
+@media (min-width: 1280px) {
+  .daily-sales-report .daily-zero-control-header {
+    display: none !important;
+  }
+
+  .daily-sales-report .daily-zero-control-footer {
+    display: flex !important;
+  }
+}
+
+/* EN: The approved report mobile frame keeps the existing navigation trigger but reverses the shell header order. */
+/* FI: Hyväksytty raportin mobiilikehys säilyttää navigointipainikkeen, mutta vaihtaa shell-otsakkeen järjestyksen. */
+@media (max-width: 767px) {
+  body:has(.daily-sales-report) [role="banner"] > .font-heading {
+    order: 1;
+    margin-left: 4px;
+    font-size: 21px !important;
+    line-height: 25px !important;
+  }
+
+  body:has(.daily-sales-report) [role="banner"] > button {
+    order: 3;
+    width: 44px;
+    height: 44px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    margin-right: 4px;
+  }
+
+  body:has(.daily-sales-report)
+    [role="banner"]
+    > [aria-label^="Kirjautunut käyttäjä"] {
+    display: none !important;
+  }
+
+  /* EN: Match the approved restaurant-settings mobile app bar without changing the shared shell behavior elsewhere. */
+  /* FI: Sovita ravintola-asetusten mobiiliyläpalkki hyväksyttyyn näkymään muuttamatta jaetun kehyksen toimintaa muualla. */
+  body:has(.restaurant-settings) [role="banner"] {
+    border-bottom: 0;
+    background: #1f201d;
+    padding-inline: 20px;
+  }
+
+  body:has(.restaurant-settings) [role="banner"] > .font-heading {
+    order: 1;
+    font-family: var(--font-instrument-sans), Arial, Helvetica, sans-serif;
+    font-size: 17px;
+    line-height: 21px;
+    color: #fbfaf7;
+  }
+
+  body:has(.restaurant-settings) [role="banner"] > button {
+    order: 3;
+    width: 44px;
+    height: 44px;
+    border: 1px solid #6e6a62;
+    border-radius: 8px;
+    color: #fbfaf7;
+  }
+
+  body:has(.restaurant-settings)
+    [role="banner"]
+    > [aria-label^="Kirjautunut käyttäjä"] {
+    display: none !important;
+  }
 }

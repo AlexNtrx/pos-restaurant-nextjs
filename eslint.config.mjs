@@ -12,9 +12,6 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
-    // Vendored AdminLTE and plugin bundles are not first-party source.
-    "public/dist/js/**",
-    "public/plugins/**",
   ]),
 ]);
 

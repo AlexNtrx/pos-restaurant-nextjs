@@ -1,9 +1,9 @@
 "use client";
 import type { SubmitEventHandler } from "react";
 import { useState } from "react";
-import Swal from "sweetalert2";
 import { useRouter } from "next/navigation";
 import { isAxiosError } from "axios";
+import { toast } from "sonner";
 import { publicApi } from "@/lib/api";
 import { writeAuthSession } from "@/lib/auth-session";
 
@@ -104,11 +104,8 @@ export default function SignInPage() {
     const normalizedUsername = username.trim();
 
     if (!normalizedUsername || !password) {
-      await Swal.fire({
-        title: "Tietoja puuttuu",
-        text: "Anna käyttäjätunnus ja salasana.",
-        icon: "warning",
-        confirmButtonText: "Selvä",
+      toast.warning("Tietoja puuttuu", {
+        description: "Anna käyttäjätunnus ja salasana.",
       });
       return;
     }
@@ -135,11 +132,8 @@ export default function SignInPage() {
 
       router.replace("/backoffice");
     } catch (error: unknown) {
-      await Swal.fire({
-        title: "Kirjautuminen epäonnistui",
-        text: getSignInErrorMessage(error),
-        icon: "error",
-        confirmButtonText: "Selvä",
+      toast.error("Kirjautuminen epäonnistui", {
+        description: getSignInErrorMessage(error),
       });
     } finally {
       setIsSubmitting(false);
