@@ -1,109 +1,240 @@
 "use client";
-import Swal from "sweetalert2";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
+
+import {
+  Clock3,
+  Columns2,
+  Grid3X3,
+  House,
+  LogOut,
+  Settings,
+  SquareMenu,
+  type LucideIcon,
+} from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
+
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { NavItem } from "@/components/ui/nav-item";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { clearAuthSession } from "@/lib/auth-session";
 import {
-  backofficeNavigation,
-  canAccessBackofficePath,
+  getVisibleBackofficeNavigation,
+  isNavigationGroupActive,
+  type NavigationIcon,
   type UserLevel,
-  // Loads error message for the current workflow.
 } from "@/lib/access-control";
+import { cn } from "@/lib/utils";
 
-// Loads error message for the current workflow.
-function getErrorMessage(error: unknown) {
-  return error instanceof Error
-    ? error.message
-    : "An unexpected error occurred.";
-}
+const navigationIcons = {
+  overview: House,
+  catalog: Grid3X3,
+  orders: SquareMenu,
+  kitchen: Columns2,
+  reports: Clock3,
+  settings: Settings,
+} satisfies Record<NavigationIcon, LucideIcon>;
 
 type SidebarProps = {
   name: string;
   userLevel: UserLevel;
-  // Renders the sidebar interface.
+  collapsed?: boolean;
+  mobile?: boolean;
+  onNavigate?: () => void;
 };
 
-// Renders the sidebar interface.
-export default function Sidebar({ name, userLevel }: SidebarProps) {
+export default function Sidebar({
+  name,
+  userLevel,
+  collapsed = false,
+  mobile = false,
+  onNavigate,
+}: SidebarProps) {
+  const pathname = usePathname();
   const router = useRouter();
+  const [signOutOpen, setSignOutOpen] = useState(false);
+  const groups = getVisibleBackofficeNavigation(userLevel);
+  const showLabels = !collapsed || mobile;
+  const roleLabel = userLevel === "admin" ? "Ylläpitäjä" : "Työntekijä";
+  const displayName = name.trim() || "Tuntematon";
 
-  // Coordinates sign out behavior for this module.
-  const signOut = async () => {
-    try {
-      const button = await Swal.fire({
-        title: "Sign out",
-        text: "Are you sure you want to sign out?",
-        icon: "question",
-        showCancelButton: true,
-        showConfirmButton: true,
-      });
-      if (button.isConfirmed) {
-        clearAuthSession();
-
-        router.replace("/signin");
-      }
-    } catch (error: unknown) {
-      void Swal.fire({
-        title: "Something went wrong",
-        text: getErrorMessage(error),
-        icon: "error",
-      });
-    }
+  const signOut = () => {
+    clearAuthSession();
+    router.replace("/signin");
   };
+
   return (
     <>
-      <aside className="main-sidebar sidebar-dark-primary elevation-4">
-        <a href="index3.html" className="brand-link">
-          <img
-            src="dist/img/AdminLTELogo.png"
-            alt="AdminLTE Logo"
-            className="brand-image img-circle elevation-3"
-            style={{ opacity: 0.8 }}
-          />
-          <span className="brand-text font-weight-light">AdminLTE 3</span>
-        </a>
-
-        <div className="sidebar">
-          <div className="user-panel mt-3 pb-3 mb-3 d-flex">
-            <div className="image">
-              <img
-                src="dist/img/user2-160x160.jpg"
-                className="img-circle elevation-2"
-                alt="User Image"
+      <div
+        role="complementary"
+        aria-label="Päänavigointi"
+        className={cn(
+          "h-dvh min-h-dvh shrink-0 overflow-hidden bg-ink font-sans text-[#e7e5de]",
+          collapsed && !mobile ? "w-[88px]" : "w-[232px]",
+          mobile && "w-full",
+        )}
+      >
+        {/* EN: The flexible content area preserves Figma's group spacing while the account footer stays at the viewport edge. */}
+        {/* FI: Joustava sisältöalue säilyttää Figman ryhmävälit ja pitää tilin alatunnisteen näkymän reunassa. */}
+        <div className="flex h-full w-full flex-col gap-[20px] p-[16px]">
+          <div
+            className={cn(
+              "flex h-[72px] shrink-0 items-center overflow-hidden",
+              showLabels ? "pl-[12px]" : "justify-center",
+            )}
+          >
+            {showLabels ? (
+              <div className="min-w-0">
+                <div className="truncate font-heading text-2xl leading-none font-semibold text-[#fbfaf7]">
+                  Ravintola POS
+                </div>
+                <div className="mt-0.5 truncate text-[11px] text-[#e7e5de]">
+                  Helsinki · Keskusta
+                </div>
+              </div>
+            ) : (
+              <House
+                aria-label="Ravintola POS"
+                className="size-8 p-1.5 text-[#d8d4cc]"
+                strokeWidth={1.5}
               />
-            </div>
-            <div className="info">
-              <a href="#" className="d-block">
-                {name}
-              </a>
-              <button className="btn btn-danger mt-3" onClick={signOut}>
-                <i className="fa fa-times mr-2" aria-hidden="true"></i>
-                Sign out
-              </button>
-            </div>
+            )}
           </div>
 
-          <nav className="mt-2">
-            <ul
-              className="nav nav-pills nav-sidebar flex-column"
-              data-widget="treeview"
-              role="menu"
-              data-accordion="false"
+          <div
+            className={cn(
+              "min-h-0",
+              showLabels && "flex flex-1 flex-col gap-[48px] overflow-hidden",
+            )}
+          >
+            <div
+              role="navigation"
+              className="flex h-[280px] shrink-0 flex-col gap-[8px] overflow-hidden"
+              aria-label="Työtilat"
             >
-              {backofficeNavigation
-                .filter(({ href }) => canAccessBackofficePath(href, userLevel))
-                .map((item) => (
-                  <li className="nav-item" key={item.href}>
-                    <Link href={item.href} className="nav-link">
-                      <i className={`nav-icon ${item.icon}`}></i>
-                      <p>{item.label}</p>
-                    </Link>
-                  </li>
-                ))}
-            </ul>
-          </nav>
+              {groups.map((group) => {
+                const Icon = navigationIcons[group.icon];
+                const active = isNavigationGroupActive(group, pathname);
+
+                return (
+                  <NavItem
+                    key={group.id}
+                    href={group.href}
+                    onClick={onNavigate}
+                    disabled={group.unavailable || !group.href}
+                    active={active}
+                    icon={<Icon strokeWidth={1.5} />}
+                    title={
+                      group.unavailable
+                        ? `${group.label} — tulossa myöhemmin`
+                        : collapsed && !mobile
+                          ? group.label
+                          : undefined
+                    }
+                    style={{
+                      backgroundColor: active ? "#706f5e" : undefined,
+                      color: active ? "#fbfaf7" : "#e7e5de",
+                      textDecoration: "none",
+                    }}
+                    className={cn(
+                      "h-10 min-h-10 w-full shrink-0 !gap-[8px] !rounded-[8px] !px-[12px] !py-[8px] text-[13px] font-medium hover:bg-[#2c2d29] focus-visible:ring-[#bfc0b3] focus-visible:ring-offset-[#1f201d]",
+                      !showLabels &&
+                        "w-14 justify-center !px-0 [&>span:last-child]:sr-only",
+                    )}
+                  >
+                    {group.label}
+                  </NavItem>
+                );
+              })}
+            </div>
+
+            {showLabels && (
+              <div className="flex shrink-0 flex-col items-start gap-[8px] pl-[12px]">
+                <div className="text-xs font-semibold text-[#c6c3b5]">
+                  QR-tilaaminen
+                </div>
+                <StatusBadge
+                  tone="neutral"
+                  className="h-10 min-h-10 border-0 bg-[#efece6] px-[16px] font-medium text-[#5f765b] [&_svg]:size-1.5"
+                >
+                  Ei käytössä
+                </StatusBadge>
+                <div className="flex items-center gap-[8px] text-xs text-[#94d1ad]">
+                  <span
+                    aria-hidden="true"
+                    className="size-1.5 rounded-full bg-current"
+                  />
+                  Yhteys kunnossa
+                </div>
+              </div>
+            )}
+          </div>
+
+          {showLabels ? (
+            <div className="flex h-8 shrink-0 items-center justify-between gap-[8px] overflow-hidden">
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[11px] font-medium text-[#fbfaf7]">
+                  {roleLabel}: {displayName}
+                </div>
+                <div className="truncate text-[10px] text-[#c6c3b5]">
+                  Versio 0.1 · Workshop
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setSignOutOpen(true)}
+                aria-label="Kirjaudu ulos"
+                title="Kirjaudu ulos"
+                className="shrink-0 text-[#c6c3b5] hover:bg-[#3a3b36] hover:text-[#fbfaf7] focus-visible:ring-[#bfc0b3] focus-visible:ring-offset-[#1f201d]"
+              >
+                <LogOut aria-hidden="true" />
+              </Button>
+            </div>
+          ) : (
+            <div className="mt-auto flex h-8 shrink-0 items-center justify-center">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setSignOutOpen(true)}
+                aria-label="Kirjaudu ulos"
+                title="Kirjaudu ulos"
+                className="text-[#c6c3b5] hover:bg-[#3a3b36] hover:text-[#fbfaf7] focus-visible:ring-[#bfc0b3] focus-visible:ring-offset-[#1f201d]"
+              >
+                <LogOut aria-hidden="true" />
+              </Button>
+            </div>
+          )}
         </div>
-      </aside>
+      </div>
+
+      <AlertDialog open={signOutOpen} onOpenChange={setSignOutOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Kirjaudutaanko ulos?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Nykyinen henkilökunnan istunto päätetään tällä laitteella.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Peruuta</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={signOut}>
+              Kirjaudu ulos
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

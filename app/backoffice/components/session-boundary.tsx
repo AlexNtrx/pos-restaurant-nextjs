@@ -15,8 +15,8 @@ import {
   readAuthSession,
   type AuthSession,
 } from "@/lib/auth-session";
-import Navbar from "./navbar";
-import Sidebar from "./sidebar";
+import { Button } from "@/components/ui/button";
+import StaffShell from "./staff-shell";
 
 //Types
 type SessionState =
@@ -115,6 +115,7 @@ export default function SessionBoundary({
         if (requestId !== verificationRequestIdRef.current) return;
 
         if (isAxiosError(error) && error.response?.status === 401) {
+          clearAuthSession();
           setState({ status: "unauthenticated" });
           router.replace("/signin");
           return;
@@ -178,35 +179,43 @@ export default function SessionBoundary({
 
   //  UI guards
   if (state.status === "checking") {
-    return <p className="p-4">Verifying your session...</p>;
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-canvas p-4 font-sans">
+        <p role="status" className="text-sm text-muted-foreground">
+          Istuntoa tarkistetaan…
+        </p>
+      </main>
+    );
   }
 
   if (state.status === "verification-error") {
     return (
-      <main className="p-4" role="alert">
-        <h1 className="h4">Unable to verify session</h1>
+      <main className="min-h-screen bg-canvas p-6 font-sans" role="alert">
+        <h1 className="font-heading text-2xl font-semibold">
+          Istuntoa ei voitu vahvistaa
+        </h1>
         <p>{state.message}</p>
-        <button className="btn btn-primary" onClick={retryVerification}>
-          Try again
-        </button>
+        <Button className="mt-4" onClick={retryVerification}>
+          Yritä uudelleen
+        </Button>
       </main>
     );
   }
 
   if (state.status === "forbidden") {
     return (
-      <main className="p-4" role="alert">
-        <h1 className="h4">Access denied</h1>
-        <p>Your account does not have a supported backoffice role.</p>
-        <button
-          className="btn btn-primary"
+      <main className="min-h-screen bg-canvas p-6 font-sans" role="alert">
+        <h1 className="font-heading text-2xl font-semibold">Pääsy estetty</h1>
+        <p>Käyttäjätilillä ei ole tuettua henkilökunnan roolia.</p>
+        <Button
+          className="mt-4"
           onClick={() => {
             clearAuthSession();
             router.replace("/signin");
           }}
         >
-          Sign out
-        </button>
+          Kirjaudu ulos
+        </Button>
       </main>
     );
   }
@@ -219,21 +228,19 @@ export default function SessionBoundary({
     pathname === "/backoffice" ||
     !canAccessBackofficePath(pathname, state.level)
   ) {
-    return <p className="p-4">Checking route access...</p>;
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-canvas p-4 font-sans">
+        <p role="status" className="text-sm text-muted-foreground">
+          Käyttöoikeutta tarkistetaan…
+        </p>
+      </main>
+    );
   }
 
   // Main UI
   return (
-    <div className="hold-transition sidebar-mini layout-fixed">
-      <div className="wrapper">
-        <Navbar />
-        <Sidebar name={state.session.name} userLevel={state.level} />
-        <div className="content-wrapper">
-          <section className="content">
-            <div className="container-fluid">{children}</div>
-          </section>
-        </div>
-      </div>
-    </div>
+    <StaffShell name={state.session.name} userLevel={state.level}>
+      {children}
+    </StaffShell>
   );
 }
