@@ -8,6 +8,13 @@ import {
   isBillHistoryResponse,
   parseBillHistoryResponse,
 } from "../app/backoffice/salereport/_lib/bill-history-contract.ts";
+import {
+  isFood,
+  isFoodCategory,
+  isFoodSize,
+  isTaste,
+  parseResults,
+} from "../lib/catalog-contracts.ts";
 
 const validDaily = {
   results: [{ date: "2026-08-01", amount: 10 }],
@@ -164,4 +171,55 @@ test("bill-history parser rejects malformed summary data", () => {
   };
   assert.equal(isBillHistoryResponse(value), false);
   assert.equal(parseBillHistoryResponse(value), null);
+});
+
+const category = { id: 1, name: "Main", remark: "" };
+
+test("catalog validators accept the existing read-only API contracts", () => {
+  assert.equal(isFoodCategory(category), true);
+  assert.equal(
+    isFood({
+      id: 1,
+      foodTypeId: 1,
+      name: "Soup",
+      remark: "",
+      price: 12.5,
+      img: "soup.jpg",
+      foodType: "food",
+      FoodType: category,
+    }),
+    true,
+  );
+  assert.equal(
+    isFoodSize({
+      id: 1,
+      name: "Large",
+      remark: "",
+      foodTypeId: 1,
+      moneyAdded: 2,
+      FoodType: category,
+    }),
+    true,
+  );
+  assert.equal(
+    isTaste({
+      id: 1,
+      name: "Spicy",
+      remark: "",
+      foodTypeId: 1,
+      FoodType: category,
+    }),
+    true,
+  );
+});
+
+test("catalog parser rejects malformed results without hiding the response error", () => {
+  assert.deepEqual(parseResults({ results: [category] }, isFoodCategory), [
+    category,
+  ]);
+  assert.equal(
+    parseResults({ results: [{ ...category, id: "1" }] }, isFoodCategory),
+    null,
+  );
+  assert.equal(parseResults({ results: {} }, isFoodCategory), null);
 });
