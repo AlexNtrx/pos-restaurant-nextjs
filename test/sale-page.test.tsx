@@ -7,28 +7,16 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { api, swal } = vi.hoisted(() => ({
+const { api, toast } = vi.hoisted(() => ({
   api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() },
-  swal: { fire: vi.fn() },
+  toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn() },
 }));
 
 vi.mock("@/lib/api", () => ({ default: api }));
-vi.mock("sweetalert2", () => ({ default: swal }));
+vi.mock("sonner", () => ({ toast }));
 vi.mock("@/app/config", () => ({
   default: { apiServer: "http://example.test" },
 }));
-vi.mock("@/app/backoffice/components/mymodal", () => ({
-  // Coordinates default behavior for this module.
-  default: ({ children, id }: { children: React.ReactNode; id?: string }) => (
-    <>
-      {id === "modalEdit" ? (
-        <button id="modalEdit_btnClose">Close customization</button>
-      ) : null}
-      {children}
-    </>
-  ),
-}));
-
 import SalePage from "@/app/backoffice/sale/page";
 
 const food = { id: 1, name: "Test meal", img: "", price: 25 };
@@ -50,7 +38,6 @@ describe("POS safety net", () => {
       return Promise.resolve({ data: { results: [] } });
     });
     api.post.mockResolvedValue({ data: {} });
-    swal.fire.mockResolvedValue({ isConfirmed: false });
   });
 
   it("loads the staff catalog and current table cart on mount", async () => {
@@ -60,6 +47,67 @@ describe("POS safety net", () => {
     expect(api.get).toHaveBeenCalledWith("/saleTemp/list/", {
       params: { tableNo: 1 },
     });
+  });
+
+  it("renders the approved responsive product card without helper content", async () => {
+    render(<SalePage />);
+
+    const product = await screen.findByRole("button", { name: /test meal/i });
+    expect(product.className).toContain("h-[202px]");
+    expect(product.className).toContain("w-[158px]");
+    expect(product.className).toContain("xl:h-[220px]");
+    expect(product.className).toContain("xl:w-[181px]");
+    expect(screen.queryByText("Valitse ja muokkaa")).toBeNull();
+  });
+
+  it("shows the catalog loading and empty states", async () => {
+    let resolveFoods: (value: {
+      data: { results: Array<typeof food> };
+    }) => void;
+    api.get.mockImplementation((path: string) => {
+      if (path === "/food/filter/all") {
+        return new Promise((resolve) => {
+          resolveFoods = resolve;
+        });
+      }
+      if (path === "/food/filter/drink") {
+        return Promise.resolve({ data: { results: [] } });
+      }
+      if (path === "/saleTemp/list/") return Promise.resolve({ data: cart });
+      return Promise.resolve({ data: { results: [] } });
+    });
+
+    render(<SalePage />);
+    expect(screen.getByLabelText("Ruokalistaa ladataan")).toBeTruthy();
+    await waitFor(() => expect(resolveFoods).toBeTypeOf("function"));
+    resolveFoods!({ data: { results: [food] } });
+    await screen.findByText("Test meal");
+
+    fireEvent.click(screen.getByRole("button", { name: /drinks/i }));
+    expect(await screen.findByText("Ei tuotteita")).toBeTruthy();
+    expect(
+      screen.getByText("Valitussa tuoteryhmässä ei ole tuotteita."),
+    ).toBeTruthy();
+  });
+
+  it("shows the catalog error state and retries the active filter", async () => {
+    api.get.mockImplementation((path: string) => {
+      if (path === "/food/filter/all") {
+        return Promise.reject(new Error("network unavailable"));
+      }
+      if (path === "/saleTemp/list/") return Promise.resolve({ data: cart });
+      return Promise.resolve({ data: { results: [] } });
+    });
+
+    render(<SalePage />);
+    expect(await screen.findByText("Ruokalistaa ei voitu ladata")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Yritä uudelleen" }));
+
+    await waitFor(() =>
+      expect(
+        api.get.mock.calls.filter(([path]) => path === "/food/filter/all"),
+      ).toHaveLength(2),
+    );
   });
 
   it("filters categories and adds a menu item using the selected table", async () => {
@@ -100,15 +148,86 @@ describe("POS safety net", () => {
     );
     render(<SalePage />);
     const image = await screen.findByAltText("Test meal");
+    const productCard = image.closest("button")!;
+    expect(productCard.className).not.toContain("disabled:opacity");
     fireEvent.click(image);
     fireEvent.click(image);
     expect(api.post).toHaveBeenCalledTimes(1);
+    expect(screen.getByAltText("Test meal")).toBe(image);
+    expect(screen.queryByLabelText("Ruokalistaa ladataan")).toBeNull();
     resolveAdd!({ data: {} });
     await waitFor(() =>
       expect(api.get).toHaveBeenCalledWith("/saleTemp/list/", {
         params: { tableNo: 1 },
       }),
     );
+    expect(screen.getByAltText("Test meal")).toBe(image);
+    expect(
+      api.get.mock.calls.filter(([path]) => path === "/food/filter/all"),
+    ).toHaveLength(1);
+  });
+
+  it("keeps product images mounted across different additions and quantity refreshes", async () => {
+    const secondFood = {
+      id: 2,
+      name: "Second meal",
+      img: "second.jpg",
+      price: 18,
+    };
+    const cartWithItem = {
+      results: [
+        {
+          id: 7,
+          qty: 1,
+          Food: food,
+          saleTempDetails: [],
+          pricing: { baseAmount: 25, addedAmount: 0, total: 25 },
+        },
+      ],
+      summary: { baseAmount: 25, addedAmount: 0, total: 25 },
+    };
+    api.get.mockImplementation((path: string) => {
+      if (path === "/food/filter/all") {
+        return Promise.resolve({ data: { results: [food, secondFood] } });
+      }
+      if (path === "/saleTemp/list/") {
+        return Promise.resolve({ data: cartWithItem });
+      }
+      return Promise.resolve({ data: { results: [] } });
+    });
+
+    render(<SalePage />);
+    const firstImage = await screen.findByAltText("Test meal");
+    const secondImage = screen.getByAltText("Second meal");
+
+    fireEvent.click(firstImage);
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(
+        (secondImage.closest("button") as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
+    fireEvent.click(secondImage);
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("button", { name: /increase/i }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(false),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /increase/i }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith("/saleTemp/updateQty", {
+        qty: 2,
+        id: 7,
+      }),
+    );
+
+    expect(screen.getByAltText("Test meal")).toBe(firstImage);
+    expect(screen.getByAltText("Second meal")).toBe(secondImage);
+    expect(
+      api.get.mock.calls.filter(([path]) => path === "/food/filter/all"),
+    ).toHaveLength(1);
   });
 
   it("removes a confirmed cart item and refreshes the cart", async () => {
@@ -129,10 +248,11 @@ describe("POS safety net", () => {
         data: path === "/food/filter/all" ? { results: [food] } : cartWithItem,
       }),
     );
-    swal.fire.mockResolvedValue({ isConfirmed: true });
-
     render(<SalePage />);
     fireEvent.click(await screen.findByRole("button", { name: /^remove$/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /remove item/i }),
+    );
 
     await waitFor(() =>
       expect(api.delete).toHaveBeenCalledWith("/saleTemp/remove/7"),
@@ -164,11 +284,8 @@ describe("POS safety net", () => {
     render(<SalePage />);
     fireEvent.click(await screen.findByRole("button", { name: /^remove$/i }));
 
-    await waitFor(() =>
-      expect(swal.fire).toHaveBeenCalledWith(
-        expect.objectContaining({ title: "Remove this item?" }),
-      ),
-    );
+    expect(await screen.findByText("Remove this item?")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
     expect(api.delete).not.toHaveBeenCalled();
   });
 
@@ -190,14 +307,15 @@ describe("POS safety net", () => {
         data: path === "/food/filter/all" ? { results: [food] } : cartWithItem,
       }),
     );
-    swal.fire.mockResolvedValue({ isConfirmed: true });
-
     render(<SalePage />);
     const clear = screen.getByRole("button", {
       name: /^clear$/i,
     }) as HTMLButtonElement;
     await waitFor(() => expect(clear.disabled).toBe(false));
     fireEvent.click(clear);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /clear order/i }),
+    );
 
     await waitFor(() =>
       expect(api.delete).toHaveBeenCalledWith("/saleTemp/removeAll", {
@@ -235,11 +353,8 @@ describe("POS safety net", () => {
     await waitFor(() => expect(clear.disabled).toBe(false));
     fireEvent.click(clear);
 
-    await waitFor(() =>
-      expect(swal.fire).toHaveBeenCalledWith(
-        expect.objectContaining({ title: "Clear this order?" }),
-      ),
-    );
+    expect(await screen.findByText("Clear this order?")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
     expect(api.delete).not.toHaveBeenCalled();
   });
 
@@ -272,7 +387,6 @@ describe("POS safety net", () => {
         headers: { "content-type": "application/pdf" },
       });
     });
-    swal.fire.mockResolvedValue({ isConfirmed: true });
     // Coordinates random uuid behavior for this module.
     vi.stubGlobal("crypto", { randomUUID: () => "checkout-key" });
     vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
@@ -285,6 +399,9 @@ describe("POS safety net", () => {
     fireEvent.click(screen.getByRole("button", { name: /^pay$/i }));
     fireEvent.click(screen.getByRole("button", { name: /bank transfer/i }));
     fireEvent.click(screen.getByRole("button", { name: /complete payment/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^confirm payment$/i }),
+    );
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith("/saleTemp/endSale", {
         tableNo: 1,
@@ -308,7 +425,6 @@ describe("POS safety net", () => {
       return Promise.resolve({ data: { results: [] } });
     });
     api.post.mockRejectedValueOnce(new Error("network unavailable"));
-    swal.fire.mockResolvedValue({ isConfirmed: true });
     // Coordinates random uuid behavior for this module.
     vi.stubGlobal("crypto", { randomUUID: () => "retry-key" });
     render(<SalePage />);
@@ -317,6 +433,9 @@ describe("POS safety net", () => {
     fireEvent.click(screen.getByRole("button", { name: /bank transfer/i }));
     const complete = screen.getByRole("button", { name: /complete payment/i });
     fireEvent.click(complete);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^confirm payment$/i }),
+    );
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith("/saleTemp/endSale", {
         tableNo: 1,
@@ -404,14 +523,22 @@ describe("POS safety net", () => {
     render(<SalePage />);
     await screen.findByText("Test meal");
     fireEvent.change(screen.getByDisplayValue("1"), { target: { value: "2" } });
-    await screen.findByDisplayValue("222");
+    await waitFor(() =>
+      expect(screen.getByTestId("cart-total").textContent?.trim()).toBe(
+        "222,00 €",
+      ),
+    );
     resolveTableOne!({
       data: {
         results: [],
         summary: { baseAmount: 111, addedAmount: 0, total: 111 },
       },
     });
-    await waitFor(() => expect(screen.getByDisplayValue("222")).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByTestId("cart-total").textContent?.trim()).toBe(
+        "222,00 €",
+      ),
+    );
   });
 
   it("ignores a pending cart response after changing to an invalid table", async () => {
@@ -432,7 +559,7 @@ describe("POS safety net", () => {
     render(<SalePage />);
     await screen.findByText("Test meal");
     fireEvent.change(screen.getByDisplayValue("1"), { target: { value: "" } });
-    expect(document.querySelector(".alert")?.textContent?.trim()).toBe("0");
+    expect(screen.getByTestId("cart-total").textContent?.trim()).toBe("0,00 €");
 
     resolveTableOne!({
       data: {
@@ -442,7 +569,7 @@ describe("POS safety net", () => {
     });
     await new Promise((resolve) => window.setTimeout(resolve, 0));
 
-    expect(document.querySelector(".alert")?.textContent?.trim()).toBe("0");
+    expect(screen.getByTestId("cart-total").textContent?.trim()).toBe("0,00 €");
   });
 
   it("does not refresh the old cart after an add completes following a table change", async () => {
@@ -490,13 +617,17 @@ describe("POS safety net", () => {
 
     fireEvent.change(screen.getByDisplayValue("1"), { target: { value: "2" } });
     await waitFor(() =>
-      expect(document.querySelector(".alert")?.textContent?.trim()).toBe("222"),
+      expect(screen.getByTestId("cart-total").textContent?.trim()).toBe(
+        "222,00 €",
+      ),
     );
 
     resolveAdd!({ data: {} });
     await new Promise((resolve) => window.setTimeout(resolve, 0));
 
-    expect(document.querySelector(".alert")?.textContent?.trim()).toBe("222");
+    expect(screen.getByTestId("cart-total").textContent?.trim()).toBe(
+      "222,00 €",
+    );
     expect(
       api.get.mock.calls.filter(
         ([path, options]) =>
@@ -825,10 +956,9 @@ describe("POS safety net", () => {
           .some((row) => row.textContent?.includes("Test meal")),
       ).toBe(true),
     );
-    const detailRow = screen
-      .getAllByRole("row")
-      .find((row) => row.textContent?.includes("Test meal"))!;
-    fireEvent.click(detailRow.querySelector("button.btn-danger")!);
+    fireEvent.click(
+      screen.getAllByRole("button", { name: /poista annos/i })[0],
+    );
 
     await waitFor(() =>
       expect(api.delete).toHaveBeenCalledWith(
@@ -883,8 +1013,6 @@ describe("POS safety net", () => {
 
     render(<SalePage />);
     fireEvent.click(await screen.findByRole("button", { name: /customize/i }));
-    const closeButton = document.getElementById("modalEdit_btnClose")!;
-    const closeSpy = vi.spyOn(closeButton, "click");
     await waitFor(() =>
       expect(
         screen
@@ -892,10 +1020,7 @@ describe("POS safety net", () => {
           .some((row) => row.textContent?.includes("Test meal")),
       ).toBe(true),
     );
-    const detailRow = screen
-      .getAllByRole("row")
-      .find((row) => row.textContent?.includes("Test meal"))!;
-    fireEvent.click(detailRow.querySelector("button.btn-danger")!);
+    fireEvent.click(screen.getByRole("button", { name: /poista annos/i }));
 
     await waitFor(() =>
       expect(api.delete).toHaveBeenCalledWith(
@@ -903,7 +1028,9 @@ describe("POS safety net", () => {
         { data: { saleTempDetailId: 11 } },
       ),
     );
-    expect(closeSpy).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(screen.queryByText("Muokkaa tilausta")).toBeNull(),
+    );
     expect(
       (screen.getByRole("button", { name: /^add$/i }) as HTMLButtonElement)
         .disabled,
@@ -955,12 +1082,9 @@ describe("POS safety net", () => {
     await screen.findByText("Test meal");
 
     await waitFor(() =>
-      expect(swal.fire).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: "Something went wrong",
-          text: "Invalid cart response",
-          icon: "error",
-        }),
+      expect(toast.error).toHaveBeenCalledWith(
+        "Something went wrong",
+        expect.objectContaining({ description: "Invalid cart response" }),
       ),
     );
     expect(screen.queryByRole("button", { name: /^remove$/i })).toBeNull();
@@ -1000,7 +1124,6 @@ describe("POS safety net", () => {
         headers: { "content-type": "application/pdf" },
       });
     });
-    swal.fire.mockResolvedValue({ isConfirmed: true });
     // Coordinates random uuid behavior for this module.
     vi.stubGlobal("crypto", { randomUUID: () => "duplicate-key" });
     URL.createObjectURL = vi.fn(() => "blob:duplicate");
@@ -1016,6 +1139,9 @@ describe("POS safety net", () => {
     const complete = screen.getByRole("button", { name: /complete payment/i });
     fireEvent.click(complete);
     fireEvent.click(complete);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^confirm payment$/i }),
+    );
 
     await waitFor(() =>
       expect(
@@ -1069,7 +1195,6 @@ describe("POS safety net", () => {
         headers: { "content-type": "application/pdf" },
       });
     });
-    swal.fire.mockResolvedValue({ isConfirmed: true });
     // Coordinates random uuid behavior for this module.
     vi.stubGlobal("crypto", { randomUUID: () => "receipt-key" });
     URL.createObjectURL = vi.fn(() => "blob:paid-receipt");
@@ -1083,6 +1208,9 @@ describe("POS safety net", () => {
     fireEvent.click(screen.getByRole("button", { name: /^pay$/i }));
     fireEvent.click(screen.getByRole("button", { name: /bank transfer/i }));
     fireEvent.click(screen.getByRole("button", { name: /complete payment/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^confirm payment$/i }),
+    );
 
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith("/saleTemp/endSale", {
@@ -1132,7 +1260,6 @@ describe("POS safety net", () => {
         return Promise.reject(new Error("printer unavailable"));
       return Promise.resolve({ data: {} });
     });
-    swal.fire.mockResolvedValue({ isConfirmed: true });
     // Coordinates random uuid behavior for this module.
     vi.stubGlobal("crypto", { randomUUID: () => "receipt-failure-key" });
 
@@ -1141,13 +1268,15 @@ describe("POS safety net", () => {
     fireEvent.click(screen.getByRole("button", { name: /^pay$/i }));
     fireEvent.click(screen.getByRole("button", { name: /bank transfer/i }));
     fireEvent.click(screen.getByRole("button", { name: /complete payment/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^confirm payment$/i }),
+    );
 
     await waitFor(() =>
-      expect(swal.fire).toHaveBeenCalledWith(
+      expect(toast.warning).toHaveBeenCalledWith(
+        "Sale completed",
         expect.objectContaining({
-          title: "Sale completed",
-          text: expect.stringContaining("printer unavailable"),
-          icon: "warning",
+          description: expect.stringContaining("printer unavailable"),
         }),
       ),
     );
@@ -1192,7 +1321,6 @@ describe("POS safety net", () => {
       }
       return Promise.resolve({ data: {} });
     });
-    swal.fire.mockResolvedValue({ isConfirmed: true });
     // Coordinates random uuid behavior for this module.
     vi.stubGlobal("crypto", { randomUUID: () => "reprint-failure-key" });
     URL.createObjectURL = vi.fn(() => "blob:paid-receipt");
@@ -1206,18 +1334,18 @@ describe("POS safety net", () => {
     fireEvent.click(screen.getByRole("button", { name: /^pay$/i }));
     fireEvent.click(screen.getByRole("button", { name: /bank transfer/i }));
     fireEvent.click(screen.getByRole("button", { name: /complete payment/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^confirm payment$/i }),
+    );
     const reprint = await screen.findByRole("button", {
       name: /reprint receipt #34/i,
     });
     fireEvent.click(reprint);
 
     await waitFor(() =>
-      expect(swal.fire).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: "Receipt unavailable",
-          text: "reprint unavailable",
-          icon: "error",
-        }),
+      expect(toast.error).toHaveBeenCalledWith(
+        "Receipt unavailable",
+        expect.objectContaining({ description: "reprint unavailable" }),
       ),
     );
     expect(
