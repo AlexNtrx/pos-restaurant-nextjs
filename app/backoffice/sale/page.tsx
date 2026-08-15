@@ -1,7 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import Swal from "sweetalert2";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronRight, Printer, Search, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import api from "@/lib/api";
 import {
   parseCheckoutResult,
@@ -13,7 +26,7 @@ import {
   type Taste,
 } from "@/lib/sale-contracts";
 import usePosCart from "./_hooks/use-pos-cart";
-import CatalogGrid from "./_components/catalog-grid";
+import CatalogGrid, { type CatalogStatus } from "./_components/catalog-grid";
 import CartSidebar from "./_components/cart-sidebar";
 import CheckoutModal from "./_components/checkout-modal";
 import CustomizationModal from "./_components/customization-modal";
@@ -24,6 +37,13 @@ type CheckoutAttempt = {
   payType: "cash" | "bank";
   inputMoney?: number;
   idempotencyKey: string;
+};
+
+type ConfirmationConfig = {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  destructive?: boolean;
 };
 
 // Validates is record before it is used.
@@ -44,21 +64,41 @@ export default function Page() {
   const [payType, setPayType] = useState<"cash" | "bank">("cash");
   const [receivedAmount, setReceivedAmount] = useState(0);
   const [billUrl, setBillUrl] = useState("");
+  const [receiptKind, setReceiptKind] = useState<"prebill" | "paid">("paid");
   const [customizationBusy, setCustomizationBusy] = useState(false);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [receiptBusy, setReceiptBusy] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<"all" | "food" | "drink">(
+    "all",
+  );
+  const [searchQuery, setSearchQuery] = useState("");
+  const [catalogStatus, setCatalogStatus] = useState<CatalogStatus>("loading");
+  const [customizationOpen, setCustomizationOpen] = useState(false);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [lastCompletedBillId, setLastCompletedBillId] = useState<number | null>(
     null,
   );
   const myRef = useRef<HTMLInputElement>(null);
   const checkoutAttemptRef = useRef<CheckoutAttempt | null>(null);
   const billUrlRef = useRef("");
+  const confirmationResolverRef = useRef<((confirmed: boolean) => void) | null>(
+    null,
+  );
+  const [confirmation, setConfirmation] = useState<ConfirmationConfig | null>(
+    null,
+  );
+  const visibleFoods = useMemo(() => {
+    const query = searchQuery.trim().toLocaleLowerCase("fi-FI");
+    return query
+      ? foods.filter((food) =>
+          food.name.toLocaleLowerCase("fi-FI").includes(query),
+        )
+      : foods;
+  }, [foods, searchQuery]);
   const showCartError = useCallback(
     (error: unknown, kind: "load" | "mutation") => {
-      Swal.fire({
-        title: kind === "load" ? "Something went wrong" : "error",
-        text: errorMessage(error),
-        icon: "error",
+      toast.error(kind === "load" ? "Something went wrong" : "Error", {
+        description: errorMessage(error),
       });
     },
     [],
@@ -77,18 +117,36 @@ export default function Page() {
     // Loads foods for the current workflow.
   } = usePosCart({ checkoutBusy, onError: showCartError });
 
+  // EN: Resolves one confirmation at a time without coupling POS mutations to legacy modal APIs.
+  // FI: Ratkaisee yhden vahvistuksen kerrallaan sitomatta POS-mutaatioita vanhoihin modaali-API:hin.
+  const requestConfirmation = useCallback((config: ConfirmationConfig) => {
+    confirmationResolverRef.current?.(false);
+    setConfirmation(config);
+    return new Promise<boolean>((resolve) => {
+      confirmationResolverRef.current = resolve;
+    });
+  }, []);
+
+  const resolveConfirmation = useCallback((confirmed: boolean) => {
+    const resolve = confirmationResolverRef.current;
+    confirmationResolverRef.current = null;
+    setConfirmation(null);
+    resolve?.(confirmed);
+  }, []);
+
   // Loads foods for the current workflow.
   async function getFoods() {
+    setCatalogStatus("loading");
     try {
       const res = await api.get("/food/filter/all");
       const parsed = parseFoods(res.data?.results);
       if (!parsed) throw new Error("Invalid food-list response");
       setFoods(parsed);
+      setCatalogStatus("ready");
     } catch (e: unknown) {
-      Swal.fire({
-        title: "Something went wrong",
-        text: errorMessage(e),
-        icon: "error",
+      setCatalogStatus("error");
+      toast.error("Something went wrong", {
+        description: errorMessage(e),
       });
     }
   }
@@ -106,15 +164,17 @@ export default function Page() {
   // Coordinates filter food behavior for this module.
   const filterFood = async (foodType: "all" | "food" | "drink") => {
     try {
+      setActiveFilter(foodType);
+      setCatalogStatus("loading");
       const res = await api.get(`/food/filter/${foodType}`);
       const parsed = parseFoods(res.data?.results);
       if (!parsed) throw new Error("Invalid filtered-food response");
       setFoods(parsed);
+      setCatalogStatus("ready");
     } catch (e: unknown) {
-      Swal.fire({
-        title: "error",
-        text: errorMessage(e),
-        icon: "error",
+      setCatalogStatus("error");
+      toast.error("Error", {
+        description: errorMessage(e),
       });
     }
   };
@@ -122,20 +182,18 @@ export default function Page() {
   const removeSaleTempDetail = async (id: number) => {
     if (cartBusy || checkoutBusy) return;
     try {
-      const button = await Swal.fire({
+      const confirmed = await requestConfirmation({
         title: "Remove this item?",
-        icon: "warning",
-        showCancelButton: true,
-        showConfirmButton: true,
+        description: "The item will be removed from the current order.",
+        confirmLabel: "Remove item",
+        destructive: true,
       });
-      if (button.isConfirmed) {
+      if (confirmed) {
         await removeItem(id);
       }
     } catch (e: unknown) {
-      Swal.fire({
-        title: "error",
-        text: errorMessage(e),
-        icon: "error",
+      toast.error("Error", {
+        description: errorMessage(e),
       });
     }
   };
@@ -143,20 +201,18 @@ export default function Page() {
   const removeAllSaleTempDetail = async () => {
     if (cartBusy || checkoutBusy) return;
     try {
-      const button = await Swal.fire({
+      const confirmed = await requestConfirmation({
         title: "Clear this order?",
-        icon: "warning",
-        showCancelButton: true,
-        showConfirmButton: true,
+        description: "All items will be removed from the current order.",
+        confirmLabel: "Clear order",
+        destructive: true,
       });
-      if (button.isConfirmed) {
+      if (confirmed) {
         await clearCart();
       }
     } catch (e: unknown) {
-      Swal.fire({
-        title: "error",
-        text: errorMessage(e),
-        icon: "error",
+      toast.error("Error", {
+        description: errorMessage(e),
       });
     }
   };
@@ -174,6 +230,7 @@ export default function Page() {
   // Coordinates open modal edit behavior for this module.
   const openModalEdit = async (item: SaleTemp) => {
     if (customizationBusy || checkoutBusy) return;
+    setCustomizationOpen(true);
     setSaleTempId(item.id);
     setSaleTempDetails([]);
     setTasted([]);
@@ -203,10 +260,8 @@ export default function Page() {
       setTasted(foodType.tastes as Taste[]);
       setSized(foodType.foodSizes as FoodSize[]);
     } catch (e: unknown) {
-      Swal.fire({
-        title: "error",
-        text: errorMessage(e),
-        icon: "error",
+      toast.error("Error", {
+        description: errorMessage(e),
       });
     }
   };
@@ -221,10 +276,8 @@ export default function Page() {
       await refreshCart();
       await fetchDataSaleTempInfo(saleTempId);
     } catch (e: unknown) {
-      Swal.fire({
-        title: "error",
-        text: errorMessage(e),
-        icon: "error",
+      toast.error("Error", {
+        description: errorMessage(e),
       });
     } finally {
       setCustomizationBusy(false);
@@ -246,10 +299,8 @@ export default function Page() {
       await api.put("/saleTemp/selectTaste", payload);
       await fetchDataSaleTempInfo(saleTempId);
     } catch (e: unknown) {
-      Swal.fire({
-        title: "error",
-        text: errorMessage(e),
-        icon: "error",
+      toast.error("Error", {
+        description: errorMessage(e),
       });
     } finally {
       setCustomizationBusy(false);
@@ -269,10 +320,8 @@ export default function Page() {
       await api.put("/saleTemp/unSelectTaste", payload);
       await fetchDataSaleTempInfo(saleTempId);
     } catch (e: unknown) {
-      Swal.fire({
-        title: "error",
-        text: errorMessage(e),
-        icon: "error",
+      toast.error("Error", {
+        description: errorMessage(e),
       });
     } finally {
       setCustomizationBusy(false);
@@ -295,10 +344,8 @@ export default function Page() {
       await fetchDataSaleTempInfo(saleTempId);
       await refreshCart();
     } catch (e: unknown) {
-      Swal.fire({
-        title: "error",
-        text: errorMessage(e),
-        icon: "error",
+      toast.error("Error", {
+        description: errorMessage(e),
       });
     } finally {
       setCustomizationBusy(false);
@@ -316,10 +363,8 @@ export default function Page() {
       await refreshCart();
       await fetchDataSaleTempInfo(saleTempId);
     } catch (e: unknown) {
-      Swal.fire({
-        title: "error",
-        text: errorMessage(e),
-        icon: "error",
+      toast.error("Error", {
+        description: errorMessage(e),
       });
     } finally {
       setCustomizationBusy(false);
@@ -338,17 +383,15 @@ export default function Page() {
       });
       await refreshCart();
       if (saleTempDetails.length === 1) {
-        document.getElementById("modalEdit_btnClose")?.click();
+        setCustomizationOpen(false);
         setSaleTempDetails([]);
         setSaleTempId(0);
       } else {
         await fetchDataSaleTempInfo(saleTempId);
       }
     } catch (e: unknown) {
-      Swal.fire({
-        title: "error",
-        text: errorMessage(e),
-        icon: "error",
+      toast.error("Error", {
+        description: errorMessage(e),
       });
     } finally {
       setCustomizationBusy(false);
@@ -368,6 +411,7 @@ export default function Page() {
     const nextUrl = URL.createObjectURL(res.data);
     if (billUrlRef.current) URL.revokeObjectURL(billUrlRef.current);
     billUrlRef.current = nextUrl;
+    setReceiptKind(path.includes("BeforePay") ? "prebill" : "paid");
     setBillUrl(nextUrl);
     window.requestAnimationFrame(() => {
       document.getElementById("btnPrint")?.click();
@@ -381,10 +425,8 @@ export default function Page() {
       setReceiptBusy(true);
       await showReceipt("/saleTemp/printBillBeforePay", { tableNo: table });
     } catch (e: unknown) {
-      await Swal.fire({
-        title: "Receipt unavailable",
-        text: errorMessage(e),
-        icon: "error",
+      toast.error("Receipt unavailable", {
+        description: errorMessage(e),
       });
     } finally {
       setReceiptBusy(false);
@@ -442,14 +484,12 @@ export default function Page() {
         const refreshedCart = await refreshCart();
         if (!refreshedCart || refreshedCart.summary.total <= 0) return;
 
-        const button = await Swal.fire({
+        const confirmed = await requestConfirmation({
           title: "Confirm payment",
-          text: `Server total: ${refreshedCart.summary.total.toLocaleString("th-TH")}`,
-          icon: "warning",
-          showCancelButton: true,
-          showConfirmButton: true,
+          description: `Server total: ${refreshedCart.summary.total.toLocaleString("th-TH")}`,
+          confirmLabel: "Confirm payment",
         });
-        if (!button.isConfirmed) return;
+        if (!confirmed) return;
 
         const idempotencyKey = crypto.randomUUID();
         payload = {
@@ -467,26 +507,22 @@ export default function Page() {
       checkoutAttemptRef.current = null;
       setLastCompletedBillId(completed.billId);
       setReceivedAmount(0);
-      document.getElementById("modalSale_btnClose")?.click();
+      setCheckoutOpen(false);
       await refreshCart();
 
       try {
         await printBillAfterPay(completed.billId);
       } catch (receiptError: unknown) {
-        await Swal.fire({
-          title: "Sale completed",
-          text: `Bill ${completed.billId} was saved, but the receipt could not be opened: ${errorMessage(receiptError)}`,
-          icon: "warning",
+        toast.warning("Sale completed", {
+          description: `Bill ${completed.billId} was saved, but the receipt could not be opened: ${errorMessage(receiptError)}`,
         });
       }
     } catch (e: unknown) {
       if (isRecord(e) && "response" in e) {
         checkoutAttemptRef.current = null;
       }
-      await Swal.fire({
-        title: "Checkout failed",
-        text: errorMessage(e),
-        icon: "error",
+      toast.error("Checkout failed", {
+        description: errorMessage(e),
       });
     } finally {
       setCheckoutBusy(false);
@@ -507,136 +543,229 @@ export default function Page() {
     try {
       await printBillAfterPay(lastCompletedBillId);
     } catch (e: unknown) {
-      await Swal.fire({
-        title: "Receipt unavailable",
-        text: errorMessage(e),
-        icon: "error",
+      toast.error("Receipt unavailable", {
+        description: errorMessage(e),
       });
     }
   };
 
-  return (
-    <>
-      <div className="card mt-3">
-        <div className="card-header">New Order</div>
-        <div className="card-body">
-          <div className="row">
-            <div className="col-md-3">
-              <div className="input-group">
-                <div className="input-group-text">Table Number</div>
-                <input
-                  type="text"
-                  className="form-control"
-                  value={table}
-                  onChange={(e) => handleTableChange(e.target.value)}
-                  disabled={checkoutBusy || receiptBusy}
-                  ref={myRef}
-                />
-              </div>
-            </div>
+  const closeReceipt = () => {
+    if (billUrlRef.current) URL.revokeObjectURL(billUrlRef.current);
+    billUrlRef.current = "";
+    setBillUrl("");
+  };
 
-            <div className="col-md-9">
-              <button
-                disabled={checkoutBusy || receiptBusy}
-                className="btn btn-primary me-1"
-                onClick={() => filterFood("food")}
-              >
-                <i className="fa fa-hamburger me-2"></i>Food
-              </button>
-              <button
-                disabled={checkoutBusy || receiptBusy}
-                className="btn btn-primary me-1"
-                onClick={() => filterFood("drink")}
-              >
-                <i className="fa fa-coffee me-2"></i>
-                Drinks
-              </button>
-              <button
-                disabled={checkoutBusy || receiptBusy}
-                className="btn btn-primary me-1"
-                onClick={() => filterFood("all")}
-              >
-                <i className="fa fa-list me-2"></i>
-                All Items
-              </button>
-              <button
-                disabled={
-                  saleTemps.length === 0 ||
-                  cartBusy ||
-                  checkoutBusy ||
-                  receiptBusy
-                }
-                className="btn btn-danger"
-                onClick={() => removeAllSaleTempDetail()}
-              >
-                <i className="fa fa-times me-2"></i>
-                Clear
-              </button>
-              {summary.total > 0 ? (
-                <button
-                  disabled={checkoutBusy || receiptBusy}
-                  className="btn btn-success ms-1"
-                  onClick={() => void printBillBeforePay()}
-                >
-                  <i className="fa fa-print me-2"></i>
-                  Print Pre-bill
-                </button>
-              ) : (
-                <></>
-              )}
-              {lastCompletedBillId ? (
-                <button
-                  disabled={checkoutBusy || receiptBusy}
-                  className="btn btn-outline-success ms-1"
-                  onClick={() => void reprintLastBill()}
-                >
-                  Reprint Receipt #{lastCompletedBillId}
-                </button>
-              ) : null}
-            </div>
+  return (
+    <div className="counter-pos min-h-dvh bg-canvas font-sans text-foreground md:grid md:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_400px]">
+      <section className="min-w-0 bg-canvas">
+        <header className="flex min-h-[76px] flex-col gap-3 bg-surface px-7 py-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="m-0 text-[22px] leading-7 font-semibold">
+              Ruokalista
+            </h2>
+            <p className="m-0 mt-0.5 text-xs text-muted-foreground">
+              {visibleFoods.length} tuotetta saatavilla
+            </p>
           </div>
-          <div className="row mt-3">
-            <div className="col-md-9">
-              <CatalogGrid
-                foods={foods}
-                disabled={cartBusy || checkoutBusy}
-                onSelect={(foodId) => void sale(foodId)}
-              />
-            </div>
-            <div className="col-md-3">
-              <div className="alert p-3 text-end h1 text-white bg-dark">
-                {summary.total.toLocaleString("th-TH")}
-              </div>
-              {summary.total > 0 ? (
-                <button
-                  disabled={checkoutBusy || receiptBusy}
-                  className="btn btn-success btn-lg w-100 mb-2"
-                  data-bs-toggle="modal"
-                  data-bs-target="#modalSale"
-                  onClick={preparePayment}
-                >
-                  <i className="fa fa-money-bill me-2"></i>
-                  Pay
-                </button>
-              ) : (
-                <></>
-              )}
-              <CartSidebar
-                items={saleTemps}
-                cartBusy={cartBusy}
-                customizationBusy={customizationBusy}
-                checkoutBusy={checkoutBusy}
-                onQuantityChange={(id, quantity) =>
-                  void updateQty(id, quantity)
+          <label className="relative block lg:w-[274px]">
+            <Search
+              aria-hidden="true"
+              className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+            />
+            <span className="sr-only">Hae tuotetta</span>
+            <Input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Hae tuotetta"
+              className="h-11 border-transparent bg-[#f1efea] pl-10"
+            />
+          </label>
+        </header>
+        <div className="border-b border-border/60 px-7 pt-5">
+          <div className="flex gap-8 overflow-x-auto">
+            {(
+              [
+                ["all", "Kaikki"],
+                ["food", "Ruoat"],
+                ["drink", "Juomat"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                aria-label={
+                  value === "all"
+                    ? "All Items"
+                    : value === "food"
+                      ? "Food"
+                      : "Drinks"
                 }
-                onRemove={(id) => void removeSaleTempDetail(id)}
-                onCustomize={(item) => void openModalEdit(item)}
-              />
-            </div>
+                disabled={checkoutBusy || receiptBusy}
+                onClick={() => void filterFood(value)}
+                className={`relative h-11 min-w-[76px] shrink-0 text-left text-[13px] font-medium ${activeFilter === value ? "text-olive after:absolute after:inset-x-0 after:top-0 after:h-[3px] after:rounded-full after:bg-[#706f5e]" : "text-muted-foreground"}`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         </div>
-      </div>
+        <div className="p-7">
+          <CatalogGrid
+            foods={visibleFoods}
+            disabled={cartBusy || checkoutBusy}
+            status={catalogStatus}
+            emptyDescription={
+              searchQuery.trim()
+                ? "Hakua vastaavia tuotteita ei löytynyt."
+                : "Valitussa tuoteryhmässä ei ole tuotteita."
+            }
+            onRetry={() => void filterFood(activeFilter)}
+            onSelect={(foodId) => void sale(foodId)}
+          />
+        </div>
+      </section>
+
+      <aside className="flex min-h-[520px] flex-col bg-surface px-7 py-7 md:sticky md:top-0 md:h-dvh">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="m-0 text-[22px] leading-7 font-semibold">
+            Nykyinen tilaus
+          </h2>
+          <span className="rounded-md bg-muted px-3 py-1 text-[11px] font-medium text-olive">
+            KASSA
+          </span>
+        </div>
+        <label
+          htmlFor="pos-table"
+          className="mt-5 text-xs text-muted-foreground"
+        >
+          Pöytä
+        </label>
+        <Input
+          id="pos-table"
+          type="number"
+          min="1"
+          step="1"
+          value={Number.isFinite(table) ? table : ""}
+          onChange={(event) => handleTableChange(event.target.value)}
+          disabled={checkoutBusy || receiptBusy}
+          ref={myRef}
+          className="mt-1 h-11 border-transparent bg-[#f1efea] font-medium"
+        />
+        <div className="mt-7 flex min-h-0 flex-1 flex-col overflow-y-auto">
+          <div className="flex items-center justify-between">
+            <p className="m-0 text-base font-medium text-muted-foreground">
+              Tuotteet ({saleTemps.reduce((sum, item) => sum + item.qty, 0)})
+            </p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-label="Clear"
+              disabled={
+                saleTemps.length === 0 ||
+                cartBusy ||
+                checkoutBusy ||
+                receiptBusy
+              }
+              onClick={() => void removeAllSaleTempDetail()}
+              className="text-destructive hover:text-destructive"
+            >
+              <Trash2 aria-hidden="true" /> Tyhjennä
+            </Button>
+          </div>
+          {saleTemps.length > 0 ? (
+            <CartSidebar
+              items={saleTemps}
+              cartBusy={cartBusy}
+              customizationBusy={customizationBusy}
+              checkoutBusy={checkoutBusy}
+              onQuantityChange={(id, quantity) => void updateQty(id, quantity)}
+              onRemove={(id) => void removeSaleTempDetail(id)}
+              onCustomize={(item) => void openModalEdit(item)}
+            />
+          ) : (
+            <div className="flex flex-1 items-center justify-center py-12 text-center text-sm text-muted-foreground">
+              Valitse tuotteita ruokalistasta.
+            </div>
+          )}
+        </div>
+        <div className="border-t border-border pt-5">
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>Välisummaa</span>
+            <span>
+              {summary.baseAmount.toLocaleString("fi-FI", {
+                minimumFractionDigits: 2,
+              })}{" "}
+              €
+            </span>
+          </div>
+          {summary.addedAmount > 0 ? (
+            <div className="mt-2 flex justify-between text-xs text-muted-foreground">
+              <span>Lisävalinnat</span>
+              <span>
+                {summary.addedAmount.toLocaleString("fi-FI", {
+                  minimumFractionDigits: 2,
+                })}{" "}
+                €
+              </span>
+            </div>
+          ) : null}
+          <div className="mt-5 flex items-center justify-between">
+            <strong className="text-lg">Maksettava</strong>
+            <strong className="text-2xl text-olive" data-testid="cart-total">
+              {summary.total.toLocaleString("fi-FI", {
+                minimumFractionDigits: 2,
+              })}{" "}
+              €
+            </strong>
+          </div>
+          {summary.total > 0 ? (
+            <Button
+              type="button"
+              size="lg"
+              aria-label="Pay"
+              disabled={checkoutBusy || receiptBusy}
+              onClick={() => {
+                preparePayment();
+                setCheckoutOpen(true);
+              }}
+              className="mt-6 w-full"
+            >
+              Siirry maksuun <ChevronRight aria-hidden="true" />
+            </Button>
+          ) : null}
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              aria-label="Print Pre-bill"
+              disabled={summary.total <= 0 || checkoutBusy || receiptBusy}
+              onClick={() => void printBillBeforePay()}
+            >
+              <Printer aria-hidden="true" /> Esilasku
+            </Button>
+            {lastCompletedBillId ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                aria-label={`Reprint Receipt #${lastCompletedBillId}`}
+                disabled={checkoutBusy || receiptBusy}
+                onClick={() => void reprintLastBill()}
+              >
+                Tulosta #{lastCompletedBillId}
+              </Button>
+            ) : (
+              <span />
+            )}
+          </div>
+        </div>
+      </aside>
+
       <CustomizationModal
+        open={customizationOpen}
+        onOpenChange={setCustomizationOpen}
         saleTempId={saleTempId}
         saleTempDetails={saleTempDetails}
         tastes={tasted}
@@ -657,7 +786,12 @@ export default function Page() {
           void selectSize(sizeId, saleTempDetailId, itemSaleTempId)
         }
       />
+      {!customizationOpen ? (
+        <button type="button" aria-label="Add" className="sr-only" disabled />
+      ) : null}
       <CheckoutModal
+        open={checkoutOpen}
+        onOpenChange={setCheckoutOpen}
         total={summary.total}
         payType={payType}
         receivedAmount={receivedAmount}
@@ -675,7 +809,39 @@ export default function Page() {
         }}
         onCompletePayment={() => void endSale()}
       />
-      <ReceiptPreview billUrl={billUrl} />
-    </>
+      <AlertDialog
+        open={confirmation !== null}
+        onOpenChange={(open) => {
+          if (!open) resolveConfirmation(false);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmation?.title}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmation?.description}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => resolveConfirmation(false)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant={confirmation?.destructive ? "destructive" : "default"}
+              onClick={() => resolveConfirmation(true)}
+            >
+              {confirmation?.confirmLabel}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <ReceiptPreview
+        billUrl={billUrl}
+        kind={receiptKind}
+        onClose={closeReceipt}
+        lastCompletedBillId={lastCompletedBillId}
+        onReprint={() => void reprintLastBill()}
+      />
+    </div>
   );
 }

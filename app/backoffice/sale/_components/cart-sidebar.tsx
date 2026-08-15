@@ -1,3 +1,6 @@
+import { Minus, Plus, Settings2, Trash2 } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
 import type { SaleTemp } from "@/lib/sale-contracts";
 
 type CartSidebarProps = {
@@ -8,10 +11,8 @@ type CartSidebarProps = {
   onQuantityChange: (id: number, quantity: number) => void;
   onRemove: (id: number) => void;
   onCustomize: (item: SaleTemp) => void;
-  // Renders the cart sidebar interface.
 };
 
-// Renders the cart sidebar interface.
 export default function CartSidebar({
   items,
   cartBusy,
@@ -22,69 +23,81 @@ export default function CartSidebar({
   onCustomize,
 }: CartSidebarProps) {
   return (
-    <>
+    <div className="divide-y divide-border border-y border-border">
       {items.map((item) => (
-        <div className="d-grid mt-2" key={item.id}>
-          <div className="card">
-            <div className="card-body">
-              <div className="fw-bold">{item.Food.name}</div>
-              <div>
-                {item.Food.price} x {item.qty} = {item.pricing.total}
-              </div>
+        <article className="py-4" key={item.id}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="m-0 truncate text-sm font-medium text-foreground">
+                {item.Food.name}
+              </p>
+              <p className="m-0 mt-1 text-xs text-muted-foreground">
+                {item.qty} ×{" "}
+                {item.Food.price.toLocaleString("fi-FI", {
+                  minimumFractionDigits: 2,
+                })}{" "}
+                €
+              </p>
             </div>
-            <div className="mt-1">
-              <div className="input-group">
-                <button
-                  disabled={item.qty <= 1 || cartBusy || checkoutBusy}
-                  className="input-group-text btn btn-primary"
-                  onClick={() => onQuantityChange(item.id, item.qty - 1)}
-                >
-                  <i className="fa fa-minus" />
-                </button>
-                <input
-                  type="text"
-                  className="form-control text-center fw-bold"
-                  value={item.qty}
-                  disabled
-                />
-                <button
-                  disabled={cartBusy || checkoutBusy}
-                  className="input-group-text btn btn-primary"
-                  onClick={() => onQuantityChange(item.id, item.qty + 1)}
-                >
-                  <i className="fa fa-plus" />
-                </button>
-              </div>
+            <strong className="shrink-0 text-sm font-semibold">
+              {item.pricing.total.toLocaleString("fi-FI", {
+                minimumFractionDigits: 2,
+              })}{" "}
+              €
+            </strong>
+          </div>
+          <div className="mt-3 flex items-center justify-between gap-2">
+            <div className="flex h-8 items-center rounded-md border border-border bg-surface">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`Decrease ${item.Food.name}`}
+                disabled={item.qty <= 1 || cartBusy || checkoutBusy}
+                onClick={() => onQuantityChange(item.id, item.qty - 1)}
+              >
+                <Minus aria-hidden="true" />
+              </Button>
+              <span className="w-8 text-center text-sm font-semibold">
+                {item.qty}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`Increase ${item.Food.name}`}
+                disabled={cartBusy || checkoutBusy}
+                onClick={() => onQuantityChange(item.id, item.qty + 1)}
+              >
+                <Plus aria-hidden="true" />
+              </Button>
             </div>
-            <div className="card-footer p-1">
-              <div className="row g-1">
-                <div className="col-md-6">
-                  <button
-                    disabled={cartBusy || checkoutBusy}
-                    className="btn btn-danger btn-blocker"
-                    onClick={() => onRemove(item.id)}
-                  >
-                    <i className="fa fa-times me-2" />
-                    Remove
-                  </button>
-                </div>
-                <div className="col-md-6">
-                  <button
-                    disabled={cartBusy || customizationBusy || checkoutBusy}
-                    className="btn btn-success btn-block"
-                    data-bs-toggle="modal"
-                    data-bs-target="#modalEdit"
-                    onClick={() => onCustomize(item)}
-                  >
-                    <i className="fa fa-cog me-2" />
-                    Customize
-                  </button>
-                </div>
-              </div>
+            <div className="flex items-center gap-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Customize"
+                disabled={cartBusy || customizationBusy || checkoutBusy}
+                onClick={() => onCustomize(item)}
+              >
+                <Settings2 aria-hidden="true" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Remove"
+                disabled={cartBusy || checkoutBusy}
+                onClick={() => onRemove(item.id)}
+                className="text-destructive hover:text-destructive"
+              >
+                <Trash2 aria-hidden="true" />
+              </Button>
             </div>
           </div>
-        </div>
+        </article>
       ))}
-    </>
+    </div>
   );
 }

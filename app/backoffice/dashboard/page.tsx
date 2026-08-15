@@ -1,112 +1,156 @@
-"use client";
+import Link from "next/link";
+import { ClipboardList, Plus, ReceiptText } from "lucide-react";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Chart as ChartJS } from "chart.js/auto";
-import Swal from "sweetalert2";
-import api from "@/lib/api";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page-header";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
-type DailySalesRow = { date: string; amount: number };
-type MonthlySalesRow = { month: string; amount: number };
-type DailySalesResponse = { results: DailySalesRow[]; totalAmount: number };
-type MonthlySalesResponse = { results: MonthlySalesRow[]; totalAmount: number };
+const operationalMetrics = [
+  "Avoimet tilaukset",
+  "Keittiöjonossa",
+  "Valmiina",
+  "Avoimet pöydät",
+] as const;
 
-const monthNames = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
-
-const isFiniteNonNegativeNumber = (value: unknown) =>
-  typeof value === "number" && Number.isFinite(value) && value >= 0;
-
-const isDailySalesResponse = (value: unknown): value is DailySalesResponse => {
-  if (!value || typeof value !== "object") return false;
-  const response = value as Record<string, unknown>;
-  return isFiniteNonNegativeNumber(response.totalAmount) && Array.isArray(response.results) && response.results.every((item) => {
-    if (!item || typeof item !== "object") return false;
-    const row = item as Record<string, unknown>;
-    return typeof row.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(row.date) && isFiniteNonNegativeNumber(row.amount);
-  });
-};
-
-const isMonthlySalesResponse = (value: unknown): value is MonthlySalesResponse => {
-  if (!value || typeof value !== "object") return false;
-  const response = value as Record<string, unknown>;
-  return isFiniteNonNegativeNumber(response.totalAmount) && Array.isArray(response.results) && response.results.length === 12 && response.results.every((item, index) => {
-    if (!item || typeof item !== "object") return false;
-    const row = item as Record<string, unknown>;
-    return row.month === String(index + 1).padStart(2, "0") && isFiniteNonNegativeNumber(row.amount);
-  });
-};
+const quickActions = [
+  {
+    href: "/backoffice/orders/new",
+    label: "Uusi tilaus",
+    description: "Aloita tilaus kassalla",
+    icon: Plus,
+  },
+  {
+    href: "/backoffice/orders/history",
+    label: "Kuittihistoria",
+    description: "Tarkastele valmiita myyntejä",
+    icon: ReceiptText,
+  },
+  {
+    href: "/backoffice/catalog/menu-items",
+    label: "Ruokalista",
+    description: "Tarkastele ruokalistan tuotteita",
+    icon: ClipboardList,
+  },
+] as const;
 
 export default function Dashboard() {
-  const currentDate = new Date();
-  const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
-  const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1);
-  const [dailySales, setDailySales] = useState<DailySalesResponse | null>(null);
-  const [monthlySales, setMonthlySales] = useState<MonthlySalesResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const dailyCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const monthlyCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const dailyChartRef = useRef<ChartJS | null>(null);
-  const monthlyChartRef = useRef<ChartJS | null>(null);
-  const years = Array.from({ length: 5 }, (_, index) => currentDate.getFullYear() - index);
+  return (
+    <div className="tw04-layout space-y-8 font-sans">
+      <PageHeader
+        title="Tänään"
+        description="Tilausten ajantasainen operatiivinen tilanne"
+      />
 
-  const fetchReports = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const [dailyResponse, monthlyResponse] = await Promise.all([
-        api.post("/report/dailySales", { year: selectedYear, month: selectedMonth }),
-        api.post("/report/sumMonthly", { year: selectedYear }),
-      ]);
-      if (!isDailySalesResponse(dailyResponse.data) || !isMonthlySalesResponse(monthlyResponse.data)) {
-        throw new Error("Invalid dashboard report response");
-      }
-      setDailySales(dailyResponse.data);
-      setMonthlySales(monthlyResponse.data);
-    } catch (error: unknown) {
-      await Swal.fire({ title: "Error", text: error instanceof Error ? error.message : "Unable to load dashboard reports", icon: "error" });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [selectedMonth, selectedYear, setDailySales, setIsLoading, setMonthlySales]);
+      <section
+        aria-label="Operatiiviset tunnusluvut"
+        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+      >
+        {operationalMetrics.map((title) => (
+          <OperationalMetric key={title} title={title} />
+        ))}
+      </section>
 
-  useEffect(() => {
-    const requestId = window.setTimeout(() => void fetchReports(), 0);
-    return () => window.clearTimeout(requestId);
-  }, [fetchReports]);
+      <section className="grid items-stretch gap-[20px] lg:grid-cols-[minmax(0,1.55fr)_minmax(280px,1fr)]">
+        <Card className="min-h-[348px] gap-0 py-0 shadow-none">
+          <CardHeader className="flex min-h-[70px] flex-row items-center justify-between px-5 py-4 sm:px-6">
+            <CardTitle className="font-sans text-xl">
+              Viimeisimmät tilaukset
+            </CardTitle>
+            <Link
+              href="/backoffice/orders/history"
+              className="text-[13px] font-medium text-olive underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            >
+              Näytä kaikki →
+            </Link>
+          </CardHeader>
+          <CardContent className="px-0 pb-0">
+            <Table className="min-w-[680px] text-[13px] lg:min-w-0">
+              <TableHeader className="bg-transparent">
+                <TableRow className="h-11 hover:bg-transparent">
+                  <TableHead className="pl-6">Tilaus</TableHead>
+                  <TableHead>Tilauskanava</TableHead>
+                  <TableHead>Pöytä</TableHead>
+                  <TableHead>Yhteensä</TableHead>
+                  <TableHead className="pr-6">Tila</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={5} className="h-[214px] px-6 text-center">
+                    <p className="font-medium text-foreground">
+                      Tilaustietoja ei ole saatavilla
+                    </p>
+                    <p className="mx-auto mt-1 max-w-md whitespace-normal text-xs leading-5 text-muted-foreground">
+                      Nykyinen API ei vielä tarjoa tilauskanavaa, pöytää tai
+                      tilauksen elinkaaritilaa tähän näkymään.
+                    </p>
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
 
-  useEffect(() => {
-    const canvas = dailyCanvasRef.current;
-    if (!canvas || !dailySales) return;
-    dailyChartRef.current?.destroy();
-    const chart = new ChartJS(canvas, {
-      type: "bar",
-      data: { labels: dailySales.results.map((item) => item.date.slice(-2)), datasets: [{ label: "Daily sales", data: dailySales.results.map((item) => item.amount), borderWidth: 1, backgroundColor: "#0d6efd" }] },
-      options: { responsive: true, scales: { y: { beginAtZero: true } } },
-    });
-    dailyChartRef.current = chart;
-    return () => { chart.destroy(); if (dailyChartRef.current === chart) dailyChartRef.current = null; };
-  }, [dailySales]);
+        <Card className="min-h-[348px] gap-0 py-0 shadow-none">
+          <CardHeader className="min-h-[70px] px-5 py-4 sm:px-6">
+            <CardTitle className="font-sans text-xl">Pikatoiminnot</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 px-4 pb-5 sm:px-5">
+            {quickActions.map(({ href, label, description, icon: Icon }) => (
+              <Link
+                key={href}
+                href={href}
+                className="grid min-h-[76px] grid-cols-[42px_minmax(0,1fr)] items-center gap-4 rounded-lg px-1 py-2 outline-none transition-colors hover:bg-muted/55 focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span className="flex size-[42px] items-center justify-center rounded-lg bg-muted text-olive">
+                  <Icon aria-hidden="true" className="size-4" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-[15px] font-medium text-foreground">
+                    {label}
+                  </span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    {description}
+                  </span>
+                </span>
+              </Link>
+            ))}
+          </CardContent>
+        </Card>
+      </section>
 
-  useEffect(() => {
-    const canvas = monthlyCanvasRef.current;
-    if (!canvas || !monthlySales) return;
-    monthlyChartRef.current?.destroy();
-    const chart = new ChartJS(canvas, {
-      type: "bar",
-      data: { labels: monthNames, datasets: [{ label: "Monthly sales", data: monthlySales.results.map((item) => item.amount), borderWidth: 1, backgroundColor: "#198754" }] },
-      options: { responsive: true, scales: { y: { beginAtZero: true } } },
-    });
-    monthlyChartRef.current = chart;
-    return () => { chart.destroy(); if (monthlyChartRef.current === chart) monthlyChartRef.current = null; };
-  }, [monthlySales]);
+      <p className="text-xs leading-5 text-muted-foreground" role="note">
+        Operatiiviset luvut ja viimeisimmät tilaukset tulevat näkyviin, kun
+        shared Order-, Kitchen- ja RestaurantTable-rajapinnat ovat käytössä.
+      </p>
+    </div>
+  );
+}
 
-  return <div className="mt-3 card"><div className="card-header">Dashboard</div><div className="card-body">
-    <div className="row"><div className="col-md-3"><label htmlFor="dashboard-year">Year</label><select id="dashboard-year" className="form-control" value={selectedYear} onChange={(event) => setSelectedYear(Number(event.target.value))}>{years.map((year) => <option key={year} value={year}>{year}</option>)}</select></div>
-      <div className="col-md-3"><label htmlFor="dashboard-month">Month</label><select id="dashboard-month" className="form-control" value={selectedMonth} onChange={(event) => setSelectedMonth(Number(event.target.value))}>{monthNames.map((month, index) => <option value={index + 1} key={month}>{month}</option>)}</select></div>
-      <div className="col-md-3 d-flex align-items-end"><button className="btn btn-primary" onClick={() => void fetchReports()} disabled={isLoading}><i className="fa fa-search me-2" aria-hidden="true" />View Dashboard</button></div></div>
-    <div className="row mt-3"><div className="col-md-6"><div className="alert alert-primary mb-0">Selected Month Total: {dailySales?.totalAmount.toLocaleString("fi-FI", { style: "currency", currency: "EUR" }) ?? "-"}</div></div><div className="col-md-6"><div className="alert alert-success mb-0">Selected Year Total: {monthlySales?.totalAmount.toLocaleString("fi-FI", { style: "currency", currency: "EUR" }) ?? "-"}</div></div></div>
-    <div className="mt-4"><h2 className="h4">Daily Sales</h2>{isLoading && !dailySales ? <p>Loading daily sales…</p> : <canvas ref={dailyCanvasRef} aria-label="Daily sales chart" role="img" />}</div>
-    <div className="mt-4"><h2 className="h4">Monthly Sales</h2>{isLoading && !monthlySales ? <p>Loading monthly sales…</p> : <canvas ref={monthlyCanvasRef} aria-label="Monthly sales chart" role="img" />}</div>
-  </div></div>;
+function OperationalMetric({ title }: { title: string }) {
+  return (
+    <Card size="sm" className="h-[126px] gap-2 py-4 shadow-none">
+      <CardHeader className="px-4">
+        <CardTitle className="font-sans text-[13px] font-normal text-muted-foreground">
+          {title}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="px-4">
+        <p
+          className="text-[27px] leading-8 font-semibold"
+          aria-label="Ei saatavilla"
+        >
+          —
+        </p>
+        <p className="mt-2 text-xs text-muted-foreground">Ei saatavilla</p>
+      </CardContent>
+    </Card>
+  );
 }

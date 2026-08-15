@@ -1,6 +1,18 @@
-import MyModal from "../../components/mymodal";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 
 type CheckoutModalProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   total: number;
   payType: "cash" | "bank";
   receivedAmount: number;
@@ -10,11 +22,14 @@ type CheckoutModalProps = {
   onChangeReceivedAmount: (amount: number) => void;
   onReceivedAmountInput: (value: string) => void;
   onCompletePayment: () => void;
-  // Coordinates checkout modal while preserving transaction behavior.
 };
 
-// Coordinates checkout modal while preserving transaction behavior.
+const euros = (value: number) =>
+  `${value.toLocaleString("fi-FI", { minimumFractionDigits: 2 })} €`;
+
 export default function CheckoutModal({
+  open,
+  onOpenChange,
   total,
   payType,
   receivedAmount,
@@ -25,97 +40,135 @@ export default function CheckoutModal({
   onReceivedAmountInput,
   onCompletePayment,
 }: CheckoutModalProps) {
+  const change = payType === "bank" ? 0 : Math.max(0, receivedAmount - total);
+  const quickAmounts = [10, 20, 50, 100];
   return (
-    <MyModal id="modalSale" title="Checkout" modalSize="modal-lg">
-      <div className="fw-bold">Payment Method</div>
-      <div className="row mt-1">
-        <div className="col-md-6">
-          <button
-            disabled={checkoutBusy}
-            className={
-              payType === "cash"
-                ? "btn btn-success btn-block btn-lg"
-                : "btn btn-outline-secondary btn-block btn-lg"
-            }
-            onClick={() => onSelectPaymentType("cash")}
-          >
-            <span className="h3">Cash</span>
-          </button>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => !checkoutBusy && onOpenChange(next)}
+    >
+      <DialogContent showCloseButton={false} className="p-6 sm:max-w-[560px]">
+        <DialogHeader className="gap-3">
+          <DialogTitle className="font-sans !text-xl !leading-6">
+            Maksu
+          </DialogTitle>
+          <DialogDescription>
+            Tarkista summa ja valitse maksutapa.
+          </DialogDescription>
+        </DialogHeader>
+        <div>
+          <p className="m-0 text-xs text-muted-foreground">Maksettava</p>
+          <p className="m-0 mt-1 text-2xl font-semibold text-action">
+            {euros(total)}
+          </p>
         </div>
-        <div className="col-md-6">
-          <button
-            disabled={checkoutBusy}
-            className={
-              payType === "bank"
-                ? "btn btn-success btn-block btn-lg"
-                : "btn btn-outline-secondary btn-block btn-lg"
-            }
-            onClick={() => onSelectPaymentType("bank")}
-          >
-            <span className="h3">Bank Transfer</span>
-          </button>
-        </div>
-      </div>
-      <div className="mt-3 fw-bold">Total</div>
-      <div className="h1">
-        <input
-          type="text"
-          className="form-control text-end fs-4 p-4"
-          value={total.toLocaleString("th-Th")}
-          disabled
-        />
-      </div>
-      <div className="mt-3 fw-bold">Amount Received</div>
-      <div className="row mt-1">
-        {[10, 20, 50, 100].map((amount) => (
-          <div className="col-md-3" key={amount}>
-            <button
-              disabled={checkoutBusy || payType !== "cash"}
-              className="btn btn-outline-secondary btn-block btn-lg"
-              onClick={() => onChangeReceivedAmount(receivedAmount + amount)}
+        <fieldset>
+          <legend className="mb-1.5 text-xs text-muted-foreground">
+            Maksutapa
+          </legend>
+          <div className="grid grid-cols-2 gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              aria-label="Cash"
+              aria-pressed={payType === "cash"}
+              className={
+                payType === "cash"
+                  ? "h-[54px] justify-start border-action bg-muted"
+                  : "h-[54px] justify-start"
+              }
+              disabled={checkoutBusy}
+              onClick={() => onSelectPaymentType("cash")}
             >
-              <span className="h3">{amount}</span>
-            </button>
+              Käteinen
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              aria-label="Bank Transfer"
+              aria-pressed={payType === "bank"}
+              className={
+                payType === "bank"
+                  ? "h-[54px] justify-start border-action bg-muted"
+                  : "h-[54px] justify-start"
+              }
+              disabled={checkoutBusy}
+              onClick={() => onSelectPaymentType("bank")}
+            >
+              Pankki
+            </Button>
           </div>
-        ))}
-      </div>
-      <input
-        type="number"
-        min="0"
-        step="1"
-        className="form-control text-end fs-4 p-4 mt-3"
-        placeholder="0.00"
-        value={receivedAmount}
-        disabled={checkoutBusy || payType === "bank"}
-        onChange={(event) => onReceivedAmountInput(event.target.value)}
-      />
-      <div className="mt-3 fw-bold">Change</div>
-      <div className="h1">
-        <input
-          type="text"
-          className="form-control text-end fs-4 p-4"
-          value={(payType === "bank"
-            ? 0
-            : receivedAmount - total
-          ).toLocaleString("th-Th")}
-          disabled
-        />
-      </div>
-      <div className="mt-3">
-        <button
-          disabled={
-            checkoutBusy ||
-            receiptBusy ||
-            total <= 0 ||
-            (payType === "cash" && receivedAmount < total)
-          }
-          onClick={onCompletePayment}
-          className="btn btn-success btn-lg w-100"
-        >
-          <i className="fa fa-money-bill me-2"></i>
-          Complete Payment
-        </button>
-      </div>
-    </MyModal>
+        </fieldset>
+        {payType === "cash" ? (
+          <div>
+            <label
+              htmlFor="pos-received"
+              className="text-xs text-muted-foreground"
+            >
+              Vastaanotettu
+            </label>
+            <div className="mt-1 grid grid-cols-[minmax(120px,1fr)_auto] gap-3">
+              <Input
+                id="pos-received"
+                type="number"
+                min="0"
+                step="1"
+                className="h-11 text-base"
+                value={receivedAmount}
+                disabled={checkoutBusy}
+                onChange={(event) => onReceivedAmountInput(event.target.value)}
+              />
+              <div className="flex gap-2">
+                {quickAmounts.map((amount) => (
+                  <Button
+                    key={amount}
+                    type="button"
+                    variant="outline"
+                    disabled={checkoutBusy}
+                    onClick={() =>
+                      onChangeReceivedAmount(receivedAmount + amount)
+                    }
+                    className="!bg-[#f1efea]"
+                  >
+                    {amount} €
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
+        <div>
+          <p className="m-0 text-xs text-muted-foreground">Vaihtoraha</p>
+          <p className="m-0 mt-1 text-xl font-semibold text-[#5f7f65]">
+            {euros(change)}
+          </p>
+        </div>
+        <p className="m-0 text-xs text-muted-foreground">
+          {payType === "cash"
+            ? `Vähimmäissumma on ${euros(total)}. Tarkista käteinen ennen vahvistusta.`
+            : "Kortti- tai tilisiirto vahvistetaan pankkimaksuna."}
+        </p>
+        <DialogFooter className="mt-2">
+          <DialogClose asChild>
+            <Button type="button" variant="ghost">
+              Peruuta
+            </Button>
+          </DialogClose>
+          <Button
+            type="button"
+            aria-label="Complete Payment"
+            disabled={
+              checkoutBusy ||
+              receiptBusy ||
+              total <= 0 ||
+              (payType === "cash" && receivedAmount < total)
+            }
+            onClick={onCompletePayment}
+          >
+            {checkoutBusy ? "Käsitellään…" : "Maksa"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
