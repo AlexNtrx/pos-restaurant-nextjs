@@ -1,46 +1,60 @@
 import React from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 
 import Dashboard from "@/app/backoffice/dashboard/page";
 
+const api = vi.hoisted(() => ({ get: vi.fn() }));
+vi.mock("@/lib/api", () => ({ default: api }));
+
+beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
 
-describe("TW-04 Yhteenveto information model", () => {
-  it("shows only supported operational labels without inventing values", () => {
+describe("HIS-01 operational dashboard", () => {
+  it("shows live Order/session counts and recent channel/table/status", async () => {
+    api.get.mockResolvedValue({
+      data: {
+        metrics: {
+          activeOrders: 3,
+          kitchenQueue: 2,
+          readyOrders: 1,
+          openTables: 4,
+        },
+        recentOrders: [
+          {
+            id: 17,
+            channel: "QR",
+            status: "SUBMITTED",
+            tableNo: 5,
+            total: 25,
+            submittedAt: "2026-09-26T10:00:00.000Z",
+          },
+        ],
+      },
+    });
     render(<Dashboard />);
 
-    const metrics = screen.getByRole("region", {
+    const metrics = await screen.findByRole("region", {
       name: "Operatiiviset tunnusluvut",
     });
-
-    for (const label of [
-      "Avoimet tilaukset",
-      "Keittiöjonossa",
-      "Valmiina",
-      "Avoimet pöydät",
-    ]) {
-      expect(within(metrics).getByText(label)).toBeTruthy();
-    }
-
-    expect(within(metrics).getAllByLabelText("Ei saatavilla")).toHaveLength(4);
+    expect(await within(metrics).findByText("3")).toBeTruthy();
+    expect(within(metrics).getByText("2")).toBeTruthy();
+    expect(within(metrics).getByText("1")).toBeTruthy();
+    expect(within(metrics).getByText("4")).toBeTruthy();
     expect(screen.queryByText("Kuukauden myynti")).toBeNull();
-    expect(screen.queryByText("Vuoden myynti")).toBeNull();
+    expect(screen.getByText(/#17/)).toBeTruthy();
+    expect(screen.getByText("QR")).toBeTruthy();
+    expect(screen.getByText("Odottaa")).toBeTruthy();
+    expect(screen.getByText("25,00 €")).toBeTruthy();
+    expect(api.get).toHaveBeenCalledWith("/dashboard/operations");
   });
 
-  it("keeps channel, table, total, and lifecycle status as separate columns", () => {
+  it("reports API errors instead of presenting invented metrics", async () => {
+    api.get.mockRejectedValue(new Error("network unavailable"));
     render(<Dashboard />);
-
-    const table = screen.getByRole("table");
-    expect(within(table).getByText("Tilaus")).toBeTruthy();
-    expect(within(table).getByText("Tilauskanava")).toBeTruthy();
-    expect(within(table).getByText("Pöytä")).toBeTruthy();
-    expect(within(table).getByText("Yhteensä")).toBeTruthy();
-    expect(within(table).getByText("Tila")).toBeTruthy();
+    expect(await screen.findByText("Yhteenvetoa ei voitu ladata")).toBeTruthy();
     expect(
-      within(table).getByText("Tilaustietoja ei ole saatavilla"),
-    ).toBeTruthy();
-    expect(screen.queryByText("Maksettu")).toBeNull();
-    expect(screen.queryByText(/QR •/)).toBeNull();
+      screen.queryByRole("region", { name: "Operatiiviset tunnusluvut" }),
+    ).toBeNull();
   });
 });

@@ -1,8 +1,13 @@
+"use client";
+
 import Link from "next/link";
 import { ClipboardList, Plus, ReceiptText } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import {
   Table,
   TableBody,
@@ -11,13 +16,77 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import api from "@/lib/api";
+import { getApiErrorMessage, isPermissionDeniedError } from "@/lib/api-error";
 
 const operationalMetrics = [
-  "Avoimet tilaukset",
-  "Keittiöjonossa",
-  "Valmiina",
-  "Avoimet pöydät",
+  { key: "activeOrders", title: "Avoimet tilaukset" },
+  { key: "kitchenQueue", title: "Keittiöjonossa" },
+  { key: "readyOrders", title: "Valmiina" },
+  { key: "openTables", title: "Avoimet pöydät" },
 ] as const;
+
+type DashboardOrder = {
+  id: number;
+  channel: "COUNTER" | "QR";
+  status: string;
+  tableNo: number;
+  total: number;
+  submittedAt: string;
+};
+type Operations = {
+  metrics: Record<(typeof operationalMetrics)[number]["key"], number>;
+  recentOrders: DashboardOrder[];
+};
+const currency = new Intl.NumberFormat("fi-FI", {
+  style: "currency",
+  currency: "EUR",
+});
+const localTime = new Intl.DateTimeFormat("fi-FI", {
+  timeZone: "Europe/Helsinki",
+  dateStyle: "short",
+  timeStyle: "short",
+});
+const statusLabels: Record<string, string> = {
+  SUBMITTED: "Odottaa",
+  CONFIRMED: "Vahvistettu",
+  REJECTED: "Hylätty",
+  PREPARING: "Valmistetaan",
+  READY: "Valmis",
+  SERVED: "Tarjoiltu",
+  PAID: "Maksettu",
+  COMPLETED: "Valmis",
+  CANCELLED: "Peruttu",
+};
+
+function isOperations(value: unknown): value is Operations {
+  if (!value || typeof value !== "object") return false;
+  const result = value as Record<string, unknown>;
+  if (!result.metrics || typeof result.metrics !== "object") return false;
+  const metrics = result.metrics as Record<string, unknown>;
+  if (
+    !operationalMetrics.every(
+      ({ key }) =>
+        typeof metrics[key] === "number" &&
+        Number.isSafeInteger(metrics[key]) &&
+        (metrics[key] as number) >= 0,
+    ) ||
+    !Array.isArray(result.recentOrders)
+  )
+    return false;
+  return result.recentOrders.every(
+    (order: unknown) =>
+      !!order &&
+      typeof order === "object" &&
+      typeof (order as DashboardOrder).id === "number" &&
+      ["COUNTER", "QR"].includes((order as DashboardOrder).channel) &&
+      typeof (order as DashboardOrder).status === "string" &&
+      Number.isSafeInteger((order as DashboardOrder).tableNo) &&
+      Number.isFinite((order as DashboardOrder).total) &&
+      typeof (order as DashboardOrder).submittedAt === "string" &&
+      Number.isFinite(Date.parse((order as DashboardOrder).submittedAt)),
+  );
+}
 
 const quickActions = [
   {
@@ -41,19 +110,85 @@ const quickActions = [
 ] as const;
 
 export default function Dashboard() {
+  const [operations, setOperations] = useState<Operations | null>(null);
+  const [state, setState] = useState<
+    "loading" | "ready" | "error" | "forbidden"
+  >("loading");
+  const [error, setError] = useState("");
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const response = await api.get<unknown>("/dashboard/operations");
+      if (!isOperations(response.data))
+        throw new Error("Palvelin palautti virheelliset yhteenvetotiedot.");
+      setOperations(response.data);
+      setUpdatedAt(new Date());
+      setError("");
+      setState("ready");
+    } catch (reason: unknown) {
+      setError(getApiErrorMessage(reason, "Yhteenvetoa ei voitu ladata."));
+      setState(isPermissionDeniedError(reason) ? "forbidden" : "error");
+    }
+  }, []);
+
+  useEffect(() => {
+    const initial = window.setTimeout(() => void load(), 0);
+    const interval = window.setInterval(() => void load(), 15_000);
+    return () => {
+      window.clearTimeout(initial);
+      window.clearInterval(interval);
+    };
+  }, [load]);
+
+  if (state === "loading") return <LoadingState title="Yhteenvetoa ladataan" />;
+  if (state === "forbidden")
+    return (
+      <ErrorState
+        title="Ei käyttöoikeutta"
+        description="Vain ylläpitäjä voi nähdä yhteenvedon."
+      />
+    );
+  if (state === "error" && !operations)
+    return (
+      <ErrorState
+        title="Yhteenvetoa ei voitu ladata"
+        description={error}
+        action={<Button onClick={() => void load()}>Yritä uudelleen</Button>}
+      />
+    );
+
   return (
     <div className="tw04-layout space-y-8 font-sans">
       <PageHeader
         title="Tänään"
         description="Tilausten ajantasainen operatiivinen tilanne"
+        actions={
+          <Button size="sm" onClick={() => void load()}>
+            Päivitä
+          </Button>
+        }
       />
+
+      {error && (
+        <p
+          role="alert"
+          className="rounded-md border border-destructive/35 bg-destructive/10 p-3 text-sm text-destructive"
+        >
+          Tiedot voivat olla vanhentuneita. {error}
+        </p>
+      )}
 
       <section
         aria-label="Operatiiviset tunnusluvut"
         className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
       >
-        {operationalMetrics.map((title) => (
-          <OperationalMetric key={title} title={title} />
+        {operationalMetrics.map(({ key, title }) => (
+          <OperationalMetric
+            key={key}
+            title={title}
+            value={operations!.metrics[key]}
+          />
         ))}
       </section>
 
@@ -64,37 +199,49 @@ export default function Dashboard() {
               Viimeisimmät tilaukset
             </CardTitle>
             <Link
-              href="/backoffice/orders/history"
+              href="/backoffice/orders/history/orders"
               className="text-[13px] font-medium text-olive underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             >
               Näytä kaikki →
             </Link>
           </CardHeader>
-          <CardContent className="px-0 pb-0">
-            <Table className="min-w-[680px] text-[13px] lg:min-w-0">
-              <TableHeader className="bg-transparent">
-                <TableRow className="h-11 hover:bg-transparent">
-                  <TableHead className="pl-6">Tilaus</TableHead>
-                  <TableHead>Tilauskanava</TableHead>
-                  <TableHead>Pöytä</TableHead>
-                  <TableHead>Yhteensä</TableHead>
-                  <TableHead className="pr-6">Tila</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={5} className="h-[214px] px-6 text-center">
-                    <p className="font-medium text-foreground">
-                      Tilaustietoja ei ole saatavilla
-                    </p>
-                    <p className="mx-auto mt-1 max-w-md whitespace-normal text-xs leading-5 text-muted-foreground">
-                      Nykyinen API ei vielä tarjoa tilauskanavaa, pöytää tai
-                      tilauksen elinkaaritilaa tähän näkymään.
-                    </p>
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
+          <CardContent className="overflow-x-auto px-0 pb-0">
+            {operations!.recentOrders.length === 0 ? (
+              <EmptyState
+                title="Tilauksia ei löytynyt"
+                description="Uudet tilaukset näkyvät tässä automaattisesti."
+              />
+            ) : (
+              <Table className="min-w-[680px] text-[13px] lg:min-w-0">
+                <TableHeader className="bg-transparent">
+                  <TableRow className="h-11 hover:bg-transparent">
+                    <TableHead className="pl-6">Tilaus</TableHead>
+                    <TableHead>Tilauskanava</TableHead>
+                    <TableHead>Pöytä</TableHead>
+                    <TableHead>Yhteensä</TableHead>
+                    <TableHead className="pr-6">Tila</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {operations!.recentOrders.map((order) => (
+                    <TableRow key={order.id}>
+                      <TableCell className="pl-6">
+                        #{order.id} ·{" "}
+                        {localTime.format(new Date(order.submittedAt))}
+                      </TableCell>
+                      <TableCell>
+                        {order.channel === "QR" ? "QR" : "Kassa"}
+                      </TableCell>
+                      <TableCell>{order.tableNo}</TableCell>
+                      <TableCell>{currency.format(order.total)}</TableCell>
+                      <TableCell className="pr-6">
+                        {statusLabels[order.status] ?? order.status}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
 
@@ -127,14 +274,16 @@ export default function Dashboard() {
       </section>
 
       <p className="text-xs leading-5 text-muted-foreground" role="note">
-        Operatiiviset luvut ja viimeisimmät tilaukset tulevat näkyviin, kun
-        shared Order-, Kitchen- ja RestaurantTable-rajapinnat ovat käytössä.
+        {updatedAt
+          ? `Päivitetty ${localTime.format(updatedAt)} · kysely 15 s. `
+          : ""}
+        Tilaussummat eivät ole myyntiraportin tuloja.
       </p>
     </div>
   );
 }
 
-function OperationalMetric({ title }: { title: string }) {
+function OperationalMetric({ title, value }: { title: string; value: number }) {
   return (
     <Card size="sm" className="h-[126px] gap-2 py-4 shadow-none">
       <CardHeader className="px-4">
@@ -143,13 +292,8 @@ function OperationalMetric({ title }: { title: string }) {
         </CardTitle>
       </CardHeader>
       <CardContent className="px-4">
-        <p
-          className="text-[27px] leading-8 font-semibold"
-          aria-label="Ei saatavilla"
-        >
-          —
-        </p>
-        <p className="mt-2 text-xs text-muted-foreground">Ei saatavilla</p>
+        <p className="text-[27px] leading-8 font-semibold">{value}</p>
+        <p className="mt-2 text-xs text-muted-foreground">Nykyinen tilanne</p>
       </CardContent>
     </Card>
   );

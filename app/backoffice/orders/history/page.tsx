@@ -3,6 +3,7 @@
 import dayjs from "dayjs";
 import timezone from "dayjs/plugin/timezone";
 import utc from "dayjs/plugin/utc";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -94,7 +95,7 @@ export default function OrderHistoryPage() {
     <div className="tw04-layout space-y-6 font-sans">
       <PageHeader
         title="Tilaukset"
-        description="Kuitit, maksut ja peruutukset."
+        description="Maksetut kuitit ja peruutukset. Vanhat myynnit säilyvät tässä näkymässä."
         actions={
           <Button
             size="sm"
@@ -105,6 +106,24 @@ export default function OrderHistoryPage() {
           </Button>
         }
       />
+
+      <nav
+        aria-label="Historian välilehdet"
+        className="flex gap-5 border-b border-border text-sm"
+      >
+        <span
+          aria-current="page"
+          className="border-b-2 border-olive pb-3 font-semibold"
+        >
+          Kuittihistoria
+        </span>
+        <Link
+          href="/backoffice/orders/history/orders"
+          className="pb-3 text-muted-foreground hover:text-foreground"
+        >
+          Tilaushistoria
+        </Link>
+      </nav>
 
       <section
         aria-label="Kuittihistorian suodattimet"
@@ -253,6 +272,22 @@ export default function OrderHistoryPage() {
                 : ""}
             </DialogDescription>
           </DialogHeader>
+          {selectedBill?.status === "cancelled" && (
+            <p className="text-sm text-destructive">
+              Peruttu{" "}
+              {selectedBill.cancelledAt
+                ? dayjs(selectedBill.cancelledAt)
+                    .tz(businessTimeZone)
+                    .format("DD.MM.YYYY HH:mm")
+                : ""}
+              {selectedBill.CancelledBy
+                ? ` · ${selectedBill.CancelledBy.name}`
+                : ""}
+              {selectedBill.cancelReason
+                ? ` · ${selectedBill.cancelReason}`
+                : ""}
+            </p>
+          )}
           <Table>
             <TableHeader>
               <TableRow>

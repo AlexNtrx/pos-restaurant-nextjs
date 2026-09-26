@@ -20,6 +20,14 @@ export type StaffOrder = {
   tableSessionId: number | null;
   total: number;
   submittedAt: string;
+  confirmedAt: string | null;
+  rejectedAt: string | null;
+  preparingAt: string | null;
+  readyAt: string | null;
+  servedAt: string | null;
+  paidAt: string | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
   updatedAt: string;
   rejectionReason: string | null;
   cancellationReason: string | null;
@@ -51,7 +59,10 @@ type OrderPage = {
 
 export async function fetchOrderPages(filters: {
   status?: OrderStatus;
+  channel?: "COUNTER" | "QR";
   updatedAfter?: string;
+  submittedFrom?: string;
+  submittedBefore?: string;
   tableSessionId?: number;
 }): Promise<{ results: StaffOrder[]; serverTime: string }> {
   const results: StaffOrder[] = [];
