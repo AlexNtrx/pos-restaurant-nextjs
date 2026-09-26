@@ -5,11 +5,14 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:release": "node scripts/build-release.mjs",
+    "release:check": "node scripts/build-release.mjs --check",
     "start": "next start",
     "lint": "eslint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test:report-contracts": "node --experimental-strip-types --test test/report-contracts.test.mjs",
+    "test:release-config": "node --test test/release-config.test.mjs",
     "test:pos": "vitest run test/sale-page.test.tsx",
     "test:ui": "vitest run test/ui-foundation.test.tsx",
     "test:shell": "vitest run test/staff-shell.test.tsx"
