@@ -47,6 +47,7 @@ const navigationIcons = {
 type SidebarProps = {
   name: string;
   userLevel: UserLevel;
+  qrMode?: "DISABLED" | "MENU_ONLY" | "ORDERING" | null;
   collapsed?: boolean;
   mobile?: boolean;
   onNavigate?: () => void;
@@ -55,6 +56,7 @@ type SidebarProps = {
 export default function Sidebar({
   name,
   userLevel,
+  qrMode = null,
   collapsed = false,
   mobile = false,
   onNavigate,
@@ -166,7 +168,13 @@ export default function Sidebar({
                   tone="neutral"
                   className="h-10 min-h-10 border-0 bg-[#efece6] px-[16px] font-medium text-[#5f765b] [&_svg]:size-1.5"
                 >
-                  Ei käytössä
+                  {qrMode === "DISABLED"
+                    ? "Ei käytössä"
+                    : qrMode === "MENU_ONLY"
+                      ? "Vain ruokalista"
+                      : qrMode === "ORDERING"
+                        ? "Tilaaminen käytössä"
+                        : "Tila ei saatavilla"}
                 </StatusBadge>
                 <div className="flex items-center gap-[8px] text-xs text-[#94d1ad]">
                   <span

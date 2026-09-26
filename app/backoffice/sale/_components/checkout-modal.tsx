@@ -22,6 +22,11 @@ type CheckoutModalProps = {
   onChangeReceivedAmount: (amount: number) => void;
   onReceivedAmountInput: (value: string) => void;
   onCompletePayment: () => void;
+  orderId?: number;
+  paymentDetailsLocked?: boolean;
+  title?: string;
+  allowZeroTotal?: boolean;
+  errorMessage?: string;
 };
 
 const euros = (value: number) =>
@@ -39,23 +44,37 @@ export default function CheckoutModal({
   onChangeReceivedAmount,
   onReceivedAmountInput,
   onCompletePayment,
+  orderId,
+  paymentDetailsLocked = false,
+  title,
+  allowZeroTotal = false,
+  errorMessage,
 }: CheckoutModalProps) {
   const change = payType === "bank" ? 0 : Math.max(0, receivedAmount - total);
   const quickAmounts = [10, 20, 50, 100];
   return (
     <Dialog
       open={open}
-      onOpenChange={(next) => !checkoutBusy && onOpenChange(next)}
+      onOpenChange={(next) =>
+        !checkoutBusy && !paymentDetailsLocked && onOpenChange(next)
+      }
     >
       <DialogContent showCloseButton={false} className="p-6 sm:max-w-[560px]">
         <DialogHeader className="gap-3">
           <DialogTitle className="font-sans !text-xl !leading-6">
-            Maksu
+            {title ?? `Maksu${orderId ? ` · #${orderId}` : ""}`}
           </DialogTitle>
           <DialogDescription>
-            Tarkista summa ja valitse maksutapa.
+            {paymentDetailsLocked
+              ? "Maksun tulos on epävarma. Yritä uudelleen samoilla tiedoilla."
+              : "Tarkista summa ja valitse maksutapa."}
           </DialogDescription>
         </DialogHeader>
+        {errorMessage && (
+          <p role="alert" className="text-sm text-destructive">
+            {errorMessage}
+          </p>
+        )}
         <div>
           <p className="m-0 text-xs text-muted-foreground">Maksettava</p>
           <p className="m-0 mt-1 text-2xl font-semibold text-action">
@@ -77,7 +96,7 @@ export default function CheckoutModal({
                   ? "h-[54px] justify-start border-action bg-muted"
                   : "h-[54px] justify-start"
               }
-              disabled={checkoutBusy}
+              disabled={checkoutBusy || paymentDetailsLocked}
               onClick={() => onSelectPaymentType("cash")}
             >
               Käteinen
@@ -92,7 +111,7 @@ export default function CheckoutModal({
                   ? "h-[54px] justify-start border-action bg-muted"
                   : "h-[54px] justify-start"
               }
-              disabled={checkoutBusy}
+              disabled={checkoutBusy || paymentDetailsLocked}
               onClick={() => onSelectPaymentType("bank")}
             >
               Pankki
@@ -115,7 +134,7 @@ export default function CheckoutModal({
                 step="1"
                 className="h-11 text-base"
                 value={receivedAmount}
-                disabled={checkoutBusy}
+                disabled={checkoutBusy || paymentDetailsLocked}
                 onChange={(event) => onReceivedAmountInput(event.target.value)}
               />
               <div className="flex gap-2">
@@ -124,7 +143,7 @@ export default function CheckoutModal({
                     key={amount}
                     type="button"
                     variant="outline"
-                    disabled={checkoutBusy}
+                    disabled={checkoutBusy || paymentDetailsLocked}
                     onClick={() =>
                       onChangeReceivedAmount(receivedAmount + amount)
                     }
@@ -150,7 +169,11 @@ export default function CheckoutModal({
         </p>
         <DialogFooter className="mt-2">
           <DialogClose asChild>
-            <Button type="button" variant="ghost">
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={checkoutBusy || paymentDetailsLocked}
+            >
               Peruuta
             </Button>
           </DialogClose>
@@ -160,7 +183,8 @@ export default function CheckoutModal({
             disabled={
               checkoutBusy ||
               receiptBusy ||
-              total <= 0 ||
+              total < 0 ||
+              (total === 0 && orderId == null && !allowZeroTotal) ||
               (payType === "cash" && receivedAmount < total)
             }
             onClick={onCompletePayment}

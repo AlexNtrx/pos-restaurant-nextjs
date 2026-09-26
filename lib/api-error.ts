@@ -5,8 +5,9 @@ export function isPermissionDeniedError(error: unknown): boolean {
 }
 
 export function getApiErrorMessage(error: unknown, fallback: string): string {
-  if (isAxiosError<{ message?: unknown }>(error)) {
-    const message = error.response?.data?.message;
+  if (isAxiosError<{ message?: unknown; error?: unknown }>(error)) {
+    const message =
+      error.response?.data?.message ?? error.response?.data?.error;
 
     if (typeof message === "string" && message.trim()) {
       return message;

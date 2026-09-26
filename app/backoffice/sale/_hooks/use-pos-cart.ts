@@ -25,6 +25,7 @@ export default function usePosCart({
   const [items, setItems] = useState<SaleTemp[]>([]);
   const [summary, setSummary] = useState<CartSummary>(emptySummary);
   const [cartBusy, setCartBusy] = useState(false);
+  const [loadedTable, setLoadedTable] = useState<number | null>(null);
   const cartRequestId = useRef(0);
   const currentTableRef = useRef(table);
 
@@ -35,6 +36,7 @@ export default function usePosCart({
   const setTable = useCallback((nextTable: number) => {
     currentTableRef.current = nextTable;
     cartRequestId.current += 1;
+    setLoadedTable(null);
     setTableState(nextTable);
 
     if (!Number.isInteger(nextTable) || nextTable < 1) {
@@ -67,6 +69,7 @@ export default function usePosCart({
         if (!canCommit()) return;
         setItems(parsed.results);
         setSummary(parsed.summary);
+        setLoadedTable(requestedTable);
         return parsed;
       } catch (error: unknown) {
         if (!canCommit()) return;
@@ -156,6 +159,7 @@ export default function usePosCart({
     items,
     summary,
     cartBusy,
+    loadedTable,
     refreshCart,
     addItem,
     updateQuantity,

@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -15,19 +16,30 @@ const { api, toast } = vi.hoisted(() => ({
 vi.mock("@/lib/api", () => ({ default: api }));
 vi.mock("sonner", () => ({ toast }));
 vi.mock("@/app/config", () => ({
-  default: { apiServer: "http://example.test" },
+  default: { apiServer: "http://example.test", token: "test-token" },
 }));
 import SalePage from "@/app/backoffice/sale/page";
+import CounterOrderCheckout from "@/app/backoffice/sale/_components/counter-order-checkout";
 
 const food = { id: 1, name: "Test meal", img: "", price: 25 };
 const cart = {
   results: [],
   summary: { baseAmount: 0, addedAmount: 0, total: 0 },
 };
+const servedCounterOrder = {
+  id: 81,
+  status: "SERVED",
+  total: 80,
+  version: 5,
+  submittedAt: "2026-09-23T12:00:00.000Z",
+  Items: [{ foodName: "Previously ordered meal", quantity: 2 }],
+};
 
 describe("POS safety net", () => {
   afterEach(cleanup);
   beforeEach(() => {
+    process.env.NEXT_PUBLIC_ORD02_DRAFT_ENABLED = "false";
+    localStorage.clear();
     vi.clearAllMocks();
     api.get.mockImplementation((path: string) => {
       if (path === "/food/filter/all")
@@ -47,6 +59,373 @@ describe("POS safety net", () => {
     expect(api.get).toHaveBeenCalledWith("/saleTemp/list/", {
       params: { tableNo: 1 },
     });
+  });
+
+  it("keeps a new Counter draft through reload, customizes it, and submits without SaleTemp writes", async () => {
+    process.env.NEXT_PUBLIC_ORD02_DRAFT_ENABLED = "true";
+    localStorage.setItem("test-token", "token");
+    localStorage.setItem("next_name", "Cashier");
+    localStorage.setItem("next_user_id", "7");
+    api.get.mockImplementation((path: string) => {
+      if (path === "/food/filter/all")
+        return Promise.resolve({ data: { results: [food] } });
+      if (path === "/saleTemp/list/") return Promise.resolve({ data: cart });
+      if (path === "/counterOrder/options/1")
+        return Promise.resolve({
+          data: {
+            results: { tastes: [{ id: 3, name: "Spicy" }], foodSizes: [] },
+          },
+        });
+      return Promise.resolve({ data: { results: [] } });
+    });
+    api.post.mockImplementation(
+      (
+        path: string,
+        payload: {
+          items?: Array<{
+            foodId: number;
+            quantity: number;
+            tasteId?: number | null;
+          }>;
+        },
+      ) => {
+        if (path === "/counterOrder/quote") {
+          const quantity =
+            payload.items?.reduce((sum, item) => sum + item.quantity, 0) ?? 0;
+          return Promise.resolve({
+            data: {
+              results: {
+                subtotal: quantity * 25,
+                modifierTotal: 0,
+                total: quantity * 25,
+                items:
+                  payload.items?.map((item) => ({
+                    foodId: item.foodId,
+                    foodName: food.name,
+                    quantity: item.quantity,
+                    unitBasePrice: 25,
+                    lineTotal: item.quantity * 25,
+                    modifiers: [],
+                  })) ?? [],
+              },
+            },
+          });
+        }
+        if (path === "/counterOrder/submit")
+          return Promise.resolve({
+            data: { orderId: 90, status: "SUBMITTED", total: 25 },
+          });
+        return Promise.resolve({ data: {} });
+      },
+    );
+    render(<SalePage />);
+    const image = await screen.findByAltText("Test meal");
+    await waitFor(() => expect(image.closest("button")?.disabled).toBe(false));
+    fireEvent.click(image);
+    await waitFor(() =>
+      expect(screen.getByTestId("cart-total").textContent).toContain("25"),
+    );
+    expect(api.post).not.toHaveBeenCalledWith(
+      "/saleTemp/create",
+      expect.anything(),
+    );
+    expect(
+      JSON.parse(localStorage.getItem("counter-draft:v1:7:1") ?? "[]"),
+    ).toHaveLength(1);
+    cleanup();
+    render(<SalePage />);
+    fireEvent.click(await screen.findByRole("button", { name: /customize/i }));
+    fireEvent.click(await screen.findByRole("button", { name: "Spicy" }));
+    await waitFor(() =>
+      expect(
+        JSON.parse(localStorage.getItem("counter-draft:v1:7:1") ?? "[]")[0]
+          .tasteId,
+      ).toBe(3),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Tallenna" }));
+    fireEvent.click(screen.getByRole("button", { name: /^send to kitchen$/i }));
+    fireEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", {
+        name: /^send to kitchen$/i,
+      }),
+    );
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        "/counterOrder/submit",
+        expect.objectContaining({
+          tableNo: 1,
+          items: [{ foodId: 1, quantity: 1, foodSizeId: null, tasteId: 3 }],
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(localStorage.getItem("counter-draft:v1:7:1")).toBeNull(),
+    );
+  });
+
+  it("retries the same draft checkout after reload when the network result is unknown", async () => {
+    process.env.NEXT_PUBLIC_ORD02_DRAFT_ENABLED = "true";
+    localStorage.setItem("test-token", "token");
+    localStorage.setItem("next_name", "Cashier");
+    localStorage.setItem("next_user_id", "7");
+    localStorage.setItem(
+      "counter-draft:v1:7:1",
+      JSON.stringify([{ id: 1, foodId: 1, foodSizeId: null, tasteId: null }]),
+    );
+    let checkoutCalls = 0;
+    api.post.mockImplementation((path: string) => {
+      if (path === "/counterOrder/quote")
+        return Promise.resolve({
+          data: {
+            results: {
+              subtotal: 25,
+              modifierTotal: 0,
+              total: 25,
+              items: [
+                {
+                  foodId: 1,
+                  foodName: food.name,
+                  quantity: 1,
+                  unitBasePrice: 25,
+                  lineTotal: 25,
+                  modifiers: [],
+                },
+              ],
+            },
+          },
+        });
+      if (path === "/counterOrder/checkout") {
+        checkoutCalls += 1;
+        return checkoutCalls === 1
+          ? Promise.reject(new Error("network lost"))
+          : Promise.resolve({
+              data: {
+                billId: 305,
+                amount: 25,
+                inputMoney: 25,
+                returnMoney: 0,
+                replayed: true,
+              },
+            });
+      }
+      return Promise.reject(new Error("receipt unavailable"));
+    });
+    vi.stubGlobal("crypto", { randomUUID: () => "draft-retry-key" });
+    render(<SalePage />);
+    const pay = await screen.findByRole("button", { name: /^pay$/i });
+    await waitFor(() =>
+      expect((pay as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(pay);
+    fireEvent.click(screen.getByRole("button", { name: /bank transfer/i }));
+    fireEvent.click(screen.getByRole("button", { name: /complete payment/i }));
+    fireEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", {
+        name: /^confirm payment$/i,
+      }),
+    );
+    await waitFor(() => expect(checkoutCalls).toBe(1));
+    expect(localStorage.getItem("counter-draft:v1:7:1:attempt")).toContain(
+      "draft-retry-key",
+    );
+    cleanup();
+    render(<SalePage />);
+    const retry = await screen.findByRole("button", { name: /^pay$/i });
+    await waitFor(() =>
+      expect((retry as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(retry);
+    fireEvent.click(screen.getByRole("button", { name: /complete payment/i }));
+    await waitFor(() => expect(checkoutCalls).toBe(2));
+    const requests = api.post.mock.calls.filter(
+      ([path]) => path === "/counterOrder/checkout",
+    );
+    expect(requests[0][1]).toEqual(requests[1][1]);
+    await waitFor(() => {
+      expect(localStorage.getItem("counter-draft:v1:7:1")).toBeNull();
+      expect(localStorage.getItem("counter-draft:v1:7:1:attempt")).toBeNull();
+    });
+    expect(api.post).not.toHaveBeenCalledWith(
+      "/saleTemp/endSale",
+      expect.anything(),
+    );
+  });
+
+  it("pays only the served Order, keeps the new cart, and reprints its saved bill after a receipt failure", async () => {
+    let paid = false;
+    api.get.mockImplementation((path: string) => {
+      if (path === "/food/filter/all")
+        return Promise.resolve({ data: { results: [food] } });
+      if (path === "/saleTemp/list/")
+        return Promise.resolve({
+          data: {
+            results: [
+              {
+                id: 7,
+                qty: 1,
+                Food: food,
+                saleTempDetails: [],
+                pricing: { baseAmount: 25, addedAmount: 0, total: 25 },
+              },
+            ],
+            summary: { baseAmount: 25, addedAmount: 0, total: 25 },
+          },
+        });
+      if (path === "/saleTemp/pendingCounterOrders")
+        return Promise.resolve({
+          data: {
+            results: paid
+              ? []
+              : [
+                  servedCounterOrder,
+                  {
+                    ...servedCounterOrder,
+                    id: 82,
+                    status: "SUBMITTED",
+                    version: 1,
+                  },
+                ],
+          },
+        });
+      return Promise.resolve({ data: { results: [] } });
+    });
+    api.post.mockImplementation((path: string) => {
+      if (path === "/counterOrder/81/settle") {
+        paid = true;
+        return Promise.resolve({
+          data: { billId: 201, amount: 80, inputMoney: 80, returnMoney: 0 },
+        });
+      }
+      return Promise.reject(new Error("receipt unavailable"));
+    });
+    vi.stubGlobal("crypto", { randomUUID: () => "served-payment-key" });
+    render(<SalePage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Pay Order #81" }),
+    );
+    expect(screen.queryByRole("button", { name: "Pay Order #82" })).toBeNull();
+    expect(screen.getByText("Maksu · #81")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /bank transfer/i }));
+    fireEvent.click(screen.getByRole("button", { name: /complete payment/i }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/counterOrder/81/settle", {
+        expectedVersion: 5,
+        idempotencyKey: "served-payment-key",
+        payType: "bank",
+      }),
+    );
+    await waitFor(() =>
+      expect(toast.warning).toHaveBeenCalledWith(
+        "Sale completed",
+        expect.any(Object),
+      ),
+    );
+    expect(screen.getByTestId("cart-total").textContent).toContain("25");
+    expect(
+      api.get.mock.calls.filter(([path]) => path === "/saleTemp/list/"),
+    ).toHaveLength(1);
+    expect(
+      api.post.mock.calls.some(([path]) => path === "/saleTemp/endSale"),
+    ).toBe(false);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reprint Receipt #201" }),
+    );
+    await waitFor(() =>
+      expect(
+        api.post.mock.calls.filter(
+          ([path]) => path === "/saleTemp/printBillAfterPay",
+        ),
+      ).toHaveLength(2),
+    );
+    expect(
+      api.post.mock.calls.filter(
+        ([path]) => path === "/counterOrder/81/settle",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("locks uncertain cash payment details and retries the identical Order payload without double submission", async () => {
+    let rejectPayment!: (error: Error) => void;
+    api.post.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectPayment = reject;
+        }),
+    );
+    const onPaid = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+    const newKey = vi.fn(() => "cash-order-key");
+    vi.stubGlobal("crypto", { randomUUID: newKey });
+    render(
+      <CounterOrderCheckout
+        order={servedCounterOrder}
+        onClose={onClose}
+        onPaid={onPaid}
+        onBusyChange={vi.fn()}
+        onRefresh={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Vastaanotettu"), {
+      target: { value: "100" },
+    });
+    const complete = screen.getByRole("button", { name: /complete payment/i });
+    fireEvent.click(complete);
+    fireEvent.click(complete);
+    expect(api.post).toHaveBeenCalledTimes(1);
+    rejectPayment(new Error("connection lost after commit"));
+    await screen.findByText(/Maksun tulos on epävarma/);
+    expect(
+      (screen.getByLabelText("Vastaanotettu") as HTMLInputElement).disabled,
+    ).toBe(true);
+    expect(
+      (
+        screen.getByRole("button", {
+          name: /bank transfer/i,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole("button", { name: "Peruuta" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    api.post.mockResolvedValueOnce({
+      data: { billId: 202, amount: 80, inputMoney: 100, returnMoney: 20 },
+    });
+    fireEvent.click(complete);
+    await waitFor(() => expect(onPaid).toHaveBeenCalledWith(202));
+    expect(api.post.mock.calls[0]).toEqual(api.post.mock.calls[1]);
+    expect(api.post.mock.calls[1][1]).toEqual({
+      expectedVersion: 5,
+      idempotencyKey: "cash-order-key",
+      payType: "cash",
+      inputMoney: 100,
+    });
+    expect(newKey).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes a stale Order after a rejected payment without retrying it automatically", async () => {
+    api.post.mockRejectedValueOnce({
+      isAxiosError: true,
+      response: { status: 409, data: { code: "STALE_VERSION" } },
+    });
+    const onClose = vi.fn();
+    const onRefresh = vi.fn().mockResolvedValue(undefined);
+    const onPaid = vi.fn();
+    render(
+      <CounterOrderCheckout
+        order={servedCounterOrder}
+        onClose={onClose}
+        onPaid={onPaid}
+        onBusyChange={vi.fn()}
+        onRefresh={onRefresh}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /bank transfer/i }));
+    fireEvent.click(screen.getByRole("button", { name: /complete payment/i }));
+    await waitFor(() => expect(onRefresh).toHaveBeenCalledTimes(1));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onPaid).not.toHaveBeenCalled();
+    expect(api.post).toHaveBeenCalledTimes(1);
   });
 
   it("renders the approved responsive product card without helper content", async () => {
@@ -411,6 +790,80 @@ describe("POS safety net", () => {
     );
   });
 
+  it("sends the current cart to the kitchen queue without charging it", async () => {
+    let sent = false;
+    const cartWithItem = {
+      results: [
+        {
+          id: 7,
+          qty: 1,
+          Food: food,
+          saleTempDetails: [],
+          pricing: { baseAmount: 25, addedAmount: 0, total: 25 },
+        },
+      ],
+      summary: { baseAmount: 25, addedAmount: 0, total: 25 },
+    };
+    api.get.mockImplementation((path: string) => {
+      if (path === "/food/filter/all")
+        return Promise.resolve({ data: { results: [food] } });
+      if (path === "/saleTemp/list/")
+        return Promise.resolve({ data: sent ? cart : cartWithItem });
+      if (path === "/saleTemp/pendingCounterOrders")
+        return Promise.resolve({
+          data: {
+            results: sent
+              ? [
+                  {
+                    id: 42,
+                    status: "SUBMITTED",
+                    total: 25,
+                    version: 1,
+                    submittedAt: "2026-09-23T12:00:00.000Z",
+                    Items: [{ foodName: "Test meal", quantity: 1 }],
+                  },
+                ]
+              : [],
+          },
+        });
+      return Promise.resolve({ data: { results: [] } });
+    });
+    api.post.mockImplementation((path: string) => {
+      if (path === "/saleTemp/submitToKitchen") {
+        sent = true;
+        return Promise.resolve({
+          data: {
+            orderId: 42,
+            status: "SUBMITTED",
+            total: 25,
+            replayed: false,
+          },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+    vi.stubGlobal("crypto", { randomUUID: () => "kitchen-key" });
+    render(<SalePage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^send to kitchen$/i }),
+    );
+    fireEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", {
+        name: /^send to kitchen$/i,
+      }),
+    );
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/saleTemp/submitToKitchen", {
+        tableNo: 1,
+        idempotencyKey: "kitchen-key",
+      }),
+    );
+    expect(
+      api.post.mock.calls.some(([path]) => path === "/saleTemp/endSale"),
+    ).toBe(false);
+    expect(await screen.findByText(/#42 · SUBMITTED/)).toBeTruthy();
+  });
+
   it("reuses the idempotency key after a retryable checkout failure", async () => {
     api.get.mockImplementation((path: string) => {
       if (path === "/food/filter/all")
@@ -496,6 +949,66 @@ describe("POS safety net", () => {
     await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
     view.unmount();
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:receipt");
+  });
+
+  it("labels a browser-draft pre-bill as unpaid", async () => {
+    process.env.NEXT_PUBLIC_ORD02_DRAFT_ENABLED = "true";
+    localStorage.setItem("test-token", "token");
+    localStorage.setItem("next_name", "Cashier");
+    localStorage.setItem("next_user_id", "7");
+    localStorage.setItem(
+      "counter-draft:v1:7:1",
+      JSON.stringify([{ id: 1, foodId: 1, foodSizeId: null, tasteId: null }]),
+    );
+    api.post.mockImplementation((path: string) => {
+      if (path === "/counterOrder/quote")
+        return Promise.resolve({
+          data: {
+            results: {
+              subtotal: 25,
+              modifierTotal: 0,
+              total: 25,
+              items: [
+                {
+                  foodId: 1,
+                  foodName: food.name,
+                  quantity: 1,
+                  unitBasePrice: 25,
+                  lineTotal: 25,
+                  modifiers: [],
+                },
+              ],
+            },
+          },
+        });
+      if (path === "/counterOrder/prebill")
+        return Promise.resolve({
+          data: new Blob(["pdf"], { type: "application/pdf" }),
+          headers: { "content-type": "application/pdf" },
+        });
+      return Promise.resolve({ data: {} });
+    });
+    URL.createObjectURL = vi.fn(() => "blob:prebill");
+    URL.revokeObjectURL = vi.fn();
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      callback(0);
+      return 0;
+    });
+    render(<SalePage />);
+    await waitFor(() =>
+      expect(screen.getByTestId("cart-total").textContent).toContain("25"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /print pre-bill/i }));
+    expect(await screen.findByText("Esilasku valmis")).toBeTruthy();
+    expect(screen.queryByText("Maksu hyväksytty")).toBeNull();
+    expect(api.post).toHaveBeenCalledWith(
+      "/counterOrder/prebill",
+      {
+        tableNo: 1,
+        items: [{ foodId: 1, quantity: 1, foodSizeId: null, tasteId: null }],
+      },
+      { responseType: "blob" },
+    );
   });
 
   it("ignores a stale cart response after switching tables", async () => {

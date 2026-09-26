@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import StaffShell from "@/app/backoffice/components/staff-shell";
@@ -11,6 +11,11 @@ import {
 } from "@/lib/access-control";
 
 const replace = vi.fn();
+vi.mock("@/lib/api", () => ({
+  default: {
+    get: vi.fn(async () => ({ data: { result: { mode: "DISABLED" } } })),
+  },
+}));
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/backoffice/dashboard",
@@ -39,8 +44,21 @@ describe("TW-03 staff shell and navigation", () => {
       true,
     );
     expect(canAccessBackofficePath("/backoffice/sale", "user")).toBe(true);
+    expect(canAccessBackofficePath("/backoffice/orders/inbox", "user")).toBe(
+      true,
+    );
     expect(canAccessBackofficePath("/backoffice/user", "user")).toBe(false);
-    expect(canAccessBackofficePath("/backoffice/kitchen", "admin")).toBe(false);
+    expect(canAccessBackofficePath("/backoffice/settings/tables", "user")).toBe(
+      true,
+    );
+    expect(
+      canAccessBackofficePath("/backoffice/settings/restaurant", "user"),
+    ).toBe(false);
+    expect(
+      canAccessBackofficePath("/backoffice/settings/qr-ordering", "user"),
+    ).toBe(false);
+    expect(canAccessBackofficePath("/backoffice/kitchen", "admin")).toBe(true);
+    expect(canAccessBackofficePath("/backoffice/kitchen", "user")).toBe(true);
     expect(getBackofficeLanding("admin")).toBe("/backoffice/dashboard");
     expect(getBackofficeLanding("user")).toBe("/backoffice/sale");
   });
@@ -48,7 +66,7 @@ describe("TW-03 staff shell and navigation", () => {
   it("shows only navigation groups permitted by the existing role contract", () => {
     expect(
       getVisibleBackofficeNavigation("user").map(({ label }) => label),
-    ).toEqual(["Tilaukset"]);
+    ).toEqual(["Tilaukset", "Keittiö", "Asetukset"]);
     expect(
       getVisibleBackofficeNavigation("admin").map(({ label }) => label),
     ).toEqual([
@@ -61,7 +79,7 @@ describe("TW-03 staff shell and navigation", () => {
     ]);
   });
 
-  it("renders the responsive shell without changing page content", () => {
+  it("renders the responsive shell without changing page content", async () => {
     render(
       <StaffShell name="Ada Korhonen" userLevel="admin">
         <h1>Legacy page content</h1>
@@ -79,7 +97,17 @@ describe("TW-03 staff shell and navigation", () => {
       0,
     );
     expect(screen.getAllByText("QR-tilaaminen").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Ei käytössä").length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Ei käytössä")).length).toBeGreaterThan(
+      0,
+    );
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("qr-mode-changed", { detail: "ORDERING" }),
+      );
+    });
+    expect(screen.getAllByText("Tilaaminen käytössä").length).toBeGreaterThan(
+      0,
+    );
     expect(screen.getAllByText("Yhteys kunnossa").length).toBeGreaterThan(0);
     expect(screen.queryByText("Ruokalistan tuotteet")).toBeNull();
     expect(screen.queryByText("Tulossa")).toBeNull();
@@ -152,8 +180,8 @@ describe("TW-03 staff shell and navigation", () => {
       (item) => item.textContent === "Keittiö",
     );
     expect(kitchenItem?.tagName).toBe("A");
-    expect(kitchenItem?.getAttribute("aria-disabled")).toBe("true");
-    expect(kitchenItem?.getAttribute("href")).toBeNull();
+    expect(kitchenItem?.getAttribute("aria-disabled")).toBeNull();
+    expect(kitchenItem?.getAttribute("href")).toBe("/backoffice/kitchen");
   });
 
   it("preserves confirmed sign-out behavior", async () => {

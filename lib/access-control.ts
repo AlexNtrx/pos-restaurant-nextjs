@@ -84,6 +84,11 @@ export const backofficeNavigation: readonly BackofficeNavigationGroup[] = [
         roles: allStaff,
       },
       {
+        href: "/backoffice/orders/inbox",
+        label: "Saapuvat tilaukset",
+        roles: allStaff,
+      },
+      {
         href: "/backoffice/orders/history",
         label: "Myyntihistoria",
         legacyPaths: ["/backoffice/salereport"],
@@ -91,14 +96,12 @@ export const backofficeNavigation: readonly BackofficeNavigationGroup[] = [
       },
     ],
   },
-  // EN: Keep the approved destination visible without exposing a route before kitchen behavior exists.
-  // FI: Pidä hyväksytty kohde näkyvissä avaamatta reittiä ennen keittiötoiminnon toteutusta.
   {
     id: "kitchen",
+    href: "/backoffice/kitchen",
     label: "Keittiö",
     icon: "kitchen",
-    roles: adminOnly,
-    unavailable: true,
+    roles: allStaff,
   },
   {
     id: "reports",
@@ -123,15 +126,25 @@ export const backofficeNavigation: readonly BackofficeNavigationGroup[] = [
   },
   {
     id: "settings",
-    href: "/backoffice/settings/restaurant",
+    href: "/backoffice/settings/tables",
     label: "Asetukset",
     icon: "settings",
-    roles: adminOnly,
+    roles: allStaff,
     children: [
+      {
+        href: "/backoffice/settings/tables",
+        label: "Pöydät ja QR-istunnot",
+        roles: allStaff,
+      },
       {
         href: "/backoffice/settings/restaurant",
         label: "Ravintolan tiedot",
         legacyPaths: ["/backoffice/organization"],
+        roles: adminOnly,
+      },
+      {
+        href: "/backoffice/settings/qr-ordering",
+        label: "QR-tilaaminen",
         roles: adminOnly,
       },
       {
@@ -196,7 +209,10 @@ export function canAccessBackofficePath(pathname: string, level: UserLevel) {
   // FI: Kanoniset ja vanhat polut jakavat saman roolisäännön vaiheittaisen siirtymän ajan.
   return backofficeNavigation.some((group) => {
     if (group.unavailable || !hasRole(group.roles, level)) return false;
-    if (group.href && matchesPath(pathname, group.href)) return true;
+    // EN: A group link with children must use the matching child's role, not grant its parent role to every settings page.
+    // FI: Alilinkillisen ryhmän osoite käyttää vastaavan alilinkin roolia, eikä ylätason rooli avaa kaikkia asetussivuja.
+    if (!group.children && group.href && matchesPath(pathname, group.href))
+      return true;
     return (
       group.children?.some(
         ({ href, legacyPaths, roles }) =>

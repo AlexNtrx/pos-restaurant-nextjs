@@ -1,7 +1,7 @@
 "use client";
 
 import { Menu, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -11,6 +11,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import type { UserLevel } from "@/lib/access-control";
+import api from "@/lib/api";
 
 import Sidebar from "./sidebar";
 
@@ -36,6 +37,46 @@ export default function StaffShell({
   userLevel,
 }: StaffShellProps) {
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
+  const [qrMode, setQrMode] = useState<
+    "DISABLED" | "MENU_ONLY" | "ORDERING" | null
+  >(null);
+  const qrModeVersionRef = useRef(0);
+
+  useEffect(() => {
+    let active = true;
+    const version = qrModeVersionRef.current;
+    void api
+      .get("/qr-mode")
+      .then(({ data }) => {
+        const mode = data?.result?.mode;
+        if (
+          active &&
+          version === qrModeVersionRef.current &&
+          (mode === "DISABLED" || mode === "MENU_ONLY" || mode === "ORDERING")
+        )
+          setQrMode(mode);
+      })
+      .catch(() => {
+        if (active && version === qrModeVersionRef.current) setQrMode(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    // EN: QR settings notify the persistent shell so its mode badge changes without reloading the page.
+    // FI: QR-asetukset ilmoittavat pysyvälle kuorelle, jotta tilamerkki päivittyy ilman sivun latausta.
+    const onModeChanged = (event: Event) => {
+      const mode = (event as CustomEvent<unknown>).detail;
+      if (mode === "DISABLED" || mode === "MENU_ONLY" || mode === "ORDERING") {
+        qrModeVersionRef.current += 1;
+        setQrMode(mode);
+      }
+    };
+    window.addEventListener("qr-mode-changed", onModeChanged);
+    return () => window.removeEventListener("qr-mode-changed", onModeChanged);
+  }, []);
 
   return (
     <div className="flex min-h-dvh w-full items-start bg-canvas text-foreground">
@@ -50,10 +91,10 @@ export default function StaffShell({
       {/* EN: Keep desktop rails attached to the viewport while long legacy pages continue scrolling in the document. */}
       {/* FI: Pidä työpöydän sivupalkit kiinni näkymässä, kun pitkät legacy-sivut vierivät edelleen dokumentissa. */}
       <div className="sticky top-0 hidden h-dvh self-start md:block xl:hidden">
-        <Sidebar name={name} userLevel={userLevel} collapsed />
+        <Sidebar name={name} userLevel={userLevel} qrMode={qrMode} collapsed />
       </div>
       <div className="sticky top-0 hidden h-dvh self-start xl:block">
-        <Sidebar name={name} userLevel={userLevel} />
+        <Sidebar name={name} userLevel={userLevel} qrMode={qrMode} />
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -113,6 +154,7 @@ export default function StaffShell({
           <Sidebar
             name={name}
             userLevel={userLevel}
+            qrMode={qrMode}
             mobile
             onNavigate={() => setMobileNavigationOpen(false)}
           />

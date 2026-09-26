@@ -27,6 +27,14 @@ export type CheckoutResult = {
   returnMoney: number;
   replayed: boolean;
 };
+export type PendingCounterOrder = {
+  id: number;
+  status: string;
+  total: number;
+  version: number;
+  submittedAt: string;
+  Items: { foodName: string; quantity: number }[];
+};
 
 // Validates is record before it is used.
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -136,4 +144,51 @@ export const parseCheckoutResult = (value: unknown): CheckoutResult | null => {
     returnMoney,
     replayed: replayed === true,
   };
+};
+
+// EN: Validate the pending-order boundary before showing kitchen-queue records in Counter.
+// FI: Tarkista odottavien tilausten rajapinta ennen keittiöjonon tietojen näyttämistä kassalla.
+export const parsePendingCounterOrders = (
+  value: unknown,
+): PendingCounterOrder[] | null => {
+  if (!isRecord(value) || !Array.isArray(value.results)) return null;
+  const orders: PendingCounterOrder[] = [];
+  for (const raw of value.results) {
+    if (
+      !isRecord(raw) ||
+      !isSafeInteger(raw.id) ||
+      raw.id < 1 ||
+      typeof raw.status !== "string" ||
+      !["SUBMITTED", "CONFIRMED", "PREPARING", "READY", "SERVED"].includes(
+        raw.status,
+      ) ||
+      !isSafeInteger(raw.total) ||
+      raw.total < 0 ||
+      !isSafeInteger(raw.version) ||
+      raw.version < 1 ||
+      typeof raw.submittedAt !== "string" ||
+      !Array.isArray(raw.Items)
+    )
+      return null;
+    const items: PendingCounterOrder["Items"] = [];
+    for (const item of raw.Items) {
+      if (
+        !isRecord(item) ||
+        typeof item.foodName !== "string" ||
+        !isSafeInteger(item.quantity) ||
+        item.quantity < 1
+      )
+        return null;
+      items.push({ foodName: item.foodName, quantity: item.quantity });
+    }
+    orders.push({
+      id: raw.id,
+      status: raw.status,
+      total: raw.total,
+      version: raw.version,
+      submittedAt: raw.submittedAt,
+      Items: items,
+    });
+  }
+  return orders;
 };

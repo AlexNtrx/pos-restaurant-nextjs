@@ -237,6 +237,10 @@ export default function SessionBoundary({
     );
   }
 
+  // EN: The approved Kitchen frame is full-screen; keep this same authenticated boundary without the backoffice rail.
+  // FI: Hyväksytty keittiönäkymä on koko näytön kokoinen; käytä samaa tunnistettua rajaa ilman sivupalkkia.
+  if (pathname === "/backoffice/kitchen") return <>{children}</>;
+
   // Main UI
   return (
     <StaffShell name={state.session.name} userLevel={state.level}>
