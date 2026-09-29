@@ -14,14 +14,16 @@ import {
 type ReceiptPreviewProps = {
   billUrl: string;
   kind: "prebill" | "paid";
+  historical?: boolean;
   onClose: () => void;
   lastCompletedBillId: number | null;
-  onReprint: () => void;
+  onReprint?: () => void;
 };
 
 export default function ReceiptPreview({
   billUrl,
   kind,
+  historical = false,
   onClose,
   lastCompletedBillId,
   onReprint,
@@ -31,16 +33,26 @@ export default function ReceiptPreview({
       <DialogContent showCloseButton={false} className="p-6 sm:max-w-[560px]">
         <DialogHeader className="gap-3">
           <DialogTitle className="font-sans !text-xl !leading-6">
-            {kind === "paid" ? "Kuitti valmis" : "Esilasku valmis"}
+            {historical
+              ? "Kuitin kopio"
+              : kind === "paid"
+                ? "Kuitti valmis"
+                : "Esilasku valmis"}
           </DialogTitle>
           <DialogDescription>
-            {kind === "paid"
-              ? "Maksu hyväksyttiin ja kuitti on valmis."
-              : "Esilasku on valmis tulostettavaksi."}
+            {historical
+              ? "Aiemmin maksettu kuitti on valmis tulostettavaksi."
+              : kind === "paid"
+                ? "Maksu hyväksyttiin ja kuitti on valmis."
+                : "Esilasku on valmis tulostettavaksi."}
           </DialogDescription>
         </DialogHeader>
         <p className="m-0 text-sm font-medium text-[#5f7f65]">
-          {kind === "paid" ? "Maksu hyväksytty" : "Esilasku"}
+          {historical
+            ? "Kuitin uudelleentulostus"
+            : kind === "paid"
+              ? "Maksu hyväksytty"
+              : "Esilasku"}
         </p>
         {billUrl ? (
           <iframe
@@ -59,7 +71,7 @@ export default function ReceiptPreview({
               : "Print receipt"
           }
           onClick={
-            lastCompletedBillId && kind === "paid"
+            lastCompletedBillId && kind === "paid" && onReprint
               ? onReprint
               : () =>
                   billUrl &&
@@ -74,7 +86,7 @@ export default function ReceiptPreview({
               Sulje
             </Button>
           </DialogClose>
-          {kind === "paid" ? (
+          {kind === "paid" && !historical ? (
             <DialogClose asChild>
               <Button type="button">Uusi</Button>
             </DialogClose>

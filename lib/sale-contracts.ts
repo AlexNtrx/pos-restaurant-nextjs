@@ -26,13 +26,16 @@ export type CheckoutResult = {
   inputMoney: number;
   returnMoney: number;
   replayed: boolean;
+  pickupNo?: number;
 };
-export type PendingCounterOrder = {
+export type SentCounterOrder = {
   id: number;
+  serviceType: "DINE_IN" | "TAKEAWAY";
   status: string;
   total: number;
   version: number;
   submittedAt: string;
+  billSaleId: number | null;
   Items: { foodName: string; quantity: number }[];
 };
 
@@ -128,13 +131,14 @@ export const parseCartResponse = (
 // Coordinates parse checkout result while preserving transaction behavior.
 export const parseCheckoutResult = (value: unknown): CheckoutResult | null => {
   if (!isRecord(value)) return null;
-  const { billId, amount, inputMoney, returnMoney, replayed } = value;
+  const { billId, amount, inputMoney, returnMoney, replayed, pickupNo } = value;
   if (
     !isSafeInteger(billId) ||
     billId < 1 ||
     !isSafeInteger(amount) ||
     !isSafeInteger(inputMoney) ||
-    !isSafeInteger(returnMoney)
+    !isSafeInteger(returnMoney) ||
+    (pickupNo !== undefined && (!isSafeInteger(pickupNo) || pickupNo < 1))
   )
     return null;
   return {
@@ -143,34 +147,46 @@ export const parseCheckoutResult = (value: unknown): CheckoutResult | null => {
     inputMoney,
     returnMoney,
     replayed: replayed === true,
+    ...(pickupNo !== undefined ? { pickupNo } : {}),
   };
 };
 
-// EN: Validate the pending-order boundary before showing kitchen-queue records in Counter.
-// FI: Tarkista odottavien tilausten rajapinta ennen keittiöjonon tietojen näyttämistä kassalla.
-export const parsePendingCounterOrders = (
+// EN: Validate owned sent-order history before showing payment or receipt actions in Counter.
+// FI: Tarkista omien lähetettyjen tilausten historia ennen maksu- tai kuittitoimintojen näyttämistä kassalla.
+export const parseSentCounterOrders = (
   value: unknown,
-): PendingCounterOrder[] | null => {
+): SentCounterOrder[] | null => {
   if (!isRecord(value) || !Array.isArray(value.results)) return null;
-  const orders: PendingCounterOrder[] = [];
+  const orders: SentCounterOrder[] = [];
   for (const raw of value.results) {
     if (
       !isRecord(raw) ||
       !isSafeInteger(raw.id) ||
       raw.id < 1 ||
+      !["DINE_IN", "TAKEAWAY"].includes(String(raw.serviceType)) ||
       typeof raw.status !== "string" ||
-      !["SUBMITTED", "CONFIRMED", "PREPARING", "READY", "SERVED"].includes(
-        raw.status,
-      ) ||
+      ![
+        "SUBMITTED",
+        "CONFIRMED",
+        "PREPARING",
+        "READY",
+        "SERVED",
+        "PAID",
+        "COMPLETED",
+        "REJECTED",
+        "CANCELLED",
+      ].includes(raw.status) ||
       !isSafeInteger(raw.total) ||
       raw.total < 0 ||
       !isSafeInteger(raw.version) ||
       raw.version < 1 ||
       typeof raw.submittedAt !== "string" ||
+      (raw.billSaleId !== null &&
+        (!isSafeInteger(raw.billSaleId) || raw.billSaleId < 1)) ||
       !Array.isArray(raw.Items)
     )
       return null;
-    const items: PendingCounterOrder["Items"] = [];
+    const items: SentCounterOrder["Items"] = [];
     for (const item of raw.Items) {
       if (
         !isRecord(item) ||
@@ -183,10 +199,12 @@ export const parsePendingCounterOrders = (
     }
     orders.push({
       id: raw.id,
+      serviceType: raw.serviceType as "DINE_IN" | "TAKEAWAY",
       status: raw.status,
       total: raw.total,
       version: raw.version,
       submittedAt: raw.submittedAt,
+      billSaleId: raw.billSaleId,
       Items: items,
     });
   }

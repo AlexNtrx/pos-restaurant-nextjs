@@ -12,7 +12,9 @@ export type Bill = {
   payDate: string;
   amount: number;
   payType: string;
-  tableNo: number;
+  tableNo: number | null;
+  serviceType: "DINE_IN" | "TAKEAWAY";
+  Orders: { id: number }[];
   status: "use" | "cancelled";
   cancelledAt: string | null;
   cancelReason: string | null;
@@ -64,7 +66,12 @@ const isBill = (value: unknown): value is Bill => {
     typeof value.payDate === "string" &&
     typeof value.amount === "number" &&
     typeof value.payType === "string" &&
-    typeof value.tableNo === "number" &&
+    (typeof value.tableNo === "number" || value.tableNo === null) &&
+    (value.serviceType === "DINE_IN" || value.serviceType === "TAKEAWAY") &&
+    Array.isArray(value.Orders) &&
+    value.Orders.every(
+      (order) => isRecord(order) && typeof order.id === "number",
+    ) &&
     (value.status === "use" || value.status === "cancelled") &&
     (typeof value.cancelledAt === "string" || value.cancelledAt === null) &&
     (typeof value.cancelReason === "string" || value.cancelReason === null) &&

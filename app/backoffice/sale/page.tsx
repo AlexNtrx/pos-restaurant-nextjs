@@ -16,37 +16,42 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import api from "@/lib/api";
+import { getApiErrorMessage } from "@/lib/api-error";
+import type { StaffOrderDetail } from "@/app/backoffice/orders/inbox/_lib/staff-orders";
 import { readAuthSession } from "@/lib/auth-session";
 import {
   parseCheckoutResult,
   parseFoods,
-  parsePendingCounterOrders,
+  parseSentCounterOrders,
   type Food,
   type FoodSize,
   type SaleTemp,
   type SaleTempDetail,
-  type PendingCounterOrder,
+  type SentCounterOrder,
   type Taste,
 } from "@/lib/sale-contracts";
 import usePosCart from "./_hooks/use-pos-cart";
-import useCounterDraft from "./_hooks/use-counter-draft";
+import useCounterDraft, { type DraftScope } from "./_hooks/use-counter-draft";
 import CatalogGrid, { type CatalogStatus } from "./_components/catalog-grid";
 import CartSidebar from "./_components/cart-sidebar";
 import CheckoutModal from "./_components/checkout-modal";
 import CounterOrderCheckout from "./_components/counter-order-checkout";
+import SentOrderDetails from "./_components/sent-order-details";
+import QrTableOrders from "./_components/qr-table-orders";
 import CustomizationModal from "./_components/customization-modal";
 import ReceiptPreview from "./_components/receipt-preview";
 
-type CheckoutAttempt = {
-  tableNo: number;
+type OrderLocation =
+  | { tableNo: number; serviceType?: never }
+  | { serviceType: "TAKEAWAY"; tableNo?: never };
+type CheckoutAttempt = OrderLocation & {
   payType: "cash" | "bank";
   inputMoney?: number;
   idempotencyKey: string;
   items?: ReturnType<ReturnType<typeof useCounterDraft>["getIntent"]>["items"];
   expectedTotal?: number;
 };
-type KitchenAttempt = {
-  tableNo: number;
+type KitchenAttempt = OrderLocation & {
   idempotencyKey: string;
   items?: ReturnType<ReturnType<typeof useCounterDraft>["getIntent"]>["items"];
   expectedTotal?: number;
@@ -54,14 +59,17 @@ type KitchenAttempt = {
 type DraftPendingAttempt =
   | { kind: "checkout"; payload: CheckoutAttempt }
   | { kind: "kitchen"; payload: KitchenAttempt };
+type SentView = "active" | "history";
 
-const draftAttemptKey = (tableNo: number) => {
+const draftAttemptKey = (scope: DraftScope) => {
   if (typeof window === "undefined") return null;
   const userId = readAuthSession()?.userId;
-  return userId ? `counter-draft:v1:${userId}:${tableNo}:attempt` : null;
+  return userId
+    ? `counter-draft:v1:${userId}:${scope === "TAKEAWAY" ? "takeaway" : scope}:attempt`
+    : null;
 };
-const readDraftAttempt = (tableNo: number): DraftPendingAttempt | null => {
-  const key = draftAttemptKey(tableNo);
+const readDraftAttempt = (scope: DraftScope): DraftPendingAttempt | null => {
+  const key = draftAttemptKey(scope);
   if (!key) return null;
   try {
     const raw = localStorage.getItem(key);
@@ -71,7 +79,11 @@ const readDraftAttempt = (tableNo: number): DraftPendingAttempt | null => {
       !isRecord(parsed) ||
       !["checkout", "kitchen"].includes(String(parsed.kind)) ||
       !isRecord(parsed.payload) ||
-      parsed.payload.tableNo !== tableNo ||
+      (scope === "TAKEAWAY"
+        ? parsed.payload.serviceType !== "TAKEAWAY" ||
+          parsed.payload.tableNo != null
+        : parsed.payload.tableNo !== scope ||
+          parsed.payload.serviceType === "TAKEAWAY") ||
       typeof parsed.payload.idempotencyKey !== "string" ||
       !Array.isArray(parsed.payload.items)
     )
@@ -126,17 +138,29 @@ export default function Page() {
   const [catalogStatus, setCatalogStatus] = useState<CatalogStatus>("loading");
   const [customizationOpen, setCustomizationOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
-  const [pendingOrders, setPendingOrders] = useState<PendingCounterOrder[]>([]);
-  const [payableOrder, setPayableOrder] = useState<PendingCounterOrder | null>(
+  const [sentOrders, setSentOrders] = useState<SentCounterOrder[]>([]);
+  const [sentView, setSentView] = useState<SentView>("active");
+  const [serviceType, setServiceType] = useState<"DINE_IN" | "TAKEAWAY">(
+    "DINE_IN",
+  );
+  const [selectedSentOrderId, setSelectedSentOrderId] = useState<number | null>(
+    null,
+  );
+  const [sentOrderDetail, setSentOrderDetail] =
+    useState<StaffOrderDetail | null>(null);
+  const [sentOrderError, setSentOrderError] = useState("");
+  const [sentOrderCancelling, setSentOrderCancelling] = useState(false);
+  const [payableOrder, setPayableOrder] = useState<SentCounterOrder | null>(
     null,
   );
   const [lastCompletedBillId, setLastCompletedBillId] = useState<number | null>(
     null,
   );
+  const [receiptBillId, setReceiptBillId] = useState<number | null>(null);
   const myRef = useRef<HTMLInputElement>(null);
   const checkoutAttemptRef = useRef<CheckoutAttempt | null>(null);
-  const kitchenAttemptRef = useRef<KitchenAttempt | null>(null);
   const pendingRequestId = useRef(0);
+  const sentDetailRequestId = useRef(0);
   const billUrlRef = useRef("");
   const confirmationResolverRef = useRef<((confirmed: boolean) => void) | null>(
     null,
@@ -162,21 +186,27 @@ export default function Page() {
   );
   const legacyCart = usePosCart({ checkoutBusy, onError: showCartError });
   const { table, setTable } = legacyCart;
-  const draftCart = useCounterDraft(table, showCartError);
+  const draftScope: DraftScope =
+    serviceType === "TAKEAWAY" ? "TAKEAWAY" : table;
+  const draftCart = useCounterDraft(draftScope, showCartError);
   const draftEnabled = process.env.NEXT_PUBLIC_ORD02_DRAFT_ENABLED !== "false";
   const draftMode =
-    draftEnabled &&
-    (legacyCart.loadedTable !== table || legacyCart.items.length === 0);
+    serviceType === "TAKEAWAY" ||
+    (draftEnabled &&
+      (legacyCart.loadedTable !== table || legacyCart.items.length === 0));
   const activeCart = draftMode ? draftCart : legacyCart;
-  const saleTemps = activeCart.loadedTable === table ? activeCart.items : [];
-  const summary =
-    activeCart.loadedTable === table
-      ? activeCart.summary
-      : { baseAmount: 0, addedAmount: 0, total: 0 };
+  const activeCartLoaded = draftMode
+    ? draftCart.loadedScope === draftScope
+    : legacyCart.loadedTable === table;
+  const saleTemps = activeCartLoaded ? activeCart.items : [];
+  const summary = activeCartLoaded
+    ? activeCart.summary
+    : { baseAmount: 0, addedAmount: 0, total: 0 };
   const cartBusy =
     activeCart.cartBusy ||
-    legacyCart.loadedTable !== table ||
-    (draftMode && (draftCart.loadedTable !== table || !draftCart.quoteReady));
+    (serviceType === "DINE_IN" && legacyCart.loadedTable !== table) ||
+    !activeCartLoaded ||
+    (draftMode && !draftCart.quoteReady);
   const refreshCart = (requestedTable = table) =>
     draftMode
       ? draftCart.refreshCart()
@@ -192,53 +222,136 @@ export default function Page() {
   const clearCart = () =>
     draftMode ? draftCart.clearCart() : legacyCart.clearCart();
   const saveDraftAttempt = (attempt: DraftPendingAttempt) => {
-    const key = draftAttemptKey(table);
+    const key = draftAttemptKey(draftScope);
     if (!key) throw new Error("Sign in again before submitting this draft");
     localStorage.setItem(key, JSON.stringify(attempt));
     setDraftPending(attempt);
   };
   const clearDraftAttempt = () => {
-    const key = draftAttemptKey(table);
+    const key = draftAttemptKey(draftScope);
     if (key) localStorage.removeItem(key);
     setDraftPending(null);
   };
   const draftLocked = draftMode && draftPending !== null;
   const draftMutationBusy = cartBusy || draftLocked;
+  const attemptMatchesScope = (attempt: OrderLocation | null) =>
+    draftScope === "TAKEAWAY"
+      ? attempt?.serviceType === "TAKEAWAY"
+      : attempt?.tableNo === table && attempt.serviceType !== "TAKEAWAY";
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      setDraftPending(readDraftAttempt(table));
+      setDraftPending(readDraftAttempt(draftScope));
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [table]);
+  }, [draftScope]);
 
-  const refreshPendingOrders = useCallback(async (tableNo: number) => {
-    const requestId = ++pendingRequestId.current;
-    if (!Number.isSafeInteger(tableNo) || tableNo < 1) {
-      setPendingOrders([]);
-      return;
-    }
-    try {
-      const response = await api.get("/saleTemp/pendingCounterOrders", {
-        params: { tableNo },
-      });
-      const parsed = parsePendingCounterOrders(response.data);
-      if (!parsed) throw new Error("Invalid pending orders response");
-      if (requestId === pendingRequestId.current) setPendingOrders(parsed);
-    } catch (error: unknown) {
-      if (requestId === pendingRequestId.current) {
-        setPendingOrders([]);
-        toast.error("Unable to load kitchen queue", {
-          description: errorMessage(error),
-        });
+  const refreshSentOrders = useCallback(
+    async (scope: DraftScope, view: SentView) => {
+      const requestId = ++pendingRequestId.current;
+      if (scope !== "TAKEAWAY" && (!Number.isSafeInteger(scope) || scope < 1)) {
+        setSentOrders([]);
+        return;
       }
+      try {
+        const response = await api.get("/counterOrder/sent", {
+          params:
+            scope === "TAKEAWAY"
+              ? { serviceType: "TAKEAWAY", view }
+              : { tableNo: scope, view },
+        });
+        const parsed = parseSentCounterOrders(response.data);
+        if (!parsed) throw new Error("Invalid sent orders response");
+        if (requestId === pendingRequestId.current) setSentOrders(parsed);
+      } catch (error: unknown) {
+        if (requestId === pendingRequestId.current) {
+          setSentOrders([]);
+          toast.error("Unable to load sent orders", {
+            description: errorMessage(error),
+          });
+        }
+      }
+    },
+    [],
+  );
+
+  const loadSentOrderDetail = async (orderId: number) => {
+    const requestId = ++sentDetailRequestId.current;
+    setSelectedSentOrderId(orderId);
+    setSentOrderDetail(null);
+    setSentOrderError("");
+    try {
+      const response = await api.get<{ result: StaffOrderDetail }>(
+        `/counterOrder/${orderId}`,
+      );
+      const result = response.data?.result;
+      if (!result || result.id !== orderId || !Array.isArray(result.history))
+        throw new Error("Invalid sent order details response");
+      if (requestId === sentDetailRequestId.current) setSentOrderDetail(result);
+    } catch (error: unknown) {
+      if (requestId === sentDetailRequestId.current)
+        setSentOrderError(
+          getApiErrorMessage(error, "Tilausta ei voitu avata."),
+        );
     }
-  }, []);
+  };
+
+  const closeSentOrderDetail = () => {
+    sentDetailRequestId.current += 1;
+    setSelectedSentOrderId(null);
+    setSentOrderDetail(null);
+    setSentOrderError("");
+  };
+
+  const cancelSentOrder = async (reason: string) => {
+    if (!sentOrderDetail || sentOrderCancelling) return;
+    const orderId = sentOrderDetail.id;
+    setSentOrderCancelling(true);
+    setSentOrderError("");
+    try {
+      const response = await api.patch<{ result: StaffOrderDetail }>(
+        `/counterOrder/${orderId}/cancel`,
+        { expectedVersion: sentOrderDetail.version, reason },
+      );
+      const result = response.data?.result;
+      if (
+        !result ||
+        result.id !== orderId ||
+        result.status !== "CANCELLED" ||
+        !Array.isArray(result.history)
+      )
+        throw new Error("Invalid cancellation response");
+      setSentOrderDetail(result);
+      await refreshSentOrders(draftScope, sentView);
+      toast.success(`Tilaus #${orderId} peruttu`);
+    } catch (error: unknown) {
+      const message = getApiErrorMessage(error, "Tilausta ei voitu perua.");
+      await Promise.all([
+        loadSentOrderDetail(orderId),
+        refreshSentOrders(draftScope, sentView),
+      ]);
+      setSentOrderError(message);
+    } finally {
+      setSentOrderCancelling(false);
+    }
+  };
 
   useEffect(() => {
-    const timer = window.setTimeout(() => void refreshPendingOrders(table), 0);
-    return () => window.clearTimeout(timer);
-  }, [refreshPendingOrders, table]);
+    const timer = window.setTimeout(
+      () => void refreshSentOrders(draftScope, sentView),
+      0,
+    );
+    // EN: Kitchen and payment updates happen on other screens, so refresh the selected sent-order view while Counter is open.
+    // FI: Keittiön ja maksun päivitykset tehdään muilla näytöillä, joten päivitä valittu lähetettyjen tilausten näkymä kassan ollessa auki.
+    const interval = window.setInterval(
+      () => void refreshSentOrders(draftScope, sentView),
+      10_000,
+    );
+    return () => {
+      window.clearTimeout(timer);
+      window.clearInterval(interval);
+    };
+  }, [refreshSentOrders, draftScope, sentView]);
 
   // EN: Resolves one confirmation at a time without coupling POS mutations to legacy modal APIs.
   // FI: Ratkaisee yhden vahvistuksen kerrallaan sitomatta POS-mutaatioita vanhoihin modaali-API:hin.
@@ -345,8 +458,7 @@ export default function Page() {
       cartBusy ||
       checkoutBusy ||
       draftLocked ||
-      !Number.isInteger(table) ||
-      table < 1
+      (serviceType === "DINE_IN" && (!Number.isInteger(table) || table < 1))
     )
       return;
     await addItem(foodId);
@@ -602,10 +714,10 @@ export default function Page() {
     if (billUrlRef.current) URL.revokeObjectURL(billUrlRef.current);
     billUrlRef.current = nextUrl;
     setReceiptKind(kind);
+    // EN: Reprinting targets the displayed receipt, which may differ from the latest checkout.
+    // FI: Uudelleentulostus kohdistuu näytettyyn kuittiin, joka voi poiketa viimeisimmästä maksusta.
+    setReceiptBillId(kind === "paid" ? Number(payload.billId) : null);
     setBillUrl(nextUrl);
-    window.requestAnimationFrame(() => {
-      document.getElementById("btnPrint")?.click();
-    });
   };
 
   // Coordinates print bill before pay behavior for this module.
@@ -638,14 +750,36 @@ export default function Page() {
     }
   };
 
+  const printSentOrder = async (orderId: number) => {
+    if (receiptBusy || checkoutBusy || cartBusy) return;
+    try {
+      setReceiptBusy(true);
+      await showReceipt(`/counterOrder/${orderId}/prebill`, {}, "prebill");
+    } catch (error: unknown) {
+      toast.error("Receipt unavailable", {
+        description: errorMessage(error),
+      });
+    } finally {
+      setReceiptBusy(false);
+    }
+  };
+
+  const printPaidSentOrder = async (billId: number) => {
+    try {
+      await printBillAfterPay(billId);
+    } catch (error: unknown) {
+      toast.error("Receipt unavailable", { description: errorMessage(error) });
+    }
+  };
+
   // Coordinates prepare payment while preserving transaction behavior.
   const preparePayment = () => {
-    const saved = draftMode ? readDraftAttempt(table) : null;
+    const saved = draftMode ? readDraftAttempt(draftScope) : null;
     if (saved?.kind === "kitchen") return;
     const pendingAttempt =
       checkoutAttemptRef.current ??
       (saved?.kind === "checkout" ? saved.payload : null);
-    if (pendingAttempt?.tableNo === table) {
+    if (pendingAttempt && attemptMatchesScope(pendingAttempt)) {
       checkoutAttemptRef.current = pendingAttempt;
       setPayType(pendingAttempt.payType);
       setReceivedAmount(
@@ -662,7 +796,7 @@ export default function Page() {
 
   // Coordinates select payment type while preserving transaction behavior.
   const selectPaymentType = (nextType: "cash" | "bank") => {
-    if (draftMode && readDraftAttempt(table)) return;
+    if (draftMode && readDraftAttempt(draftScope)) return;
     checkoutAttemptRef.current = null;
     setPayType(nextType);
     setReceivedAmount(nextType === "bank" ? summary.total : 0);
@@ -670,7 +804,7 @@ export default function Page() {
 
   // Updates received amount without changing user-visible behavior.
   const changeReceivedAmount = (nextAmount: number) => {
-    if (draftMode && readDraftAttempt(table)) return;
+    if (draftMode && readDraftAttempt(draftScope)) return;
     checkoutAttemptRef.current = null;
     setReceivedAmount(nextAmount);
   };
@@ -680,7 +814,7 @@ export default function Page() {
     if (checkoutBusy || receiptBusy) return;
     setCheckoutBusy(true);
     try {
-      const saved = draftMode ? readDraftAttempt(table) : null;
+      const saved = draftMode ? readDraftAttempt(draftScope) : null;
       if (saved?.kind === "kitchen") return;
       let payload =
         checkoutAttemptRef.current ??
@@ -698,7 +832,9 @@ export default function Page() {
 
         const idempotencyKey = crypto.randomUUID();
         payload = {
-          tableNo: table,
+          ...(serviceType === "TAKEAWAY"
+            ? { serviceType: "TAKEAWAY" as const }
+            : { tableNo: table }),
           payType,
           idempotencyKey,
           ...(payType === "cash" ? { inputMoney: receivedAmount } : {}),
@@ -734,6 +870,11 @@ export default function Page() {
         }
       } else await refreshCart();
       if (!draftMode) checkoutAttemptRef.current = null;
+      await refreshSentOrders(draftScope, sentView);
+      if (serviceType === "TAKEAWAY" && completed.pickupNo)
+        toast.success(`Nouto #${completed.pickupNo} lähetetty keittiöön`);
+      else if (serviceType === "DINE_IN")
+        toast.success("Tilaus lähetetty keittiöön");
 
       try {
         await printBillAfterPay(completed.billId);
@@ -758,81 +899,34 @@ export default function Page() {
     }
   };
 
-  // EN: A network retry reuses the same key; the server atomically snapshots and removes only this cart.
-  // FI: Verkkoyritys käyttää samaa avainta; palvelin tallentaa tilannekuvan ja poistaa vain tämän ostoskorin atomisesti.
-  const sendToKitchen = async () => {
+  // EN: Old uncertain kitchen sends may be replayed for recovery; the endpoint cannot create a new unpaid Order.
+  // FI: Vanha epävarma keittiölähetys voidaan palauttaa; rajapinta ei voi luoda uutta maksamatonta tilausta.
+  const recoverKitchenAttempt = async () => {
     if (checkoutBusy || cartBusy || receiptBusy) return;
+    const saved = readDraftAttempt(draftScope);
+    if (saved?.kind !== "kitchen") return;
     setCheckoutBusy(true);
     try {
-      const saved = draftMode ? readDraftAttempt(table) : null;
-      if (saved?.kind === "checkout") return;
-      let attempt =
-        kitchenAttemptRef.current ??
-        (saved?.kind === "kitchen" ? saved.payload : null);
-      if (!attempt || attempt.tableNo !== table) {
-        const refreshedCart = await refreshCart();
-        if (!refreshedCart || refreshedCart.summary.total <= 0) return;
-        const confirmed = await requestConfirmation({
-          title: "Send to kitchen?",
-          description:
-            "Sent items cannot be edited. New items create a new order. Payment waits until the order is served.",
-          confirmLabel: "Send to kitchen",
-        });
-        if (!confirmed) return;
-        attempt = { tableNo: table, idempotencyKey: crypto.randomUUID() };
-        if (draftMode) attempt.items = draftCart.getIntent().items;
-        if (draftMode) attempt.expectedTotal = refreshedCart.summary.total;
-        if (draftMode) saveDraftAttempt({ kind: "kitchen", payload: attempt });
-        kitchenAttemptRef.current = attempt;
-      }
-      const response = await api.post(
-        draftMode ? "/counterOrder/submit" : "/saleTemp/submitToKitchen",
-        attempt,
-      );
+      const response = await api.post("/counterOrder/submit", saved.payload);
       const result = response.data;
-      if (
-        !isRecord(result) ||
-        !Number.isSafeInteger(result.orderId) ||
-        !Number.isSafeInteger(result.total) ||
-        (result.status !== "SUBMITTED" &&
-          result.status !== "CONFIRMED" &&
-          result.status !== "PREPARING" &&
-          result.status !== "READY" &&
-          result.status !== "SERVED" &&
-          result.status !== "REJECTED" &&
-          result.status !== "CANCELLED")
-      )
+      if (!isRecord(result) || !Number.isSafeInteger(result.orderId))
         throw new Error("Invalid kitchen submission response");
-      if (draftMode) {
-        const cleared = await draftCart.clearCart();
-        if (cleared) {
-          clearDraftAttempt();
-          kitchenAttemptRef.current = null;
-        } else {
-          toast.warning(
-            "Order sent, but the local draft could not be cleared. Retry sending to recover it.",
-          );
-        }
-      } else kitchenAttemptRef.current = null;
-      await Promise.all([
-        draftMode ? Promise.resolve() : refreshCart(table),
-        refreshPendingOrders(table),
-      ]);
-      if (result.status === "REJECTED" || result.status === "CANCELLED")
-        toast.warning("This order is no longer in the kitchen queue");
+      const cleared = await draftCart.clearCart();
+      if (cleared) clearDraftAttempt();
       else
-        toast.success(
-          result.replayed === true
-            ? "Order was already sent"
-            : "Order queued for kitchen",
+        toast.warning(
+          "Order found, but the local draft could not be cleared. Retry recovery.",
         );
+      await refreshSentOrders(draftScope, "active");
+      toast.success("Aiemmin lähetetty tilaus löytyi");
     } catch (error: unknown) {
-      if (hasFinalHttpResponse(error)) kitchenAttemptRef.current = null;
-      if (draftMode && hasFinalHttpResponse(error)) {
+      if (hasFinalHttpResponse(error)) {
         clearDraftAttempt();
         await draftCart.refreshCart();
       }
-      toast.error("Unable to send order", { description: errorMessage(error) });
+      toast.error("Unable to recover earlier order", {
+        description: errorMessage(error),
+      });
     } finally {
       setCheckoutBusy(false);
     }
@@ -841,13 +935,28 @@ export default function Page() {
   // Handles table change events and preserves existing side effects.
   const handleTableChange = (value: string) => {
     pendingRequestId.current += 1;
+    closeSentOrderDetail();
     checkoutAttemptRef.current = null;
-    kitchenAttemptRef.current = null;
-    setPendingOrders([]);
+    setSentOrders([]);
+    setSentView("active");
     setReceivedAmount(0);
     setPayType("cash");
     setTable(Number(value));
     setDraftPending(readDraftAttempt(Number(value)));
+  };
+
+  const handleServiceTypeChange = (next: "DINE_IN" | "TAKEAWAY") => {
+    if (next === serviceType || checkoutBusy || receiptBusy) return;
+    pendingRequestId.current += 1;
+    closeSentOrderDetail();
+    checkoutAttemptRef.current = null;
+    setPayableOrder(null);
+    setSentOrders([]);
+    setSentView("active");
+    setReceivedAmount(0);
+    setPayType("cash");
+    setServiceType(next);
+    setDraftPending(readDraftAttempt(next === "TAKEAWAY" ? "TAKEAWAY" : table));
   };
 
   // Manages reprint last bill while preserving cleanup behavior.
@@ -947,26 +1056,58 @@ export default function Page() {
             KASSA
           </span>
         </div>
-        <label
-          htmlFor="pos-table"
-          className="mt-5 text-xs text-muted-foreground"
-        >
-          Pöytä
-        </label>
-        <Input
-          id="pos-table"
-          type="number"
-          min="1"
-          step="1"
-          value={Number.isFinite(table) ? table : ""}
-          onChange={(event) => handleTableChange(event.target.value)}
-          disabled={checkoutBusy || receiptBusy}
-          ref={myRef}
-          className="mt-1 h-11 border-transparent bg-[#f1efea] font-medium"
-        />
+        <div className="mt-5 space-y-2" role="group" aria-label="Tilaustapa">
+          <p className="text-xs text-muted-foreground">Tilaustapa</p>
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              type="button"
+              variant={serviceType === "DINE_IN" ? "default" : "outline"}
+              aria-pressed={serviceType === "DINE_IN"}
+              disabled={checkoutBusy || receiptBusy}
+              onClick={() => handleServiceTypeChange("DINE_IN")}
+            >
+              Paikan päällä
+            </Button>
+            <Button
+              type="button"
+              variant={serviceType === "TAKEAWAY" ? "default" : "outline"}
+              aria-pressed={serviceType === "TAKEAWAY"}
+              disabled={checkoutBusy || receiptBusy}
+              onClick={() => handleServiceTypeChange("TAKEAWAY")}
+            >
+              Mukaan
+            </Button>
+          </div>
+        </div>
+        {serviceType === "DINE_IN" ? (
+          <>
+            <label
+              htmlFor="pos-table"
+              className="mt-5 text-xs text-muted-foreground"
+            >
+              Pöytä
+            </label>
+            <Input
+              id="pos-table"
+              type="number"
+              min="1"
+              step="1"
+              value={Number.isFinite(table) ? table : ""}
+              onChange={(event) => handleTableChange(event.target.value)}
+              disabled={checkoutBusy || receiptBusy}
+              ref={myRef}
+              className="mt-1 h-11 border-transparent bg-[#f1efea] font-medium"
+            />
+          </>
+        ) : (
+          <p className="mt-4 text-xs text-muted-foreground">
+            Noutonumero muodostuu, kun tilaus lähetetään keittiöön tai
+            maksetaan.
+          </p>
+        )}
         <div className="mt-7 flex min-h-0 flex-1 flex-col overflow-y-auto">
           {draftMode &&
-          draftCart.loadedTable === table &&
+          draftCart.loadedScope === draftScope &&
           (draftCart.loadFailed ||
             (draftCart.units.length > 0 && !draftCart.quoteReady)) ? (
             <div
@@ -1042,31 +1183,72 @@ export default function Page() {
               Valitse tuotteita ruokalistasta.
             </div>
           )}
-          {pendingOrders.length > 0 ? (
-            <section
-              className="mt-6 border-t border-border pt-4"
-              aria-label="Kitchen queue"
+          <section
+            className="mt-6 border-t border-border pt-4"
+            aria-label="Sent orders"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold">Keittiöön lähetetyt</h3>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={checkoutBusy}
+                onClick={() => void refreshSentOrders(draftScope, sentView)}
+              >
+                Päivitä
+              </Button>
+            </div>
+            <div
+              className="mt-3 flex gap-2"
+              role="group"
+              aria-label="Sent order view"
             >
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold">Keittiöön lähetetyt</h3>
+              {(["active", "history"] as const).map((view) => (
                 <Button
+                  key={view}
                   type="button"
-                  variant="ghost"
                   size="sm"
+                  variant={sentView === view ? "default" : "outline"}
+                  aria-pressed={sentView === view}
                   disabled={checkoutBusy}
-                  onClick={() => void refreshPendingOrders(table)}
+                  onClick={() => {
+                    if (view === sentView) return;
+                    pendingRequestId.current += 1;
+                    closeSentOrderDetail();
+                    setPayableOrder(null);
+                    setSentOrders([]);
+                    setSentView(view);
+                  }}
                 >
-                  Päivitä
+                  {view === "active" ? "Käynnissä" : "Historia"}
                 </Button>
-              </div>
-              {pendingOrders.map((order) => (
-                <article
-                  key={order.id}
-                  className="mt-3 rounded-md border border-border p-3 text-xs"
+              ))}
+            </div>
+            {sentOrders.length === 0 ? (
+              <p className="mt-3 text-xs text-muted-foreground">
+                {sentView === "active"
+                  ? "Ei keskeneräisiä tilauksia."
+                  : "Ei päättyneitä tilauksia."}
+              </p>
+            ) : null}
+            {sentOrders.map((order) => (
+              <article
+                key={order.id}
+                className="mt-3 rounded-md border border-border p-3 text-xs"
+              >
+                <button
+                  type="button"
+                  className="w-full text-left hover:text-primary"
+                  aria-label={`View Order #${order.id}`}
+                  onClick={() => void loadSentOrderDetail(order.id)}
                 >
-                  <div className="flex justify-between font-semibold">
+                  <span className="flex justify-between font-semibold">
                     <span>
-                      #{order.id} · {order.status}
+                      {order.serviceType === "TAKEAWAY"
+                        ? `Nouto #${order.id}`
+                        : `#${order.id}`}{" "}
+                      · {order.status}
                     </span>
                     <span>
                       {order.total.toLocaleString("fi-FI", {
@@ -1074,28 +1256,58 @@ export default function Page() {
                       })}{" "}
                       €
                     </span>
-                  </div>
-                  <p className="mt-1 text-muted-foreground">
+                  </span>
+                  <span className="mt-1 block text-muted-foreground">
                     {order.Items.map(
                       (item) => `${item.quantity} × ${item.foodName}`,
                     ).join(", ")}
-                  </p>
-                  {order.status === "SERVED" ? (
+                  </span>
+                </button>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {order.billSaleId === null &&
+                  !["REJECTED", "CANCELLED", "PAID", "COMPLETED"].includes(
+                    order.status,
+                  ) ? (
+                    <>
+                      <Button
+                        type="button"
+                        size="sm"
+                        aria-label={`Pay Order #${order.id}`}
+                        disabled={checkoutBusy || receiptBusy || cartBusy}
+                        onClick={() => setPayableOrder(order)}
+                      >
+                        Maksa tilaus #{order.id}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        aria-label={`Print Order #${order.id}`}
+                        disabled={checkoutBusy || receiptBusy || cartBusy}
+                        onClick={() => void printSentOrder(order.id)}
+                      >
+                        Tulosta ennakkokuitti
+                      </Button>
+                    </>
+                  ) : order.billSaleId !== null ? (
                     <Button
                       type="button"
                       size="sm"
-                      className="mt-2"
-                      aria-label={`Pay Order #${order.id}`}
-                      disabled={checkoutBusy || receiptBusy || cartBusy}
-                      onClick={() => setPayableOrder(order)}
+                      variant="outline"
+                      aria-label={`Print paid Order #${order.id}`}
+                      disabled={checkoutBusy || receiptBusy}
+                      onClick={() => void printPaidSentOrder(order.billSaleId!)}
                     >
-                      Maksa tilaus #{order.id}
+                      Tulosta kuitti
                     </Button>
                   ) : null}
-                </article>
-              ))}
-            </section>
-          ) : null}
+                </div>
+              </article>
+            ))}
+          </section>
+          {serviceType === "DINE_IN" && (
+            <QrTableOrders key={table} tableNo={table} />
+          )}
         </div>
         <div className="border-t border-border pt-5">
           <div className="flex justify-between text-xs text-muted-foreground">
@@ -1145,24 +1357,20 @@ export default function Page() {
                 }}
                 className="mt-6 w-full"
               >
-                Siirry maksuun <ChevronRight aria-hidden="true" />
+                Maksa ja lähetä keittiöön <ChevronRight aria-hidden="true" />
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="lg"
-                aria-label="Send to kitchen"
-                disabled={
-                  cartBusy ||
-                  checkoutBusy ||
-                  receiptBusy ||
-                  (draftMode && draftPending?.kind === "checkout")
-                }
-                onClick={() => void sendToKitchen()}
-                className="mt-2 w-full"
-              >
-                Lähetä keittiöön
-              </Button>
+              {draftMode && draftPending?.kind === "kitchen" ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="lg"
+                  disabled={checkoutBusy || receiptBusy || cartBusy}
+                  onClick={() => void recoverKitchenAttempt()}
+                  className="mt-2 w-full"
+                >
+                  Tarkista aiempi lähetys
+                </Button>
+              ) : null}
             </>
           ) : null}
           <div className="mt-3 grid grid-cols-2 gap-2">
@@ -1226,11 +1434,11 @@ export default function Page() {
           order={payableOrder}
           onClose={() => setPayableOrder(null)}
           onBusyChange={setCheckoutBusy}
-          onRefresh={() => refreshPendingOrders(table)}
+          onRefresh={() => refreshSentOrders(draftScope, sentView)}
           onPaid={async (billId) => {
             setPayableOrder(null);
             setLastCompletedBillId(billId);
-            await refreshPendingOrders(table);
+            await refreshSentOrders(draftScope, sentView);
             try {
               await printBillAfterPay(billId);
             } catch (error: unknown) {
@@ -1241,6 +1449,19 @@ export default function Page() {
           }}
         />
       ) : null}
+      <SentOrderDetails
+        key={selectedSentOrderId ?? "closed"}
+        orderId={selectedSentOrderId}
+        detail={sentOrderDetail}
+        error={sentOrderError}
+        cancelling={sentOrderCancelling}
+        onClose={closeSentOrderDetail}
+        onRetry={() => {
+          if (selectedSentOrderId !== null)
+            void loadSentOrderDetail(selectedSentOrderId);
+        }}
+        onCancel={(reason) => void cancelSentOrder(reason)}
+      />
       <CheckoutModal
         open={checkoutOpen}
         onOpenChange={setCheckoutOpen}
@@ -1292,8 +1513,10 @@ export default function Page() {
         billUrl={billUrl}
         kind={receiptKind}
         onClose={closeReceipt}
-        lastCompletedBillId={lastCompletedBillId}
-        onReprint={() => void reprintLastBill()}
+        lastCompletedBillId={receiptBillId}
+        onReprint={() => {
+          if (receiptBillId !== null) void printPaidSentOrder(receiptBillId);
+        }}
       />
     </div>
   );

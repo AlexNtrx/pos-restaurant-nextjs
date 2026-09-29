@@ -3,8 +3,8 @@
 import dayjs from "dayjs";
 import timezone from "dayjs/plugin/timezone";
 import utc from "dayjs/plugin/utc";
-import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Printer } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -33,6 +33,7 @@ import {
   type Bill,
   type BillSummary,
 } from "../../salereport/_lib/bill-history-contract";
+import ReceiptPreview from "../../sale/_components/receipt-preview";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -49,13 +50,17 @@ const emptySummary: BillSummary = {
   cancelledAmount: 0,
 };
 
-export default function OrderHistoryPage() {
+export default function ReceiptHistoryPage() {
   const today = dayjs().tz(businessTimeZone).format("YYYY-MM-DD");
   const [fromDate, setFromDate] = useState(today);
   const [toDate, setToDate] = useState(today);
   const [bills, setBills] = useState<Bill[]>([]);
   const [summary, setSummary] = useState(emptySummary);
   const [selectedBill, setSelectedBill] = useState<Bill | null>(null);
+  const [receiptUrl, setReceiptUrl] = useState("");
+  const [printing, setPrinting] = useState(false);
+  const [printError, setPrintError] = useState("");
+  const receiptUrlRef = useRef("");
   const [status, setStatus] = useState<
     "loading" | "ready" | "error" | "forbidden"
   >("loading");
@@ -91,10 +96,54 @@ export default function OrderHistoryPage() {
     return () => window.clearTimeout(requestId);
   }, [load]);
 
+  useEffect(
+    () => () => {
+      if (receiptUrlRef.current) URL.revokeObjectURL(receiptUrlRef.current);
+    },
+    [],
+  );
+
+  const closeReceipt = () => {
+    if (receiptUrlRef.current) URL.revokeObjectURL(receiptUrlRef.current);
+    receiptUrlRef.current = "";
+    setReceiptUrl("");
+  };
+
+  // EN: History reprints use the persisted bill snapshot; the UI offers this action only for bills listed as active.
+  // FI: Historiasta tulostetaan tallennettu kuittitilanne; käyttöliittymä tarjoaa toiminnon vain voimassa oleville kuiteille.
+  const reprintBill = async (bill: Bill) => {
+    if (printing || bill.status !== "use") return;
+    setPrinting(true);
+    setPrintError("");
+    try {
+      const response = await api.post(
+        "/saleTemp/printBillAfterPay",
+        { billId: bill.id },
+        { responseType: "blob" },
+      );
+      if (
+        !String(response.headers["content-type"] || "").includes(
+          "application/pdf",
+        ) ||
+        !(response.data instanceof Blob)
+      )
+        throw new Error("Palvelin palautti virheellisen kuitin.");
+      const nextUrl = URL.createObjectURL(response.data);
+      closeReceipt();
+      receiptUrlRef.current = nextUrl;
+      setReceiptUrl(nextUrl);
+      setSelectedBill(null);
+    } catch (reason: unknown) {
+      setPrintError(getApiErrorMessage(reason, "Kuittia ei voitu tulostaa."));
+    } finally {
+      setPrinting(false);
+    }
+  };
+
   return (
     <div className="tw04-layout space-y-6 font-sans">
       <PageHeader
-        title="Tilaukset"
+        title="Kuittihistoria"
         description="Maksetut kuitit ja peruutukset. Vanhat myynnit säilyvät tässä näkymässä."
         actions={
           <Button
@@ -106,24 +155,6 @@ export default function OrderHistoryPage() {
           </Button>
         }
       />
-
-      <nav
-        aria-label="Historian välilehdet"
-        className="flex gap-5 border-b border-border text-sm"
-      >
-        <span
-          aria-current="page"
-          className="border-b-2 border-olive pb-3 font-semibold"
-        >
-          Kuittihistoria
-        </span>
-        <Link
-          href="/backoffice/orders/history/orders"
-          className="pb-3 text-muted-foreground hover:text-foreground"
-        >
-          Tilaushistoria
-        </Link>
-      </nav>
 
       <section
         aria-label="Kuittihistorian suodattimet"
@@ -185,7 +216,7 @@ export default function OrderHistoryPage() {
       ) : status === "forbidden" ? (
         <ErrorState
           title="Ei käyttöoikeutta"
-          description="Sinulla ei ole oikeutta tarkastella tilaushistoriaa."
+          description="Sinulla ei ole oikeutta tarkastella kuittihistoriaa."
         />
       ) : status === "error" ? (
         <ErrorState
@@ -227,7 +258,11 @@ export default function OrderHistoryPage() {
                     .format("DD.MM.YYYY HH:mm")}
                 </TableCell>
                 <TableCell>{bill.User.name}</TableCell>
-                <TableCell>{bill.tableNo}</TableCell>
+                <TableCell>
+                  {bill.serviceType === "TAKEAWAY"
+                    ? `Nouto #${bill.Orders[0]?.id ?? "?"}`
+                    : bill.tableNo}
+                </TableCell>
                 <TableCell className="font-medium">
                   {currencyFormatter.format(bill.amount)}
                 </TableCell>
@@ -261,7 +296,12 @@ export default function OrderHistoryPage() {
 
       <Dialog
         open={selectedBill !== null}
-        onOpenChange={(open) => !open && setSelectedBill(null)}
+        onOpenChange={(open) => {
+          if (!open && !printing) {
+            setSelectedBill(null);
+            setPrintError("");
+          }
+        }}
       >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -288,6 +328,11 @@ export default function OrderHistoryPage() {
                 : ""}
             </p>
           )}
+          {printError && (
+            <p role="alert" className="text-sm text-destructive">
+              {printError}
+            </p>
+          )}
           <Table>
             <TableHeader>
               <TableRow>
@@ -310,8 +355,26 @@ export default function OrderHistoryPage() {
               ))}
             </TableBody>
           </Table>
+          {selectedBill?.status === "use" && (
+            <Button
+              type="button"
+              className="w-fit"
+              disabled={printing}
+              onClick={() => void reprintBill(selectedBill)}
+            >
+              <Printer aria-hidden="true" />
+              {printing ? "Kuittia ladataan…" : "Tulosta kuitti"}
+            </Button>
+          )}
         </DialogContent>
       </Dialog>
+      <ReceiptPreview
+        billUrl={receiptUrl}
+        kind="paid"
+        historical
+        onClose={closeReceipt}
+        lastCompletedBillId={null}
+      />
     </div>
   );
 }

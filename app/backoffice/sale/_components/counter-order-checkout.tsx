@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import api from "@/lib/api";
 import {
   parseCheckoutResult,
-  type PendingCounterOrder,
+  type SentCounterOrder,
 } from "@/lib/sale-contracts";
 import CheckoutModal from "./checkout-modal";
 
@@ -18,7 +18,7 @@ type PaymentAttempt = {
 };
 
 type Props = {
-  order: PendingCounterOrder;
+  order: SentCounterOrder;
   onClose: () => void;
   onPaid: (billId: number) => Promise<void>;
   onBusyChange: (busy: boolean) => void;

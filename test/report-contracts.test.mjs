@@ -94,6 +94,8 @@ const validBillHistory = {
       amount: 25,
       payType: "cash",
       tableNo: 1,
+      serviceType: "DINE_IN",
+      Orders: [{ id: 31 }],
       status: "use",
       cancelledAt: null,
       cancelReason: null,

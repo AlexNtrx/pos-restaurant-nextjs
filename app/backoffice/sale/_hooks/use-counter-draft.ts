@@ -22,6 +22,7 @@ type DraftItem = {
   foodSizeId: number | null;
   tasteId: number | null;
 };
+export type DraftScope = number | "TAKEAWAY";
 type QuoteItem = {
   foodId: number;
   foodName: string;
@@ -54,14 +55,14 @@ const validUnit = (value: unknown): value is DraftUnit => {
     (unit.tasteId === null || validId(unit.tasteId))
   );
 };
-const storageKey = (tableNo: number) => {
+const storageKey = (scope: DraftScope) => {
   const userId = readAuthSession()?.userId;
   return userId && validId(Number(userId))
-    ? `counter-draft:v1:${userId}:${tableNo}`
+    ? `counter-draft:v1:${userId}:${scope === "TAKEAWAY" ? "takeaway" : scope}`
     : null;
 };
-const readDraft = (tableNo: number): DraftUnit[] => {
-  const key = storageKey(tableNo);
+const readDraft = (scope: DraftScope): DraftUnit[] => {
+  const key = storageKey(scope);
   if (!key) return [];
   const raw = localStorage.getItem(key);
   if (!raw) return [];
@@ -72,13 +73,13 @@ const readDraft = (tableNo: number): DraftUnit[] => {
     throw new Error("Saved draft has duplicate items");
   return parsed;
 };
-const saveDraft = (tableNo: number, units: DraftUnit[]) => {
-  const key = storageKey(tableNo);
+const saveDraft = (scope: DraftScope, units: DraftUnit[]) => {
+  const key = storageKey(scope);
   if (!key) throw new Error("Sign in again before editing this draft");
   if (units.length === 0) localStorage.removeItem(key);
   else localStorage.setItem(key, JSON.stringify(units));
 };
-const toIntent = (tableNo: number, units: DraftUnit[]) => {
+const toIntent = (scope: DraftScope, units: DraftUnit[]) => {
   const grouped = new Map<string, DraftItem>();
   for (const unit of units) {
     const key = JSON.stringify([unit.foodId, unit.foodSizeId, unit.tasteId]);
@@ -92,7 +93,12 @@ const toIntent = (tableNo: number, units: DraftUnit[]) => {
         quantity: 1,
       });
   }
-  return { tableNo, items: [...grouped.values()] };
+  return {
+    ...(scope === "TAKEAWAY"
+      ? { serviceType: "TAKEAWAY" as const }
+      : { tableNo: scope }),
+    items: [...grouped.values()],
+  };
 };
 const parseQuote = (value: unknown): Quote => {
   if (!value || typeof value !== "object")
@@ -157,10 +163,10 @@ const displayItems = (units: DraftUnit[], quote: Quote): SaleTemp[] => {
   return [...byFood.values()];
 };
 
-// EN: Persist identifiers per signed-in staff/table; every displayed amount comes from a fresh server quote.
-// FI: Tallenna tunnisteet kirjautuneen työntekijän ja pöydän mukaan; jokainen näytetty summa tulee tuoreesta palvelimen hinta-arviosta.
+// EN: Persist identifiers per signed-in staff and dine-in table or takeaway scope; server quotes remain authoritative.
+// FI: Tallenna tunnisteet työntekijän ja pöydän tai noutotilauksen mukaan; palvelimen hinta-arvio on määräävä.
 export default function useCounterDraft(
-  tableNo: number,
+  scope: DraftScope,
   onError: (error: unknown, kind: "load" | "mutation") => void,
 ) {
   const [units, setUnits] = useState<DraftUnit[]>([]);
@@ -169,20 +175,21 @@ export default function useCounterDraft(
   const [cartBusy, setCartBusy] = useState(false);
   const [quoteReady, setQuoteReady] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [loadedTable, setLoadedTable] = useState<number | null>(null);
+  const [loadedScope, setLoadedScope] = useState<DraftScope | null>(null);
   const unitsRef = useRef<DraftUnit[]>([]);
-  const tableRef = useRef(tableNo);
+  const scopeRef = useRef(scope);
   const requestId = useRef(0);
+  const mutationId = useRef(0);
   useEffect(() => {
-    tableRef.current = tableNo;
-  }, [tableNo]);
+    scopeRef.current = scope;
+  }, [scope]);
 
   const quoteUnits = useCallback(
-    async (targetTable: number, targetUnits: DraftUnit[]) => {
+    async (targetScope: DraftScope, targetUnits: DraftUnit[]) => {
       const id = ++requestId.current;
       setQuoteReady(false);
       if (targetUnits.length === 0) {
-        if (tableRef.current === targetTable && requestId.current === id) {
+        if (scopeRef.current === targetScope && requestId.current === id) {
           setItems([]);
           setSummary(emptySummary);
           setQuoteReady(true);
@@ -191,7 +198,7 @@ export default function useCounterDraft(
       }
       const response = await api.post(
         "/counterOrder/quote",
-        toIntent(targetTable, targetUnits),
+        toIntent(targetScope, targetUnits),
       );
       const quote = parseQuote(response.data?.results);
       const results = displayItems(targetUnits, quote);
@@ -200,7 +207,7 @@ export default function useCounterDraft(
         addedAmount: quote.modifierTotal,
         total: quote.total,
       };
-      if (tableRef.current === targetTable && requestId.current === id) {
+      if (scopeRef.current === targetScope && requestId.current === id) {
         setItems(results);
         setSummary(nextSummary);
         setQuoteReady(true);
@@ -211,20 +218,21 @@ export default function useCounterDraft(
   );
 
   useEffect(() => {
-    const targetTable = tableNo;
+    const targetScope = scope;
     let cancelled = false;
     const timer = window.setTimeout(async () => {
+      setCartBusy(false);
       try {
-        const saved = readDraft(targetTable);
+        const saved = readDraft(targetScope);
         if (cancelled) return;
         unitsRef.current = saved;
         setUnits(saved);
-        setLoadedTable(targetTable);
+        setLoadedScope(targetScope);
         setLoadFailed(false);
-        await quoteUnits(targetTable, saved);
+        await quoteUnits(targetScope, saved);
       } catch (error) {
         if (!cancelled) {
-          setLoadedTable(targetTable);
+          setLoadedScope(targetScope);
           setLoadFailed(true);
           setQuoteReady(false);
           onError(error, "load");
@@ -235,26 +243,40 @@ export default function useCounterDraft(
       cancelled = true;
       window.clearTimeout(timer);
       requestId.current += 1;
+      mutationId.current += 1;
     };
-  }, [tableNo, quoteUnits, onError]);
+  }, [scope, quoteUnits, onError]);
 
   const change = async (next: DraftUnit[]) => {
-    if (cartBusy || !validId(tableNo) || loadedTable !== tableNo) return null;
+    if (
+      cartBusy ||
+      (scope !== "TAKEAWAY" && !validId(scope)) ||
+      loadedScope !== scope
+    )
+      return null;
     let persisted = false;
+    const operationId = ++mutationId.current;
+    // EN: A previous scope must not change the current cart's error or busy state.
+    // FI: Edellinen rajaus ei saa muuttaa nykyisen ostoskorin virhe- tai odotustilaa.
+    const isCurrent = () =>
+      scopeRef.current === scope && mutationId.current === operationId;
     try {
       setCartBusy(true);
-      saveDraft(tableNo, next);
+      saveDraft(scope, next);
       persisted = true;
       unitsRef.current = next;
       setUnits(next);
       setLoadFailed(false);
-      return await quoteUnits(tableNo, next);
+      const result = await quoteUnits(scope, next);
+      return isCurrent() ? result : null;
     } catch (error) {
-      if (persisted) setQuoteReady(false);
-      onError(error, "mutation");
+      if (isCurrent()) {
+        if (persisted) setQuoteReady(false);
+        onError(error, "mutation");
+      }
       return null;
     } finally {
-      setCartBusy(false);
+      if (isCurrent()) setCartBusy(false);
     }
   };
   const addItem = (foodId: number) => {
@@ -325,7 +347,7 @@ export default function useCounterDraft(
   };
   const refreshCart = async () => {
     try {
-      const refreshed = await quoteUnits(tableNo, unitsRef.current);
+      const refreshed = await quoteUnits(scope, unitsRef.current);
       setLoadFailed(false);
       return refreshed;
     } catch (error) {
@@ -336,12 +358,12 @@ export default function useCounterDraft(
   };
   const discardDraft = () => {
     try {
-      saveDraft(tableNo, []);
+      saveDraft(scope, []);
       unitsRef.current = [];
       setUnits([]);
       setItems([]);
       setSummary(emptySummary);
-      setLoadedTable(tableNo);
+      setLoadedScope(scope);
       setLoadFailed(false);
       setQuoteReady(true);
     } catch (error) {
@@ -354,9 +376,9 @@ export default function useCounterDraft(
     cartBusy,
     quoteReady,
     loadFailed,
-    loadedTable,
+    loadedScope,
     units,
-    getIntent: () => toIntent(tableNo, unitsRef.current),
+    getIntent: () => toIntent(scope, unitsRef.current),
     refreshCart,
     addItem,
     updateQuantity,
