@@ -32,6 +32,8 @@ const menu = {
           name: "Basilikakana",
           remark: "Mieto",
           price: 20,
+          img: "qr-menu-photo.webp",
+          detailImg: "qr-detail-poster.jpg",
           foodTypeId: 3,
         },
       ],
@@ -50,6 +52,7 @@ const mockLoad = (state: "ORDERING" | "MENU_ONLY" | "CLOSED" = "ORDERING") => {
         },
       };
     if (path.endsWith("/menu")) return { data: { result: { ...menu, state } } };
+    if (path.endsWith("/service-call")) return { data: { result: null } };
     throw new Error(`Unexpected GET ${path}`);
   });
 };
@@ -62,6 +65,76 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("anonymous QR customer", () => {
+  it("shows uploaded food photos in the menu and item detail", async () => {
+    render(<QrCustomer view="menu" />);
+    await screen.findByText("Basilikakana");
+    expect(
+      document.querySelector(
+        'img[src="http://localhost:3001/uploads/qr-menu-photo.webp"]',
+      ),
+    ).toBeTruthy();
+
+    cleanup();
+    render(<QrCustomer view="item" />);
+    expect(await screen.findByAltText("Basilikakana")).toBeTruthy();
+  });
+
+  it("opens the separate More info image without changing the list image", async () => {
+    const user = userEvent.setup();
+    render(<QrCustomer view="menu" />);
+    await screen.findByText("Basilikakana");
+    expect(
+      document.querySelector(
+        'img[src="http://localhost:3001/uploads/qr-menu-photo.webp"]',
+      ),
+    ).toBeTruthy();
+    await user.click(
+      screen.getByRole("button", { name: "Lisätiedot: Basilikakana" }),
+    );
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(
+      document.querySelector(
+        'img[src="http://localhost:3001/uploads/qr-detail-poster.jpg"]',
+      ),
+    ).toBeTruthy();
+  });
+
+  it("lets a customer start another order from the status page while ordering is open", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(`qr02:${token}:lastOrder`, "42");
+    get.mockImplementation(async (path: string) => {
+      if (path.endsWith("/context"))
+        return {
+          data: {
+            result: {
+              state: "ORDERING",
+              tableNo: 12,
+              restaurantName: "Ravintola",
+            },
+          },
+        };
+      if (path.endsWith("/orders/42"))
+        return {
+          data: {
+            result: {
+              id: 42,
+              status: "SUBMITTED",
+              tableNo: 12,
+              total: 25,
+              submittedAt: "2026-09-27T12:00:00.000Z",
+              items: [],
+              history: [],
+            },
+          },
+        };
+      throw new Error(`Unexpected GET ${path}`);
+    });
+    render(<QrCustomer view="status" />);
+    await screen.findByText("Tilaus #42");
+    await user.click(screen.getByRole("button", { name: "Tilaa lisää" }));
+    expect(push).toHaveBeenCalledWith(`/order/${token}`);
+  });
+
   it("shows only the closed state when QR service is disabled", async () => {
     mockLoad("CLOSED");
     render(<QrCustomer view="menu" />);
@@ -75,8 +148,183 @@ describe("anonymous QR customer", () => {
     render(<QrCustomer view="menu" />);
     expect(await screen.findByText("Basilikakana")).toBeTruthy();
     expect(
-      screen.queryByRole("button", { name: "Lisää Basilikakana" }),
+      screen.queryByRole("button", { name: /Lisää Basilikakana/ }),
     ).toBeNull();
+  });
+
+  it("changes quantity and taste directly in the menu and updates the cart count", async () => {
+    const user = userEvent.setup();
+    render(<QrCustomer view="menu" />);
+    await screen.findByText("Basilikakana");
+    expect(
+      screen.getByRole("button", { name: "Ostoskori, 0 tuotetta" }),
+    ).toBeTruthy();
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Maku: Basilikakana" }),
+      "5",
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "Lisää Basilikakana, Tavallinen, Tulinen",
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "Lisää Basilikakana, Tavallinen, Tulinen",
+      }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Ostoskori, 2 tuotetta" }),
+    ).toBeTruthy();
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Maku: Basilikakana" }),
+      "",
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "Lisää Basilikakana, Tavallinen, Ei valintaa",
+      }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Ostoskori, 3 tuotetta" }),
+    ).toBeTruthy();
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Maku: Basilikakana" }),
+      "5",
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "Vähennä Basilikakana, Tavallinen, Tulinen",
+      }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Ostoskori, 2 tuotetta" }),
+    ).toBeTruthy();
+    expect(
+      JSON.parse(localStorage.getItem(`qr02:${token}:cart`) || "[]"),
+    ).toEqual([
+      { foodId: 7, foodSizeId: null, tasteId: 5, quantity: 1, note: "" },
+      { foodId: 7, foodSizeId: null, tasteId: null, quantity: 1, note: "" },
+    ]);
+    expect(
+      screen.getByRole("button", { name: "Lisätiedot: Basilikakana" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("textbox", { name: /Huomautus/ })).toBeNull();
+  });
+
+  it("selects a size inline and keeps the restaurant remark between name and price", async () => {
+    const user = userEvent.setup();
+    render(<QrCustomer view="menu" />);
+    const heading = await screen.findByRole("heading", {
+      name: "Basilikakana",
+    });
+    const remark = screen.getByText("Huomautus:").parentElement;
+    const price = screen.getByText(/20,00/);
+    expect(remark?.textContent).toContain("Mieto");
+    expect(
+      Boolean(
+        heading.compareDocumentPosition(remark!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      ),
+    ).toBe(true);
+    expect(
+      Boolean(
+        remark!.compareDocumentPosition(price) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      ),
+    ).toBe(true);
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Koko: Basilikakana" }),
+      "4",
+    );
+    expect(screen.getByText(/25,00/)).toBeTruthy();
+    await user.click(
+      screen.getByRole("button", {
+        name: "Lisää Basilikakana, Iso, Ei valintaa",
+      }),
+    );
+    expect(
+      JSON.parse(localStorage.getItem(`qr02:${token}:cart`) || "[]"),
+    ).toEqual([
+      { foodId: 7, foodSizeId: 4, tasteId: null, quantity: 1, note: "" },
+    ]);
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Koko: Basilikakana" }),
+      "",
+    );
+    expect(
+      screen.getByRole("button", {
+        name: "Lisää Basilikakana, Tavallinen, Ei valintaa",
+      }),
+    ).toBeTruthy();
+  });
+
+  it("locks inline edits while an earlier submission has an unknown outcome", async () => {
+    localStorage.setItem(
+      `qr02:${token}:pending`,
+      JSON.stringify({
+        idempotencyKey: "36e85e2c-734a-4f3f-8b49-5d538d68df17",
+        expectedTotal: 20,
+        items: [
+          { foodId: 7, foodSizeId: null, tasteId: null, quantity: 1, note: "" },
+        ],
+      }),
+    );
+    render(<QrCustomer view="menu" />);
+    await screen.findByText("Basilikakana");
+    expect(
+      screen
+        .getByRole("button", {
+          name: "Lisää Basilikakana, Tavallinen, Ei valintaa",
+        })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    expect(
+      screen.getByRole("button", { name: "Ostoskori, 0 tuotetta" }),
+    ).toBeTruthy();
+  });
+
+  it("keeps customized lines separate and stops at the 200-unit cart limit", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(
+      `qr02:${token}:cart`,
+      JSON.stringify([
+        {
+          foodId: 7,
+          foodSizeId: 4,
+          tasteId: null,
+          quantity: 199,
+          note: "Extra",
+        },
+      ]),
+    );
+    render(<QrCustomer view="menu" />);
+    await screen.findByText("Basilikakana");
+    expect(
+      screen.getByRole("button", { name: "Ostoskori, 199 tuotetta" }),
+    ).toBeTruthy();
+    await user.click(
+      screen.getByRole("button", {
+        name: "Lisää Basilikakana, Tavallinen, Ei valintaa",
+      }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Ostoskori, 200 tuotetta" }),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", {
+          name: "Lisää Basilikakana, Tavallinen, Ei valintaa",
+        })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    expect(
+      JSON.parse(localStorage.getItem(`qr02:${token}:cart`) || "[]"),
+    ).toEqual([
+      { foodId: 7, foodSizeId: 4, tasteId: null, quantity: 199, note: "Extra" },
+      { foodId: 7, foodSizeId: null, tasteId: null, quantity: 1, note: "" },
+    ]);
   });
 
   it("adds a customized item to the browser cart", async () => {

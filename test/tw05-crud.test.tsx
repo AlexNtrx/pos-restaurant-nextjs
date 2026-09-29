@@ -68,10 +68,13 @@ describe("TW-05 CRUD dialogs", () => {
     );
   });
 
-  it("creates a menu item with the existing API payload", async () => {
-    api.post.mockImplementation((path: string) =>
+  it("uploads separate list and More info images for a menu item", async () => {
+    api.post.mockImplementation((path: string, body?: FormData) =>
       Promise.resolve({
-        data: path === "/food/upload" ? { fileName: "coffee.webp" } : {},
+        data:
+          path === "/food/upload"
+            ? { fileName: (body?.get("file") as File).name }
+            : {},
       }),
     );
     api.get.mockImplementation((path: string) =>
@@ -90,8 +93,12 @@ describe("TW-05 CRUD dialogs", () => {
     await user.type(price, "4");
     await user.selectOptions(screen.getByLabelText(/^Tyyppi/), "drink");
     await user.upload(
-      screen.getByLabelText("Kuva"),
+      screen.getByLabelText("Ruokalistan kuva"),
       new File(["image"], "coffee.webp", { type: "image/webp" }),
+    );
+    await user.upload(
+      screen.getByLabelText("Lisätietokuva"),
+      new File(["poster"], "details.jpg", { type: "image/jpeg" }),
     );
     await user.click(screen.getByRole("button", { name: "Tallenna" }));
 
@@ -108,6 +115,7 @@ describe("TW-05 CRUD dialogs", () => {
         remark: "",
         price: 4,
         img: "coffee.webp",
+        detailImg: "details.jpg",
         foodType: "drink",
       }),
     );

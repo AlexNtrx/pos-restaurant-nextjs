@@ -7,6 +7,7 @@ export type Food = {
   remark: string;
   price: number;
   img: string;
+  detailImg?: string;
   foodType: FoodKind;
   FoodType: FoodCategory;
 };
@@ -44,6 +45,7 @@ export const isFood = (value: unknown): value is Food =>
   typeof value.price === "number" &&
   Number.isFinite(value.price) &&
   typeof value.img === "string" &&
+  (value.detailImg === undefined || typeof value.detailImg === "string") &&
   (value.foodType === "food" || value.foodType === "drink") &&
   isFoodCategory(value.FoodType);
 

@@ -14,6 +14,8 @@ export type QrFood = {
   name: string;
   remark: string;
   price: number;
+  img: string;
+  detailImg?: string;
   foodTypeId: number;
 };
 export type QrCategory = {

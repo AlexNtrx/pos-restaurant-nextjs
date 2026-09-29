@@ -288,11 +288,16 @@ export default function MenuItemsPage() {
   const [price, setPrice] = useState("0");
   const [foodKind, setFoodKind] = useState<FoodKind>("food");
   const [currentImage, setCurrentImage] = useState("");
+  const [currentDetailImage, setCurrentDetailImage] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedDetailFile, setSelectedDetailFile] = useState<File | null>(
+    null,
+  );
   const [formError, setFormError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const detailFileInputRef = useRef<HTMLInputElement>(null);
   const pageSize = useResponsivePageSize();
 
   const load = useCallback(async () => {
@@ -351,7 +356,9 @@ export default function MenuItemsPage() {
 
   const resetFileInput = () => {
     setSelectedFile(null);
+    setSelectedDetailFile(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
+    if (detailFileInputRef.current) detailFileInputRef.current.value = "";
   };
 
   const openCreate = () => {
@@ -362,6 +369,7 @@ export default function MenuItemsPage() {
     setPrice("0");
     setFoodKind("food");
     setCurrentImage("");
+    setCurrentDetailImage("");
     setFormError("");
     resetFileInput();
     setEditorOpen(true);
@@ -375,15 +383,16 @@ export default function MenuItemsPage() {
     setPrice(String(food.price));
     setFoodKind(food.foodType);
     setCurrentImage(food.img);
+    setCurrentDetailImage(food.detailImg ?? "");
     setFormError("");
     resetFileInput();
     setEditorOpen(true);
   };
 
-  const uploadImage = async () => {
-    if (!selectedFile) return currentImage;
+  const uploadImage = async (file: File | null, currentImage: string) => {
+    if (!file) return currentImage;
     const formData = new FormData();
-    formData.append("file", selectedFile);
+    formData.append("file", file);
     const response = await api.post("/food/upload", formData);
     if (
       typeof response.data?.fileName !== "string" ||
@@ -413,13 +422,18 @@ export default function MenuItemsPage() {
     setIsSaving(true);
     setFormError("");
     try {
-      const img = await uploadImage();
+      const img = await uploadImage(selectedFile, currentImage);
+      const detailImg = await uploadImage(
+        selectedDetailFile,
+        currentDetailImage,
+      );
       const payload = {
         foodTypeId,
         name: normalizedName,
         remark: remark.trim(),
         price: numericPrice,
         img,
+        detailImg,
         foodType: foodKind,
       };
       if (editingFood)
@@ -702,8 +716,8 @@ export default function MenuItemsPage() {
             </FormField>
             <FormField
               id="menu-item-image"
-              label="Kuva"
-              description="JPEG, PNG, WEBP tai GIF, enintään 5 MB."
+              label="Ruokalistan kuva"
+              description="Näkyy ruokalistassa. JPEG, PNG, WEBP tai GIF, enintään 5 MB."
             >
               <Input
                 ref={fileInputRef}
@@ -711,6 +725,20 @@ export default function MenuItemsPage() {
                 accept="image/jpeg,image/png,image/webp,image/gif"
                 onChange={(event) =>
                   setSelectedFile(event.target.files?.[0] ?? null)
+                }
+              />
+            </FormField>
+            <FormField
+              id="menu-item-detail-image"
+              label="Lisätietokuva"
+              description="Näkyy Lisätiedot-ikkunassa. JPEG, PNG, WEBP tai GIF, enintään 5 MB."
+            >
+              <Input
+                ref={detailFileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                onChange={(event) =>
+                  setSelectedDetailFile(event.target.files?.[0] ?? null)
                 }
               />
             </FormField>
@@ -726,9 +754,24 @@ export default function MenuItemsPage() {
               />
             </FormField>
             {currentImage && !selectedFile && (
-              <p className="sm:col-span-2 text-xs text-muted-foreground">
-                Nykyinen kuva säilytetään, jos uutta tiedostoa ei valita.
+              <p className="text-xs text-muted-foreground">
+                Nykyinen ruokalistan kuva säilytetään, jos uutta ei valita.
               </p>
+            )}
+            {currentDetailImage && !selectedDetailFile && (
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-xs text-muted-foreground">
+                  Nykyinen lisätietokuva säilytetään, jos uutta ei valita.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentDetailImage("")}
+                >
+                  Poista lisätietokuva
+                </Button>
+              </div>
             )}
             {formError && (
               <p
