@@ -48,6 +48,30 @@ function mockLoad(level: "admin" | "user" = "admin") {
     if (path === "/tables") return { data: { results: [openTable] } };
     if (path === "/qr-mode") return { data: { result: { mode: "DISABLED" } } };
     if (path === "/user/getLevelByToken") return { data: { level } };
+    if (path === "/user/list")
+      return {
+        data: {
+          results: [
+            { id: 3, name: "Test Admin", username: "admin", level: "admin" },
+          ],
+        },
+      };
+    if (path === "/organization/info")
+      return {
+        data: {
+          result: {
+            id: 1,
+            name: "Test Restaurant",
+            address: "Test Street 1",
+            phone: "123456",
+            email: "test@example.com",
+            website: "",
+            bankNo: "",
+            logo: "",
+            taxCode: "1234567-8",
+          },
+        },
+      };
     if (path === "/table-sessions/28/qr")
       return { data: { result: { path: qrPath } } };
     throw new Error(`Unexpected GET ${path}`);
@@ -65,9 +89,61 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   localStorage.clear();
+  window.history.replaceState(null, "", window.location.pathname);
 });
 
 describe("QR-01 tables screen", () => {
+  it("switches admin settings content without leaving the page", async () => {
+    const user = userEvent.setup();
+    const originalPath = window.location.pathname;
+    render(<TablesSettingsPage />);
+    const tab = (name: string) =>
+      within(
+        screen.getByRole("navigation", { name: "Asetusten välilehdet" }),
+      ).getByRole("button", { name });
+    await screen.findByRole("navigation", { name: "Asetusten välilehdet" });
+    await user.click(tab("Henkilöstö"));
+    expect(await screen.findByText("Test Admin")).toBeTruthy();
+    expect(
+      screen.queryByRole("heading", { name: "Pöydät ja QR-istunnot" }),
+    ).toBeNull();
+    expect(tab("Henkilöstö").getAttribute("aria-pressed")).toBe("true");
+
+    await user.click(tab("Ravintolan tiedot"));
+    expect(
+      await screen.findByRole("heading", { name: "Perustiedot" }),
+    ).toBeTruthy();
+
+    await user.click(tab("QR-tila"));
+    expect(
+      screen.getAllByRole("heading", { name: "QR-tilaaminen" }).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.queryByRole("heading", { name: "Pöydät ja QR-istunnot" }),
+    ).toBeNull();
+
+    await user.click(tab("Pöydät ja QR"));
+    expect(
+      screen.getByRole("heading", { name: "Pöydät ja QR-istunnot" }),
+    ).toBeTruthy();
+    expect(window.location.pathname).toBe(originalPath);
+  });
+
+  it("selects the QR panel for the existing QR settings hash", async () => {
+    window.history.replaceState(null, "", "#qr-mode");
+    render(<TablesSettingsPage />);
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: "QR-tila" })
+          .getAttribute("aria-pressed"),
+      ).toBe("true"),
+    );
+    expect(
+      screen.queryByRole("heading", { name: "Pöydät ja QR-istunnot" }),
+    ).toBeNull();
+  });
+
   it("keeps an uncertain table payment recoverable after the session closes", async () => {
     localStorage.setItem("mytokenfornextjsproject", "test-token");
     localStorage.setItem("next_name", "Staff");
@@ -149,6 +225,7 @@ describe("QR-01 tables screen", () => {
     render(<TablesSettingsPage />);
     await screen.findByRole("heading", { name: "Pöydät ja QR-istunnot" });
     await screen.findByRole("button", { name: "Sulje istunto" });
+    expect(screen.queryByRole("button", { name: "Henkilöstö" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Lisää pöytä" })).toBeNull();
     expect(screen.queryByRole("button", { name: /Muokkaa pöytää/ })).toBeNull();
     expect(screen.queryByRole("group", { name: "Valitse QR-tila" })).toBeNull();

@@ -57,4 +57,79 @@ describe("HIS-01 operational dashboard", () => {
       screen.queryByRole("region", { name: "Operatiiviset tunnusluvut" }),
     ).toBeNull();
   });
+
+  it("shows takeaway orders alongside dine-in orders without rejecting the summary", async () => {
+    const order = {
+      status: "CONFIRMED",
+      total: 25,
+      submittedAt: "2026-09-26T10:00:00.000Z",
+    };
+    api.get.mockResolvedValue({
+      data: {
+        metrics: {
+          activeOrders: 3,
+          kitchenQueue: 3,
+          readyOrders: 0,
+          openTables: 2,
+        },
+        recentOrders: [
+          { ...order, id: 18, channel: "COUNTER", tableNo: null },
+          { ...order, id: 17, channel: "QR", tableNo: 5 },
+          { ...order, id: 16, channel: "COUNTER", tableNo: 6 },
+        ],
+      },
+    });
+    render(<Dashboard />);
+
+    const takeaway = await screen.findByRole("row", { name: /#18/ });
+    expect(within(takeaway).getByText("Mukaan")).toBeTruthy();
+    expect(within(takeaway).getByText("25,00 €")).toBeTruthy();
+    expect(
+      within(screen.getByRole("row", { name: /#17/ })).getByText("5"),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByRole("row", { name: /#16/ })).getByText("6"),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("region", { name: "Operatiiviset tunnusluvut" }),
+    ).toBeTruthy();
+    expect(screen.queryByText("Yhteenvetoa ei voitu ladata")).toBeNull();
+  });
+
+  it.each([
+    { channel: "COUNTER", tableNo: undefined },
+    { channel: "COUNTER", tableNo: "5" },
+    { channel: "COUNTER", tableNo: 1.5 },
+    { channel: "QR", tableNo: null },
+  ])("rejects an invalid order location: %j", async (location) => {
+    api.get.mockResolvedValue({
+      data: {
+        metrics: {
+          activeOrders: 1,
+          kitchenQueue: 1,
+          readyOrders: 0,
+          openTables: 0,
+        },
+        recentOrders: [
+          {
+            id: 18,
+            status: "CONFIRMED",
+            total: 25,
+            submittedAt: "2026-09-26T10:00:00.000Z",
+            ...location,
+          },
+        ],
+      },
+    });
+    render(<Dashboard />);
+
+    expect(
+      await screen.findByText(
+        "Palvelin palautti virheelliset yhteenvetotiedot.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("region", { name: "Operatiiviset tunnusluvut" }),
+    ).toBeNull();
+  });
 });

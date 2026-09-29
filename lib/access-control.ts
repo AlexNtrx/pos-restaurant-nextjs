@@ -2,7 +2,14 @@ export const userLevels = ["admin", "user"] as const;
 export type UserLevel = (typeof userLevels)[number];
 
 export type NavigationIcon =
-  "overview" | "catalog" | "orders" | "kitchen" | "reports" | "settings";
+  | "overview"
+  | "catalog"
+  | "orders"
+  | "kitchen"
+  | "receipts"
+  | "orderHistory"
+  | "reports"
+  | "settings";
 
 export type BackofficeNavigationChild = {
   href: string;
@@ -17,7 +24,9 @@ export type BackofficeNavigationGroup = {
   label: string;
   icon: NavigationIcon;
   roles: readonly UserLevel[];
+  legacyPaths?: readonly string[];
   unavailable?: boolean;
+  activeExact?: boolean;
   children?: readonly BackofficeNavigationChild[];
 };
 
@@ -73,7 +82,7 @@ export const backofficeNavigation: readonly BackofficeNavigationGroup[] = [
   {
     id: "orders",
     href: "/backoffice/orders/new",
-    label: "Tilaukset",
+    label: "Kassa",
     icon: "orders",
     roles: allStaff,
     children: [
@@ -88,12 +97,6 @@ export const backofficeNavigation: readonly BackofficeNavigationGroup[] = [
         label: "Saapuvat tilaukset",
         roles: allStaff,
       },
-      {
-        href: "/backoffice/orders/history",
-        label: "Myyntihistoria",
-        legacyPaths: ["/backoffice/salereport"],
-        roles: adminOnly,
-      },
     ],
   },
   {
@@ -102,6 +105,31 @@ export const backofficeNavigation: readonly BackofficeNavigationGroup[] = [
     label: "Keittiö",
     icon: "kitchen",
     roles: allStaff,
+  },
+  {
+    id: "serviceCalls",
+    href: "/backoffice/service-calls",
+    label: "Palvelukutsut",
+    icon: "orders",
+    roles: allStaff,
+  },
+  {
+    id: "receipts",
+    href: "/backoffice/orders/history",
+    label: "Kuittihistoria",
+    icon: "receipts",
+    roles: adminOnly,
+    legacyPaths: ["/backoffice/salereport"],
+    // EN: The Order history URL is nested under this route, so only the receipt page highlights this item.
+    // FI: Tilaushistorian URL on tämän reitin alla, joten vain kuittisivu korostaa tämän kohdan.
+    activeExact: true,
+  },
+  {
+    id: "orderHistory",
+    href: "/backoffice/orders/history/orders",
+    label: "Tilaushistoria",
+    icon: "orderHistory",
+    roles: adminOnly,
   },
   {
     id: "reports",
@@ -185,7 +213,13 @@ export function isNavigationGroupActive(
   group: BackofficeNavigationGroup,
   pathname: string,
 ) {
-  if (group.href && matchesPath(pathname, group.href)) return true;
+  if (group.activeExact && group.href)
+    return (
+      pathname === group.href ||
+      (group.legacyPaths?.some((path) => matchesPath(pathname, path)) ?? false)
+    );
+  if (group.href && matchesPath(pathname, group.href, group.legacyPaths))
+    return true;
   return (
     group.children?.some(({ href, legacyPaths }) =>
       matchesPath(pathname, href, legacyPaths),
@@ -211,7 +245,11 @@ export function canAccessBackofficePath(pathname: string, level: UserLevel) {
     if (group.unavailable || !hasRole(group.roles, level)) return false;
     // EN: A group link with children must use the matching child's role, not grant its parent role to every settings page.
     // FI: Alilinkillisen ryhmän osoite käyttää vastaavan alilinkin roolia, eikä ylätason rooli avaa kaikkia asetussivuja.
-    if (!group.children && group.href && matchesPath(pathname, group.href))
+    if (
+      !group.children &&
+      group.href &&
+      matchesPath(pathname, group.href, group.legacyPaths)
+    )
       return true;
     return (
       group.children?.some(

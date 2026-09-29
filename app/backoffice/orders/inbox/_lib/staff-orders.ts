@@ -14,6 +14,7 @@ export type OrderStatus =
 export type StaffOrder = {
   id: number;
   channel: "COUNTER" | "QR";
+  serviceType: "DINE_IN" | "TAKEAWAY";
   status: OrderStatus;
   version: number;
   tableNo: number | null;

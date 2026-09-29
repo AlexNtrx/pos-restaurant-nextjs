@@ -1,4 +1,5 @@
-// Renders the home interface.
+import { redirect } from "next/navigation";
+
 export default function Home() {
-  return <></>;
+  redirect("/signin");
 }

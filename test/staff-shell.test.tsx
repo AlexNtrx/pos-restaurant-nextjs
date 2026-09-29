@@ -8,6 +8,7 @@ import {
   canAccessBackofficePath,
   getBackofficeLanding,
   getVisibleBackofficeNavigation,
+  isNavigationGroupActive,
 } from "@/lib/access-control";
 
 const replace = vi.fn();
@@ -59,6 +60,24 @@ describe("TW-03 staff shell and navigation", () => {
     ).toBe(false);
     expect(canAccessBackofficePath("/backoffice/kitchen", "admin")).toBe(true);
     expect(canAccessBackofficePath("/backoffice/kitchen", "user")).toBe(true);
+    expect(canAccessBackofficePath("/backoffice/service-calls", "user")).toBe(
+      true,
+    );
+    expect(canAccessBackofficePath("/backoffice/orders/history", "admin")).toBe(
+      true,
+    );
+    expect(
+      canAccessBackofficePath("/backoffice/orders/history/orders", "admin"),
+    ).toBe(true);
+    expect(canAccessBackofficePath("/backoffice/orders/history", "user")).toBe(
+      false,
+    );
+    expect(canAccessBackofficePath("/backoffice/salereport", "admin")).toBe(
+      true,
+    );
+    expect(
+      canAccessBackofficePath("/backoffice/orders/history/orders", "user"),
+    ).toBe(false);
     expect(getBackofficeLanding("admin")).toBe("/backoffice/dashboard");
     expect(getBackofficeLanding("user")).toBe("/backoffice/sale");
   });
@@ -66,17 +85,45 @@ describe("TW-03 staff shell and navigation", () => {
   it("shows only navigation groups permitted by the existing role contract", () => {
     expect(
       getVisibleBackofficeNavigation("user").map(({ label }) => label),
-    ).toEqual(["Tilaukset", "Keittiö", "Asetukset"]);
+    ).toEqual(["Kassa", "Keittiö", "Palvelukutsut", "Asetukset"]);
     expect(
       getVisibleBackofficeNavigation("admin").map(({ label }) => label),
     ).toEqual([
       "Yhteenveto",
       "Ruokalista",
-      "Tilaukset",
+      "Kassa",
       "Keittiö",
+      "Palvelukutsut",
+      "Kuittihistoria",
+      "Tilaushistoria",
       "Raportit",
       "Asetukset",
     ]);
+  });
+
+  it("keeps the two history pages as distinct active sidebar destinations", () => {
+    const groups = getVisibleBackofficeNavigation("admin");
+    const receipts = groups.find(({ id }) => id === "receipts")!;
+    const orderHistory = groups.find(({ id }) => id === "orderHistory")!;
+
+    expect(
+      isNavigationGroupActive(receipts, "/backoffice/orders/history"),
+    ).toBe(true);
+    expect(isNavigationGroupActive(receipts, "/backoffice/salereport")).toBe(
+      true,
+    );
+    expect(
+      isNavigationGroupActive(orderHistory, "/backoffice/orders/history"),
+    ).toBe(false);
+    expect(
+      isNavigationGroupActive(receipts, "/backoffice/orders/history/orders"),
+    ).toBe(false);
+    expect(
+      isNavigationGroupActive(
+        orderHistory,
+        "/backoffice/orders/history/orders",
+      ),
+    ).toBe(true);
   });
 
   it("renders the responsive shell without changing page content", async () => {
@@ -163,7 +210,7 @@ describe("TW-03 staff shell and navigation", () => {
       desktopSidebar.querySelectorAll<HTMLElement>('[data-slot="nav-item"]'),
     );
 
-    expect(navigationItems).toHaveLength(6);
+    expect(navigationItems).toHaveLength(9);
     for (const item of navigationItems) {
       expect(item.className).toContain("h-10");
       expect(item.className).toContain("min-h-10");
@@ -182,6 +229,16 @@ describe("TW-03 staff shell and navigation", () => {
     expect(kitchenItem?.tagName).toBe("A");
     expect(kitchenItem?.getAttribute("aria-disabled")).toBeNull();
     expect(kitchenItem?.getAttribute("href")).toBe("/backoffice/kitchen");
+    expect(
+      navigationItems
+        .find((item) => item.textContent === "Kuittihistoria")
+        ?.getAttribute("href"),
+    ).toBe("/backoffice/orders/history");
+    expect(
+      navigationItems
+        .find((item) => item.textContent === "Tilaushistoria")
+        ?.getAttribute("href"),
+    ).toBe("/backoffice/orders/history/orders");
   });
 
   it("preserves confirmed sign-out behavior", async () => {

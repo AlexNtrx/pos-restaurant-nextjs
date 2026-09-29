@@ -1,11 +1,13 @@
 "use client";
 
 import {
+  ClipboardList,
   Clock3,
   Columns2,
   Grid3X3,
   House,
   LogOut,
+  ReceiptText,
   Settings,
   SquareMenu,
   type LucideIcon,
@@ -40,6 +42,8 @@ const navigationIcons = {
   catalog: Grid3X3,
   orders: SquareMenu,
   kitchen: Columns2,
+  receipts: ReceiptText,
+  orderHistory: ClipboardList,
   reports: Clock3,
   settings: Settings,
 } satisfies Record<NavigationIcon, LucideIcon>;
@@ -114,13 +118,13 @@ export default function Sidebar({
 
           <div
             className={cn(
-              "min-h-0",
-              showLabels && "flex flex-1 flex-col gap-[48px] overflow-hidden",
+              "min-h-0 flex-1 overflow-y-auto",
+              showLabels && "flex flex-col gap-[48px]",
             )}
           >
             <div
               role="navigation"
-              className="flex h-[280px] shrink-0 flex-col gap-[8px] overflow-hidden"
+              className="flex shrink-0 flex-col gap-[8px]"
               aria-label="Työtilat"
             >
               {groups.map((group) => {

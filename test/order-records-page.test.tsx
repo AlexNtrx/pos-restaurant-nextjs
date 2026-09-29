@@ -76,7 +76,12 @@ describe("HIS-01 Order records", () => {
     expect(
       screen.getByText(/Tilaussummat eivät ole myyntituloja/),
     ).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Kuittihistoria" })).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "Tilaushistoria", level: 1 }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("navigation", { name: "Historian välilehdet" }),
+    ).toBeNull();
 
     await user.selectOptions(screen.getByLabelText("Tilauskanava"), "QR");
     await user.type(screen.getByLabelText("Pöytäistunto"), "19");

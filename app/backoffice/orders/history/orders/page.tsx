@@ -3,7 +3,6 @@
 import dayjs from "dayjs";
 import timezone from "dayjs/plugin/timezone";
 import utc from "dayjs/plugin/utc";
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -183,23 +182,6 @@ export default function OrderRecordsPage() {
           </Button>
         }
       />
-      <nav
-        aria-label="Historian välilehdet"
-        className="flex gap-5 border-b border-border text-sm"
-      >
-        <Link
-          href="/backoffice/orders/history"
-          className="pb-3 text-muted-foreground hover:text-foreground"
-        >
-          Kuittihistoria
-        </Link>
-        <span
-          aria-current="page"
-          className="border-b-2 border-olive pb-3 font-semibold"
-        >
-          Tilaushistoria
-        </span>
-      </nav>
       <section
         aria-label="Tilaushistorian suodattimet"
         className="grid gap-3 border border-border bg-surface p-4 sm:grid-cols-2 lg:grid-cols-[minmax(140px,1fr)_minmax(140px,1fr)_minmax(130px,1fr)_minmax(130px,1fr)_auto]"
@@ -290,11 +272,16 @@ export default function OrderRecordsPage() {
                     #{order.id} · {formatTime(order.submittedAt)}
                   </TableCell>
                   <TableCell>
-                    {order.channel === "QR" ? "QR" : "Kassa"}
+                    {order.channel === "QR"
+                      ? "QR"
+                      : order.serviceType === "TAKEAWAY"
+                        ? "Mukaan"
+                        : "Kassa"}
                   </TableCell>
                   <TableCell>
-                    {order.tableNo}
-                    {order.tableSessionId ? ` / #${order.tableSessionId}` : ""}
+                    {order.serviceType === "TAKEAWAY"
+                      ? `Nouto #${order.id}`
+                      : `${order.tableNo}${order.tableSessionId ? ` / #${order.tableSessionId}` : ""}`}
                   </TableCell>
                   <TableCell>{currency.format(order.total)}</TableCell>
                   <TableCell>
@@ -331,7 +318,7 @@ export default function OrderRecordsPage() {
             <DialogTitle>Tilaus #{selectedId}</DialogTitle>
             <DialogDescription>
               {detail
-                ? `${detail.channel === "QR" ? "QR" : "Kassa"} · pöytä ${detail.tableNo} · ${statusLabels[detail.status]}`
+                ? `${detail.serviceType === "TAKEAWAY" ? `Mukaan · Nouto #${detail.id}` : `${detail.channel === "QR" ? "QR" : "Kassa"} · pöytä ${detail.tableNo}`} · ${statusLabels[detail.status]}`
                 : "Tilauksen tiedot"}
             </DialogDescription>
           </DialogHeader>

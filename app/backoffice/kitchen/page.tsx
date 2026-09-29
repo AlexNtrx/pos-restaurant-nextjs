@@ -100,10 +100,16 @@ function KitchenCard({
       <div className="flex items-start justify-between gap-3 px-4 pt-4">
         <div className="min-w-0">
           <h3 className="font-sans text-[18px] leading-6 font-semibold">
-            #{order.id}
+            {order.serviceType === "TAKEAWAY"
+              ? `Nouto #${order.id}`
+              : `#${order.id}`}
           </h3>
           <p className="mt-1 text-[12px] leading-5 text-[#767168]">
-            {order.channel === "QR" ? "QR" : "Kassa"}
+            {order.channel === "QR"
+              ? "QR"
+              : order.serviceType === "TAKEAWAY"
+                ? "Mukaan"
+                : "Kassa"}
             {order.tableNo == null ? "" : ` · Pöytä ${order.tableNo}`} ·{" "}
             {timeFormatter.format(new Date(order.submittedAt))}
           </p>

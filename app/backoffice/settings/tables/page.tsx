@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { isAxiosError } from "axios";
-import Link from "next/link";
 import Image from "next/image";
 import { Pencil, Plus, Printer, QrCode, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -24,6 +23,8 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import api from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { isUserLevel, type UserLevel } from "@/lib/access-control";
+import StaffPage from "@/app/backoffice/staff/page";
+import RestaurantSettingsPage from "@/app/backoffice/settings/restaurant/page";
 import TableSessionCheckout, {
   listPendingTablePayments,
 } from "./_components/table-session-checkout";
@@ -51,6 +52,7 @@ type Confirmation = {
   kind: "rotate" | "close" | "delete";
   table: RestaurantTable;
 };
+type SettingsTab = "restaurant" | "tables" | "qr" | "staff";
 
 const modes: { value: QrMode; label: string; description: string }[] = [
   {
@@ -139,7 +141,14 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function tabClassName(active: boolean) {
+  return active
+    ? "border-b-2 border-olive pb-3 font-semibold text-foreground"
+    : "pb-3 text-muted-foreground hover:text-foreground";
+}
+
 export default function TablesSettingsPage() {
+  const [activeTab, setActiveTab] = useState<SettingsTab>("tables");
   const [tables, setTables] = useState<RestaurantTable[]>([]);
   const [mode, setMode] = useState<QrMode>("DISABLED");
   const [level, setLevel] = useState<UserLevel>("user");
@@ -205,6 +214,14 @@ export default function TablesSettingsPage() {
     const id = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(id);
   }, [load]);
+
+  useEffect(() => {
+    // EN: The approved QR settings URL still lands on this screen; select its panel after hydration.
+    // FI: Hyväksytty QR-asetusten osoite avaa edelleen tämän näkymän; valitse sen paneeli hydraation jälkeen.
+    if (window.location.hash !== "#qr-mode") return;
+    const id = window.setTimeout(() => setActiveTab("qr"), 0);
+    return () => window.clearTimeout(id);
+  }, []);
 
   const refresh = async () => {
     await load();
@@ -380,8 +397,121 @@ export default function TablesSettingsPage() {
   const openCount = tables.filter((table) => table.openSession).length;
   const isAdmin = level === "admin";
 
+  const settingsNav = (
+    <nav
+      aria-label="Asetusten välilehdet"
+      className="flex gap-5 overflow-x-auto border-b border-border text-sm"
+    >
+      {isAdmin && (
+        <button
+          type="button"
+          aria-pressed={activeTab === "restaurant"}
+          className={tabClassName(activeTab === "restaurant")}
+          onClick={() => setActiveTab("restaurant")}
+        >
+          Ravintolan tiedot
+        </button>
+      )}
+      <button
+        type="button"
+        aria-pressed={activeTab === "tables"}
+        className={tabClassName(activeTab === "tables")}
+        onClick={() => setActiveTab("tables")}
+      >
+        Pöydät ja QR
+      </button>
+      {isAdmin && (
+        <button
+          type="button"
+          aria-pressed={activeTab === "qr"}
+          className={tabClassName(activeTab === "qr")}
+          onClick={() => setActiveTab("qr")}
+        >
+          QR-tila
+        </button>
+      )}
+      {isAdmin && (
+        <button
+          type="button"
+          aria-pressed={activeTab === "staff"}
+          className={tabClassName(activeTab === "staff")}
+          onClick={() => setActiveTab("staff")}
+        >
+          Henkilöstö
+        </button>
+      )}
+    </nav>
+  );
+
+  const qrModeCard = (
+    <Card id="qr-mode" className="gap-0 py-0">
+      <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="font-heading text-xl font-semibold">QR-tilaaminen</h2>
+          <p className="text-sm text-muted-foreground">
+            Nykyinen tila: {modeLabel(mode)}. Muutokset koskevat kaikkia avoimia
+            istuntoja.
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Jaa QR-koodi vasta, kun asiakasnäkymä, API ja QR-avain on otettu
+            käyttöön.
+          </p>
+        </div>
+        <StatusBadge tone={mode === "DISABLED" ? "neutral" : "success"}>
+          {modeLabel(mode)}
+        </StatusBadge>
+      </CardContent>
+      {isAdmin && (
+        <CardContent
+          className="grid gap-2 border-t border-border p-5 sm:grid-cols-3"
+          role="group"
+          aria-label="Valitse QR-tila"
+        >
+          {modes.map((option) => (
+            <Button
+              key={option.value}
+              type="button"
+              variant={mode === option.value ? "default" : "outline"}
+              disabled={busy}
+              aria-pressed={mode === option.value}
+              onClick={() => void changeMode(option.value)}
+              className="h-auto min-h-12 flex-col items-start gap-0.5 py-2 text-left"
+            >
+              <span>{option.label}</span>
+              <span className="text-xs font-normal opacity-75">
+                {option.description}
+              </span>
+            </Button>
+          ))}
+        </CardContent>
+      )}
+    </Card>
+  );
+
+  if (isAdmin && activeTab !== "tables") {
+    return (
+      <div className="mx-auto max-w-[1100px] space-y-6 font-sans">
+        {settingsNav}
+        {activeTab === "restaurant" ? (
+          <RestaurantSettingsPage />
+        ) : activeTab === "staff" ? (
+          <StaffPage />
+        ) : (
+          <>
+            <PageHeader
+              title="QR-tilaaminen"
+              description="Hallinnoi asiakkaiden QR-tilaamisen tilaa."
+            />
+            {qrModeCard}
+          </>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-[1100px] space-y-6 font-sans">
+      {settingsNav}
       <PageHeader
         title="Pöydät ja QR-istunnot"
         description="Hallinnoi ravintolan pöytiä, istuntoja ja QR-koodeja."
@@ -393,34 +523,6 @@ export default function TablesSettingsPage() {
           ) : undefined
         }
       />
-
-      <nav
-        aria-label="Asetusten välilehdet"
-        className="flex gap-5 overflow-x-auto border-b border-border text-sm"
-      >
-        {isAdmin && (
-          <Link
-            className="pb-3 text-muted-foreground hover:text-foreground"
-            href="/backoffice/settings/restaurant"
-          >
-            Ravintolan tiedot
-          </Link>
-        )}
-        <span
-          aria-current="page"
-          className="border-b-2 border-olive pb-3 font-semibold text-foreground"
-        >
-          Pöydät ja QR
-        </span>
-        {isAdmin && (
-          <Link
-            href="/backoffice/settings/qr-ordering"
-            className="pb-3 text-muted-foreground hover:text-foreground"
-          >
-            QR-tila
-          </Link>
-        )}
-      </nav>
 
       {error && (
         <div
@@ -464,51 +566,6 @@ export default function TablesSettingsPage() {
           </div>
         </div>
       )}
-
-      <Card id="qr-mode" className="gap-0 py-0">
-        <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="font-heading text-xl font-semibold">
-              QR-tilaaminen
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Nykyinen tila: {modeLabel(mode)}. Muutokset koskevat kaikkia
-              avoimia istuntoja.
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Jaa QR-koodi vasta, kun asiakasnäkymä, API ja QR-avain on otettu
-              käyttöön.
-            </p>
-          </div>
-          <StatusBadge tone={mode === "DISABLED" ? "neutral" : "success"}>
-            {modeLabel(mode)}
-          </StatusBadge>
-        </CardContent>
-        {isAdmin && (
-          <CardContent
-            className="grid gap-2 border-t border-border p-5 sm:grid-cols-3"
-            role="group"
-            aria-label="Valitse QR-tila"
-          >
-            {modes.map((option) => (
-              <Button
-                key={option.value}
-                type="button"
-                variant={mode === option.value ? "default" : "outline"}
-                disabled={busy}
-                aria-pressed={mode === option.value}
-                onClick={() => void changeMode(option.value)}
-                className="h-auto min-h-12 flex-col items-start gap-0.5 py-2 text-left"
-              >
-                <span>{option.label}</span>
-                <span className="text-xs font-normal opacity-75">
-                  {option.description}
-                </span>
-              </Button>
-            ))}
-          </CardContent>
-        )}
-      </Card>
 
       <div className="grid gap-3 sm:grid-cols-2">
         <Card className="gap-0 py-0">
