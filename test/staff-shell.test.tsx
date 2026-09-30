@@ -36,6 +36,35 @@ afterEach(() => {
 });
 
 describe("TW-03 staff shell and navigation", () => {
+  it("lands kitchen staff on Keittiö and denies every other backoffice destination", () => {
+    expect(getBackofficeLanding("kitchen")).toBe("/backoffice/kitchen");
+    expect(
+      getVisibleBackofficeNavigation("kitchen").map(({ label }) => label),
+    ).toEqual(["Keittiö"]);
+    expect(canAccessBackofficePath("/backoffice/kitchen", "kitchen")).toBe(
+      true,
+    );
+    for (const path of [
+      "dashboard",
+      "sale",
+      "orders/new",
+      "orders/inbox",
+      "waiter",
+      "service-calls",
+      "staff",
+      "user",
+      "settings/tables",
+      "settings/restaurant",
+      "orders/history",
+      "reports/daily-sales",
+      "catalog/menu-items",
+      "food",
+    ]) {
+      expect(canAccessBackofficePath(`/backoffice/${path}`, "kitchen")).toBe(
+        false,
+      );
+    }
+  });
   it("keeps canonical and legacy routes under the same role rules", () => {
     expect(
       canAccessBackofficePath("/backoffice/catalog/menu-items", "admin"),

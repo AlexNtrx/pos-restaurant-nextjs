@@ -12,9 +12,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const { api } = vi.hoisted(() => ({
   api: { get: vi.fn(), patch: vi.fn() },
 }));
+const replace = vi.hoisted(() => vi.fn());
+vi.mock("next/navigation", () => ({ useRouter: () => ({ replace }) }));
 vi.mock("@/lib/api", () => ({ default: api }));
 
-import KitchenPage from "@/app/backoffice/kitchen/page";
+import KitchenBoard from "@/app/backoffice/kitchen/page";
+import { StaffRoleContext } from "@/lib/staff-role-context";
+import type { UserLevel } from "@/lib/access-control";
+
+function KitchenPage({ level = "user" }: { level?: UserLevel }) {
+  return (
+    <StaffRoleContext.Provider value={level}>
+      <KitchenBoard />
+    </StaffRoleContext.Provider>
+  );
+}
 
 const base = {
   id: 41,
@@ -86,6 +98,24 @@ afterEach(() => {
 });
 
 describe("KDS-01 Kitchen board", () => {
+  it("limits kitchen staff to preparation and supports signing out", async () => {
+    currentStatus = "READY";
+    localStorage.setItem("mytokenfornextjsproject", "kitchen-token");
+    localStorage.setItem("next_name", "Cook");
+    localStorage.setItem("next_user_id", "10");
+    const user = userEvent.setup();
+    render(<KitchenPage level="kitchen" />);
+    await screen.findByRole("heading", { name: "#41" });
+    expect(
+      screen.queryByRole("button", { name: "Merkitse tarjoilluksi" }),
+    ).toBeNull();
+    expect(screen.queryByRole("link", { name: "Avaa asetukset" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Kirjaudu ulos" }));
+    expect(localStorage.getItem("mytokenfornextjsproject")).toBeNull();
+    expect(localStorage.getItem("next_name")).toBeNull();
+    expect(localStorage.getItem("next_user_id")).toBeNull();
+    expect(replace).toHaveBeenCalledWith("/signin");
+  });
   it("serves a READY Order through the dedicated staff action and removes it from Kitchen", async () => {
     currentStatus = "READY";
     api.patch.mockImplementation(async () => {
@@ -120,7 +150,7 @@ describe("KDS-01 Kitchen board", () => {
       currentStatus = "PREPARING";
       return detail({ ...base, status: "PREPARING", version: 3 });
     });
-    render(<KitchenPage />);
+    render(<KitchenPage level="kitchen" />);
     const waiting = await screen.findByRole("region", { name: "Odottaa" });
     expect(within(waiting).getByRole("heading", { name: "#41" })).toBeTruthy();
     expect(

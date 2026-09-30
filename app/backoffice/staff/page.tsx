@@ -37,9 +37,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import api from "@/lib/api";
+import { isUserLevel, type UserLevel } from "@/lib/access-control";
 import { getApiErrorMessage, isPermissionDeniedError } from "@/lib/api-error";
 
-type UserLevel = "admin" | "user" | "waiter";
+const roleLabels: Record<UserLevel, string> = {
+  admin: "Ylläpitäjä",
+  user: "Työntekijä",
+  waiter: "Tarjoilija",
+  kitchen: "Keittiöhenkilökunta",
+};
 type StaffUser = {
   id: number;
   name: string;
@@ -55,7 +61,7 @@ function isStaffUser(value: unknown): value is StaffUser {
     typeof user.id === "number" &&
     typeof user.name === "string" &&
     typeof user.username === "string" &&
-    (user.level === "admin" || user.level === "user" || user.level === "waiter")
+    isUserLevel(user.level)
   );
 }
 
@@ -230,7 +236,7 @@ export default function StaffPage() {
                   <StatusBadge
                     tone={user.level === "admin" ? "info" : "neutral"}
                   >
-                    {user.level === "admin" ? "Ylläpitäjä" : "Työntekijä"}
+                    {roleLabels[user.level]}
                   </StatusBadge>
                 </TableCell>
                 <TableCell>
@@ -293,6 +299,7 @@ export default function StaffPage() {
               >
                 <option value="user">Työntekijä</option>
                 <option value="waiter">Tarjoilija</option>
+                <option value="kitchen">Keittiöhenkilökunta</option>
                 <option value="admin">Ylläpitäjä</option>
               </select>
             </FormField>

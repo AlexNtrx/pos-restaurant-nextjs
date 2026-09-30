@@ -1,9 +1,12 @@
 "use client";
 
 import { isAxiosError } from "axios";
-import { Search, Settings2 } from "lucide-react";
+import { LogOut, Search, Settings2 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
+import { StaffRoleContext } from "@/lib/staff-role-context";
+import { clearAuthSession } from "@/lib/auth-session";
 
 import {
   AlertDialog,
@@ -85,11 +88,13 @@ function KitchenCard({
   order,
   now,
   saving,
+  canServe,
   onAction,
 }: {
   order: StaffOrder;
   now: number;
   saving: boolean;
+  canServe: boolean;
   onAction: (nextStatus: "PREPARING" | "READY" | "SERVED") => void;
 }) {
   return (
@@ -158,7 +163,7 @@ function KitchenCard({
           >
             Merkitse valmiiksi
           </Button>
-        ) : (
+        ) : canServe ? (
           <Button
             className="h-9 w-full rounded-[5px] bg-[#e4e5e2] text-[12px] text-[#514f49] hover:bg-[#d8d4cc]"
             disabled={saving}
@@ -166,7 +171,7 @@ function KitchenCard({
           >
             Merkitse tarjoilluksi
           </Button>
-        )}
+        ) : null}
       </div>
     </Card>
   );
@@ -190,6 +195,9 @@ function matchesSearch(order: StaffOrder, query: string) {
 }
 
 export default function KitchenPage() {
+  const level = useContext(StaffRoleContext);
+  const router = useRouter();
+  const canServe = level === "admin" || level === "user";
   const [orders, setOrders] = useState<StaffOrder[]>([]);
   const [state, setState] = useState<
     "loading" | "ready" | "error" | "forbidden"
@@ -369,19 +377,33 @@ export default function KitchenPage() {
           >
             <Search aria-hidden="true" />
           </Button>
-          <Button
-            asChild
-            variant="ghost"
-            size="icon-sm"
-            className="text-[#e7e5de] hover:bg-[#3a3b36] hover:text-white"
-          >
-            <Link
-              href="/backoffice/settings/tables"
-              aria-label="Avaa asetukset"
+          {canServe && (
+            <Button
+              asChild
+              variant="ghost"
+              size="icon-sm"
+              className="text-[#e7e5de] hover:bg-[#3a3b36] hover:text-white"
             >
-              <Settings2 aria-hidden="true" />
-            </Link>
-          </Button>
+              <Link
+                href="/backoffice/settings/tables"
+                aria-label="Avaa asetukset"
+              >
+                <Settings2 aria-hidden="true" />
+              </Link>
+            </Button>
+          )}
+          {level === "kitchen" && (
+            <Button
+              variant="ghost"
+              className="text-[#e7e5de] hover:bg-[#3a3b36] hover:text-white"
+              onClick={() => {
+                clearAuthSession();
+                router.replace("/signin");
+              }}
+            >
+              <LogOut aria-hidden="true" /> Kirjaudu ulos
+            </Button>
+          )}
         </div>
         {searchOpen && (
           <label className="w-full text-xs text-[#d8d4cc]">
@@ -476,6 +498,7 @@ export default function KitchenPage() {
                         order={order}
                         now={now}
                         saving={savingId === order.id}
+                        canServe={canServe}
                         onAction={(nextStatus) =>
                           setPending({
                             id: order.id,

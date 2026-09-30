@@ -17,10 +17,17 @@ The Next.js frontend for restaurant counter sales, customer QR ordering, kitchen
 - Customer QR menu, sizes and modifiers, notes, cart, submission, and order tracking.
 - Table sessions, QR modes, staff order inbox, and table-session settlement.
 - Kitchen board for confirmed, preparing, and ready orders.
+- Dedicated `kitchen` accounts, displayed as **Keittiöhenkilökunta**, with access only to the **Keittiö** board.
 - Waiter table ordering, serving confirmation, and customer service calls.
 - Catalog and staff management, restaurant settings, operational dashboard, order history, receipt history, and sales reports.
 
 The backend verifies permissions, prices, totals, and order transitions. Frontend route guards are interface controls.
+
+## Kitchen staff
+
+แอดมินเพิ่มหรือแก้บัญชีพนักงานครัวได้ที่ **Henkilöstö → Lisää työntekijä → Rooli: Keittiöhenkilökunta**. บัญชีใช้ role `kitchen` และ Login แล้วเข้า `/backoffice/kitchen` แบบ full-screen; เปิดหน้า backoffice อื่นจะถูกส่งกลับครัว.
+
+พนักงานครัวดูคิว กด **Aloita** เพื่อเริ่มทำ กด **Merkitse valmiiksi** เมื่อพร้อม และกด **Kirjaudu ulos** เพื่อออกจากระบบได้. Role นี้ไม่มีสิทธิ์ยืนยันการเสิร์ฟ ชำระเงิน หรือจัดการพนักงาน. ชื่อหน้ายังคง **Keittiö**; `admin/user/waiter` คงสิทธิ์เดิม. ต้องใช้ backend เวอร์ชันที่รองรับ `kitchen` ร่วมกัน และการเพิ่ม role นี้ไม่ต้องทำ database migration.
 
 ## Stack and requirements
 
@@ -63,21 +70,22 @@ Public environment values are embedded in browser assets at build time. Rebuild 
 
 ## Main routes
 
-| Route                               | Purpose                                                          | Access                                      |
-| ----------------------------------- | ---------------------------------------------------------------- | ------------------------------------------- |
-| `/signin`                           | Staff sign-in                                                    | Public                                      |
-| `/backoffice/dashboard`             | Operational overview                                             | Admin                                       |
-| `/backoffice/orders/new`            | Counter checkout                                                 | Admin, user                                 |
-| `/backoffice/orders/inbox`          | Incoming orders                                                  | Admin, user                                 |
-| `/backoffice/kitchen`               | Kitchen board                                                    | Admin, user                                 |
-| `/backoffice/waiter`                | Table orders, serving, service calls                             | Admin, user, waiter                         |
-| `/backoffice/orders/history/orders` | Order lifecycle history                                          | Admin                                       |
-| `/backoffice/orders/history`        | Receipt history                                                  | Admin                                       |
-| `/backoffice/catalog/menu-items`    | Menu management                                                  | Admin                                       |
+| Route                               | Purpose                                                          | Access                              |
+| ----------------------------------- | ---------------------------------------------------------------- | ----------------------------------- |
+| `/signin`                           | Staff sign-in                                                    | Public                              |
+| `/backoffice/dashboard`             | Operational overview                                             | Admin                               |
+| `/backoffice/orders/new`            | Counter checkout                                                 | Admin, user                         |
+| `/backoffice/orders/inbox`          | Incoming orders                                                  | Admin, user                         |
+| `/backoffice/kitchen`               | Kitchen board                                                    | Admin, user, kitchen                |
+| `/backoffice/waiter`                | Table orders, serving, service calls                             | Admin, user, waiter                 |
+| `/backoffice/orders/history/orders` | Order lifecycle history                                          | Admin                               |
+| `/backoffice/orders/history`        | Receipt history                                                  | Admin                               |
+| `/backoffice/catalog/menu-items`    | Menu management                                                  | Admin                               |
+| `/backoffice/staff`                 | Staff accounts, including kitchen staff                          | Admin                               |
 | `/backoffice/settings/tables`       | Tables and sessions                                              | Admin, user; actions depend on role |
-| `/backoffice/reports/daily-sales`   | Daily report                                                     | Admin                                       |
-| `/backoffice/reports/monthly-sales` | Monthly report                                                   | Admin                                       |
-| `/order/[tableToken]`               | Customer menu, with nested cart, confirmation, and status routes | Valid table QR token                        |
+| `/backoffice/reports/daily-sales`   | Daily report                                                     | Admin                               |
+| `/backoffice/reports/monthly-sales` | Monthly report                                                   | Admin                               |
+| `/order/[tableToken]`               | Customer menu, with nested cart, confirmation, and status routes | Valid table QR token                |
 
 QR links come from staff table-session operations. Backend authorization also applies to each protected action.
 

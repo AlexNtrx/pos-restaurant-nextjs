@@ -42,6 +42,42 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("TW-05 CRUD dialogs", () => {
+  it("creates a kitchen account and preserves its role when editing", async () => {
+    const cook = { id: 9, name: "Cook", username: "cook", level: "kitchen" };
+    api.get.mockResolvedValue({ data: { results: [cook] } });
+    const user = userEvent.setup();
+    render(<StaffPage />);
+    expect(await screen.findByText("Cook")).toBeTruthy();
+    expect(screen.getByText("Keittiöhenkilökunta")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Lisää työntekijä" }));
+    await user.type(screen.getByLabelText(/^Nimi/), "New Cook");
+    await user.type(screen.getByLabelText(/^Käyttäjätunnus/), "newcook");
+    await user.type(screen.getByLabelText(/^Salasana/), "test-password-1");
+    await user.selectOptions(screen.getByLabelText(/^Rooli/), "kitchen");
+    await user.click(screen.getByRole("button", { name: "Tallenna" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/user/create", {
+        name: "New Cook",
+        username: "newcook",
+        password: "test-password-1",
+        level: "kitchen",
+      }),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await user.click(screen.getByRole("button", { name: "Muokkaa" }));
+    expect((screen.getByLabelText(/^Rooli/) as HTMLSelectElement).value).toBe(
+      "kitchen",
+    );
+    await user.click(screen.getByRole("button", { name: "Tallenna" }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith("/user/update", {
+        id: 9,
+        name: "Cook",
+        username: "cook",
+        level: "kitchen",
+      }),
+    );
+  });
   it("creates and deletes a category through the canonical catalog route", async () => {
     api.get.mockResolvedValue({ data: { results: [category] } });
     const user = userEvent.setup();

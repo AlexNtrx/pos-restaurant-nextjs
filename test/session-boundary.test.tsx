@@ -51,6 +51,28 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("backoffice session boundary navigation", () => {
+  it("redirects kitchen staff to their fullscreen board without rendering forbidden content", async () => {
+    storeSession();
+    mocks.pathname = "/backoffice/staff";
+    mocks.apiGet.mockResolvedValue({ data: { level: "kitchen" } });
+    const view = render(
+      <SessionBoundary>
+        <div>Restricted content</div>
+      </SessionBoundary>,
+    );
+    await waitFor(() =>
+      expect(mocks.replace).toHaveBeenCalledWith("/backoffice/kitchen"),
+    );
+    expect(screen.queryByText("Restricted content")).toBeNull();
+    mocks.pathname = "/backoffice/kitchen";
+    view.rerender(
+      <SessionBoundary>
+        <div>Kitchen content</div>
+      </SessionBoundary>,
+    );
+    expect(await screen.findByText("Kitchen content")).toBeTruthy();
+    expect(screen.queryByTestId("staff-shell")).toBeNull();
+  });
   it("keeps a verified shell mounted and does not reverify on route changes", async () => {
     storeSession();
     mocks.apiGet.mockResolvedValue({ data: { level: "admin" } });

@@ -17,6 +17,7 @@ import {
 } from "@/lib/auth-session";
 import { Button } from "@/components/ui/button";
 import StaffShell from "./staff-shell";
+import { StaffRoleContext } from "@/lib/staff-role-context";
 
 //Types
 type SessionState =
@@ -239,7 +240,12 @@ export default function SessionBoundary({
 
   // EN: The approved Kitchen frame is full-screen; keep this same authenticated boundary without the backoffice rail.
   // FI: Hyväksytty keittiönäkymä on koko näytön kokoinen; käytä samaa tunnistettua rajaa ilman sivupalkkia.
-  if (pathname === "/backoffice/kitchen") return <>{children}</>;
+  if (pathname === "/backoffice/kitchen")
+    return (
+      <StaffRoleContext.Provider value={state.level}>
+        {children}
+      </StaffRoleContext.Provider>
+    );
 
   // Main UI
   return (

@@ -1,4 +1,4 @@
-export const userLevels = ["admin", "user", "waiter"] as const;
+export const userLevels = ["admin", "user", "waiter", "kitchen"] as const;
 export type UserLevel = (typeof userLevels)[number];
 
 export type NavigationIcon =
@@ -77,7 +77,7 @@ export const backofficeNavigation: readonly BackofficeNavigationGroup[] = [
     href: "/backoffice/kitchen",
     label: "Keittiö",
     icon: "kitchen",
-    roles: allStaff,
+    roles: ["admin", "user", "kitchen"],
   },
   {
     id: "serviceCalls",
@@ -207,6 +207,7 @@ export function isUserLevel(value: unknown): value is UserLevel {
 
 export function getBackofficeLanding(level: UserLevel) {
   if (level === "admin") return "/backoffice/dashboard";
+  if (level === "kitchen") return "/backoffice/kitchen";
   return level === "waiter" ? "/backoffice/waiter" : "/backoffice/sale";
 }
 
