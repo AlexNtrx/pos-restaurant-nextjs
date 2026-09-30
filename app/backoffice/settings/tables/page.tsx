@@ -689,18 +689,6 @@ export default function TablesSettingsPage() {
                           >
                             Sulje istunto
                           </Button>
-                          <Button
-                            size="sm"
-                            disabled={busy}
-                            onClick={() =>
-                              setCheckoutSession({
-                                id: session.id,
-                                tableNo: table.tableNo,
-                              })
-                            }
-                          >
-                            Maksa istunto
-                          </Button>
                         </>
                       ) : (
                         <Button
