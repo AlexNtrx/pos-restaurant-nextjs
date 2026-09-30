@@ -98,7 +98,7 @@ describe("receipt history reprint", () => {
     const preview = await screen.findByRole("dialog");
     expect(within(preview).getByText("Kuitin kopio")).toBeTruthy();
     await user.click(
-      within(preview).getByRole("button", { name: "Print receipt" }),
+      within(preview).getByRole("button", { name: "Tulosta kuitti" }),
     );
     expect(window.open).toHaveBeenCalledWith(
       "blob:historic-receipt",

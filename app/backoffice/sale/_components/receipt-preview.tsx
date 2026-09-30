@@ -30,7 +30,10 @@ export default function ReceiptPreview({
 }: ReceiptPreviewProps) {
   return (
     <Dialog open={Boolean(billUrl)} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent showCloseButton={false} className="p-6 sm:max-w-[560px]">
+      <DialogContent
+        showCloseButton={false}
+        className="max-h-[95dvh] overflow-y-auto p-5 sm:max-w-[440px]"
+      >
         <DialogHeader className="gap-3">
           <DialogTitle className="font-sans !text-xl !leading-6">
             {historical
@@ -55,11 +58,15 @@ export default function ReceiptPreview({
               : "Esilasku"}
         </p>
         {billUrl ? (
-          <iframe
-            src={billUrl}
-            title="Receipt PDF"
-            className="h-[280px] w-full rounded-md border border-border bg-white"
-          />
+          <div className="mx-auto w-full max-w-[320px] overflow-hidden border border-border bg-white">
+            <iframe
+              src={`${billUrl}#toolbar=0&navpanes=0&view=FitH`}
+              title={
+                kind === "paid" ? "Kuitin esikatselu" : "Esilaskun esikatselu"
+              }
+              className="block h-[min(55dvh,520px)] w-full border-0 bg-white"
+            />
+          </div>
         ) : null}
         <Button
           type="button"
@@ -67,8 +74,10 @@ export default function ReceiptPreview({
           className="w-fit !bg-[#f1efea]"
           aria-label={
             lastCompletedBillId && kind === "paid"
-              ? `Reprint Receipt #${lastCompletedBillId}`
-              : "Print receipt"
+              ? `Tulosta kuitti uudelleen #${lastCompletedBillId}`
+              : kind === "paid"
+                ? "Tulosta kuitti"
+                : "Tulosta esilasku"
           }
           onClick={
             lastCompletedBillId && kind === "paid" && onReprint
@@ -78,7 +87,8 @@ export default function ReceiptPreview({
                   window.open(billUrl, "_blank", "noopener,noreferrer")
           }
         >
-          <Printer aria-hidden="true" /> Tulosta kuitti
+          <Printer aria-hidden="true" />{" "}
+          {kind === "paid" ? "Tulosta kuitti" : "Tulosta esilasku"}
         </Button>
         <DialogFooter>
           <DialogClose asChild>
@@ -88,7 +98,7 @@ export default function ReceiptPreview({
           </DialogClose>
           {kind === "paid" && !historical ? (
             <DialogClose asChild>
-              <Button type="button">Uusi</Button>
+              <Button type="button">Uusi tilaus</Button>
             </DialogClose>
           ) : null}
         </DialogFooter>

@@ -707,7 +707,7 @@ export default function Page() {
       !contentType.includes("application/pdf") ||
       !(res.data instanceof Blob)
     ) {
-      throw new Error("Invalid receipt response");
+      throw new Error("Virheellinen kuittivastaus");
     }
 
     const nextUrl = URL.createObjectURL(res.data);
@@ -730,9 +730,9 @@ export default function Page() {
         draftMode ? draftCart.getIntent() : { tableNo: table },
         "prebill",
       );
-    } catch (e: unknown) {
-      toast.error("Receipt unavailable", {
-        description: errorMessage(e),
+    } catch {
+      toast.error("Esilaskua ei voitu avata", {
+        description: "Yritä avata esilasku uudelleen.",
       });
     } finally {
       setReceiptBusy(false);
@@ -755,9 +755,9 @@ export default function Page() {
     try {
       setReceiptBusy(true);
       await showReceipt(`/counterOrder/${orderId}/prebill`, {}, "prebill");
-    } catch (error: unknown) {
-      toast.error("Receipt unavailable", {
-        description: errorMessage(error),
+    } catch {
+      toast.error("Esilaskua ei voitu avata", {
+        description: "Yritä avata esilasku uudelleen.",
       });
     } finally {
       setReceiptBusy(false);
@@ -767,8 +767,10 @@ export default function Page() {
   const printPaidSentOrder = async (billId: number) => {
     try {
       await printBillAfterPay(billId);
-    } catch (error: unknown) {
-      toast.error("Receipt unavailable", { description: errorMessage(error) });
+    } catch {
+      toast.error("Kuittia ei voitu avata", {
+        description: "Yritä avata kuitti uudelleen.",
+      });
     }
   };
 
@@ -878,9 +880,9 @@ export default function Page() {
 
       try {
         await printBillAfterPay(completed.billId);
-      } catch (receiptError: unknown) {
-        toast.warning("Sale completed", {
-          description: `Bill ${completed.billId} was saved, but the receipt could not be opened: ${errorMessage(receiptError)}`,
+      } catch {
+        toast.warning("Maksu tallennettu", {
+          description: `Kuitti #${completed.billId} tallennettiin. Yritä avata kuitti uudelleen.`,
         });
       }
     } catch (e: unknown) {
@@ -964,9 +966,9 @@ export default function Page() {
     if (!lastCompletedBillId || receiptBusy || checkoutBusy) return;
     try {
       await printBillAfterPay(lastCompletedBillId);
-    } catch (e: unknown) {
-      toast.error("Receipt unavailable", {
-        description: errorMessage(e),
+    } catch {
+      toast.error("Kuittia ei voitu avata", {
+        description: "Yritä avata kuitti uudelleen.",
       });
     }
   };
@@ -1389,7 +1391,7 @@ export default function Page() {
                 type="button"
                 variant="outline"
                 size="sm"
-                aria-label={`Reprint Receipt #${lastCompletedBillId}`}
+                aria-label={`Tulosta kuitti uudelleen #${lastCompletedBillId}`}
                 disabled={checkoutBusy || receiptBusy}
                 onClick={() => void reprintLastBill()}
               >
@@ -1441,9 +1443,9 @@ export default function Page() {
             await refreshSentOrders(draftScope, sentView);
             try {
               await printBillAfterPay(billId);
-            } catch (error: unknown) {
-              toast.warning("Sale completed", {
-                description: `Bill ${billId} was saved, but the receipt could not be opened: ${errorMessage(error)}`,
+            } catch {
+              toast.warning("Maksu tallennettu", {
+                description: `Kuitti #${billId} tallennettiin. Yritä avata kuitti uudelleen.`,
               });
             }
           }}

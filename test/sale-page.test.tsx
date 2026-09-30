@@ -201,7 +201,9 @@ describe("POS safety net", () => {
     );
     const preview = await screen.findByRole("dialog");
     fireEvent.click(
-      within(preview).getByRole("button", { name: "Reprint Receipt #202" }),
+      within(preview).getByRole("button", {
+        name: "Tulosta kuitti uudelleen #202",
+      }),
     );
     await waitFor(() =>
       expect(
@@ -915,7 +917,7 @@ describe("POS safety net", () => {
     );
     await waitFor(() =>
       expect(toast.warning).toHaveBeenCalledWith(
-        "Sale completed",
+        "Maksu tallennettu",
         expect.any(Object),
       ),
     );
@@ -927,7 +929,7 @@ describe("POS safety net", () => {
       api.post.mock.calls.some(([path]) => path === "/saleTemp/endSale"),
     ).toBe(false);
     fireEvent.click(
-      screen.getByRole("button", { name: "Reprint Receipt #201" }),
+      screen.getByRole("button", { name: "Tulosta kuitti uudelleen #201" }),
     );
     await waitFor(() =>
       expect(
@@ -2302,8 +2304,8 @@ describe("POS safety net", () => {
       ),
     );
     expect(URL.createObjectURL).toHaveBeenCalled();
-    expect(screen.getByTitle("Receipt PDF").getAttribute("src")).toBe(
-      "blob:paid-receipt",
+    expect(screen.getByTitle("Kuitin esikatselu").getAttribute("src")).toBe(
+      "blob:paid-receipt#toolbar=0&navpanes=0&view=FitH",
     );
   });
 
@@ -2349,14 +2351,15 @@ describe("POS safety net", () => {
 
     await waitFor(() =>
       expect(toast.warning).toHaveBeenCalledWith(
-        "Sale completed",
+        "Maksu tallennettu",
         expect.objectContaining({
-          description: expect.stringContaining("printer unavailable"),
+          description:
+            "Kuitti #33 tallennettiin. Yritä avata kuitti uudelleen.",
         }),
       ),
     );
     expect(
-      screen.getByRole("button", { name: /reprint receipt #33/i }),
+      screen.getByRole("button", { name: /tulosta kuitti uudelleen #33/i }),
     ).toBeTruthy();
   });
 
@@ -2413,18 +2416,20 @@ describe("POS safety net", () => {
       await screen.findByRole("button", { name: /^confirm payment$/i }),
     );
     const reprint = await screen.findByRole("button", {
-      name: /reprint receipt #34/i,
+      name: /tulosta kuitti uudelleen #34/i,
     });
     fireEvent.click(reprint);
 
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(
-        "Receipt unavailable",
-        expect.objectContaining({ description: "reprint unavailable" }),
+        "Kuittia ei voitu avata",
+        expect.objectContaining({
+          description: "Yritä avata kuitti uudelleen.",
+        }),
       ),
     );
     expect(
-      screen.getByRole("button", { name: /reprint receipt #34/i }),
+      screen.getByRole("button", { name: /tulosta kuitti uudelleen #34/i }),
     ).toBeTruthy();
   });
 });
