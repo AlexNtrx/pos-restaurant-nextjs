@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ImageIcon } from "lucide-react";
+import { ChevronDown, ImageIcon } from "lucide-react";
 import config from "@/app/config";
 import ServiceCallCard from "./service-call-card";
 import { Button } from "@/components/ui/button";
@@ -35,7 +35,9 @@ import {
   type QrPending,
 } from "@/lib/qr-customer";
 
-type View = "menu" | "item" | "cart" | "confirmation" | "status";
+// EN: Section — View types and navigation helpers.
+// FI: Osio — Näkymätyypit ja navigoinnin apufunktiot.
+type View = "menu" | "cart" | "confirmation" | "status";
 
 const pathFor = (token: string, suffix = "") =>
   `/order/${encodeURIComponent(token)}${suffix}`;
@@ -45,6 +47,8 @@ const orderIdFrom = (value: string | null) => {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
+// EN: Section — Menu images and shared view components.
+// FI: Osio — Ruokalistan kuvat ja yhteiset näkymäkomponentit.
 // EN: Public menu images use only safe uploaded filenames from the API origin.
 // FI: Julkisen ruokalistan kuvat käyttävät vain turvallisia ladattuja tiedostonimiä API-osoitteesta.
 function foodImageUrl(filename: string) {
@@ -160,6 +164,123 @@ function QrProblem({
   );
 }
 
+// EN: Section — Item note and quantity controls.
+// FI: Osio — Tuotteen huomautus- ja määräsäätimet.
+// EN: Leave room for the fixed cart action when scrolling a focused note into view.
+// FI: Jätä tilaa kiinteälle ostoskoripainikkeelle, kun kohdistettu huomautus vieritetään näkyviin.
+function QrItemNote({
+  id,
+  foodName,
+  value,
+  onChange,
+  disabled = false,
+}: {
+  id: string;
+  foodName: string;
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}) {
+  // EN: Collapsing changes visibility only; the note draft stays in the parent state.
+  // FI: Sulkeminen muuttaa vain näkyvyyttä; huomautusluonnos säilyy ylemmän komponentin tilassa.
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div>
+      <Button
+        type="button"
+        variant="ghost"
+        className="min-h-11 w-full justify-between whitespace-normal px-0 text-left"
+        aria-label={`Huomautus keittiölle: ${foodName}`}
+        aria-expanded={expanded}
+        aria-controls={`${id}-content`}
+        disabled={disabled}
+        onClick={() => setExpanded((current) => !current)}
+      >
+        <span>
+          Huomautus keittiölle{" "}
+          <span className="font-normal">(valinnainen)</span>
+        </span>
+        <ChevronDown
+          aria-hidden="true"
+          className={expanded ? "rotate-180" : ""}
+        />
+      </Button>
+      {!expanded && value.trim() && (
+        <p className="line-clamp-2 whitespace-pre-wrap break-words text-xs text-olive">
+          {value}
+        </p>
+      )}
+      <div id={`${id}-content`} hidden={!expanded}>
+        <label htmlFor={id} className="sr-only">
+          Huomautus keittiölle
+        </label>
+        <p id={`${id}-help`} className="mt-1 text-xs text-muted-foreground">
+          Kerro, mitä ainesosia et halua annokseen.
+        </p>
+        <textarea
+          id={id}
+          aria-label={`Huomautus keittiölle: ${foodName}`}
+          aria-describedby={`${id}-help`}
+          maxLength={500}
+          rows={2}
+          value={value}
+          disabled={disabled}
+          onChange={(event) => onChange(event.target.value)}
+          onFocus={(event) =>
+            event.currentTarget.scrollIntoView?.({ block: "nearest" })
+          }
+          className="mt-2 block min-h-20 w-full scroll-mb-28 resize-y rounded-md border border-border bg-surface p-3 text-sm disabled:opacity-50"
+          placeholder="Esim. ilman sipulia tai chiliä"
+        />
+      </div>
+    </div>
+  );
+}
+
+function QrQuantityControl({
+  quantity,
+  selectionName,
+  disabled,
+  limitReached,
+  onChange,
+}: {
+  quantity: number;
+  selectionName: string;
+  disabled: boolean;
+  limitReached: boolean;
+  onChange: (delta: number) => void;
+}) {
+  return (
+    <div className="flex shrink-0 items-center gap-2">
+      <Button
+        variant="outline"
+        size="icon"
+        className="size-11"
+        aria-label={`Vähennä ${selectionName}`}
+        disabled={disabled || quantity === 0}
+        onClick={() => onChange(-1)}
+      >
+        −
+      </Button>
+      <span className="min-w-5 text-center text-sm" aria-live="polite">
+        {quantity}
+      </span>
+      <Button
+        variant="secondary"
+        size="icon"
+        className="size-11"
+        aria-label={`Lisää ${selectionName}`}
+        disabled={disabled || limitReached}
+        onClick={() => onChange(1)}
+      >
+        +
+      </Button>
+    </div>
+  );
+}
+
+// EN: Section — Menu browsing and item selection.
+// FI: Osio — Ruokalistan selaus ja tuotteiden valinta.
 function QrMenuView({
   token,
   menu,
@@ -175,10 +296,17 @@ function QrMenuView({
   const [cartItems, setCartItems] = useState<QrCartItem[]>(cart);
   const [selectedSizes, setSelectedSizes] = useState<
     Record<number, number | null>
-  >({});
+  >(() =>
+    Object.fromEntries(cart.map((item) => [item.foodId, item.foodSizeId])),
+  );
   const [selectedTastes, setSelectedTastes] = useState<
     Record<number, number | null>
-  >({});
+  >(() => Object.fromEntries(cart.map((item) => [item.foodId, item.tasteId])));
+  // EN: Returning to the menu restores the latest cart selection for each product so its note can be edited there.
+  // FI: Ruokalistalle palaaminen palauttaa kunkin tuotteen viimeisimmän ostoskorivalinnan, jotta sen huomautusta voi muokata siellä.
+  const [selectedNotes, setSelectedNotes] = useState<Record<number, string>>(
+    () => Object.fromEntries(cart.map((item) => [item.foodId, item.note])),
+  );
   const [detailsFood, setDetailsFood] = useState<QrFood | null>(null);
   const pending = readQrPending(token) !== null;
   const foods = menu.categories.flatMap((category) => category.food);
@@ -203,12 +331,64 @@ function QrMenuView({
     );
   }, 0);
 
-  // EN: Inline controls change the selected size and taste with no customer note; noted cart lines remain separate.
-  // FI: Rivin painikkeet muuttavat valittua kokoa ja makua ilman asiakkaan huomautusta; huomautukselliset ostoskoririvit pysyvät erillisinä.
+  // EN: The menu card and detail dialog share the same selected options, note and cart quantity.
+  // FI: Ruokalistakortti ja tietodialogi käyttävät samoja valittuja vaihtoehtoja, huomautusta ja ostoskorimäärää.
+  const getSelection = (food: QrFood) => {
+    const category = menu.categories.find((row) => row.id === food.foodTypeId);
+    const sizeId = selectedSizes[food.id] ?? null;
+    const tasteId = selectedTastes[food.id] ?? null;
+    const note = (selectedNotes[food.id] ?? "").trim();
+    const selectedSize = category?.foodSizes.find((size) => size.id === sizeId);
+    const selectedCount = cartItems.reduce(
+      (sum, item) =>
+        item.foodId === food.id &&
+        item.tasteId === tasteId &&
+        item.foodSizeId === sizeId &&
+        item.note === note
+          ? sum + item.quantity
+          : sum,
+      0,
+    );
+    const tasteName =
+      category?.tastes.find((taste) => taste.id === tasteId)?.name ??
+      "Ei valintaa";
+    return {
+      category,
+      sizeId,
+      tasteId,
+      note,
+      selectedSize,
+      selectedCount,
+      selectionName: `${food.name}, ${selectedSize?.name ?? "Tavallinen"}, ${tasteName}`,
+    };
+  };
+  const detailsSelection = detailsFood ? getSelection(detailsFood) : null;
+
+  // EN: Notes typed after adding a portion update that selection too; other customized portions stay unchanged.
+  // FI: Annoksen lisäämisen jälkeen kirjoitetut huomautukset päivittävät myös kyseisen valinnan; muut mukautetut annokset säilyvät ennallaan.
+  const changeSelectedNote = (food: QrFood, value: string) => {
+    if (pending) return;
+    const selection = getSelection(food);
+    const next = cartItems.map((item) =>
+      item.foodId === food.id &&
+      item.foodSizeId === selection.sizeId &&
+      item.tasteId === selection.tasteId &&
+      item.note === selection.note
+        ? { ...item, note: value.trim() }
+        : item,
+    );
+    setSelectedNotes((current) => ({ ...current, [food.id]: value }));
+    setCartItems(next);
+    writeQrCart(token, next);
+  };
+
+  // EN: Quantity controls apply only to the selected size, taste and note, preserving differently customized portions.
+  // FI: Määräpainikkeet koskevat vain valittua kokoa, makua ja huomautusta, jotta eri tavoin mukautetut annokset säilyvät erillisinä.
   const changeQuantity = (
     foodId: number,
     sizeId: number | null,
     tasteId: number | null,
+    note: string,
     delta: number,
   ) => {
     if (pending) return;
@@ -218,12 +398,12 @@ function QrMenuView({
         item.foodId === foodId &&
         item.tasteId === tasteId &&
         item.foodSizeId === sizeId &&
-        item.note === "",
+        item.note === note,
     );
     if (delta > 0 && count >= 200) return;
     if (index < 0) {
       if (delta < 0) return;
-      next.push({ foodId, foodSizeId: sizeId, tasteId, quantity: 1, note: "" });
+      next.push({ foodId, foodSizeId: sizeId, tasteId, quantity: 1, note });
     } else {
       const quantity = next[index].quantity + delta;
       if (quantity <= 0) next.splice(index, 1);
@@ -269,28 +449,15 @@ function QrMenuView({
           </p>
         )}
         {shown.map((food) => {
-          const category = menu.categories.find(
-            (row) => row.id === food.foodTypeId,
-          );
-          const sizeId = selectedSizes[food.id] ?? null;
-          const tasteId = selectedTastes[food.id] ?? null;
-          const selectedSize = category?.foodSizes.find(
-            (size) => size.id === sizeId,
-          );
-          const selectedCount = cartItems.reduce(
-            (sum, item) =>
-              item.foodId === food.id &&
-              item.tasteId === tasteId &&
-              item.foodSizeId === sizeId &&
-              item.note === ""
-                ? sum + item.quantity
-                : sum,
-            0,
-          );
-          const tasteName =
-            category?.tastes.find((taste) => taste.id === tasteId)?.name ??
-            "Ei valintaa";
-          const selectionName = `${food.name}, ${selectedSize?.name ?? "Tavallinen"}, ${tasteName}`;
+          const {
+            category,
+            sizeId,
+            tasteId,
+            note,
+            selectedSize,
+            selectedCount,
+            selectionName,
+          } = getSelection(food);
           return (
             <article
               key={food.id}
@@ -309,12 +476,11 @@ function QrMenuView({
                     <h2 className="line-clamp-2 text-base font-semibold leading-5">
                       {food.name}
                     </h2>
-                    {food.remark && (
-                      <p className="mt-1 line-clamp-2 text-xs text-olive">
-                        <span className="font-medium">Huomautus: </span>
-                        {food.remark}
-                      </p>
-                    )}
+                    <p className="mt-1 text-xs text-olive">
+                      <span className="font-medium">Huomautus: </span>
+                      {food.remark.trim() ||
+                        "Katso kaikki ainesosat kohdasta Katso tiedot."}
+                    </p>
                   </div>
                   <div className="flex flex-wrap items-center justify-between gap-1">
                     <span className="text-sm font-semibold">
@@ -324,10 +490,10 @@ function QrMenuView({
                       variant="outline"
                       size="sm"
                       className="min-h-11 px-2 text-xs"
-                      aria-label={`Lisätiedot: ${food.name}`}
+                      aria-label={`Katso tiedot: ${food.name}`}
                       onClick={() => setDetailsFood(food)}
                     >
-                      Lisätiedot
+                      Katso tiedot
                     </Button>
                   </div>
                 </div>
@@ -388,39 +554,23 @@ function QrMenuView({
                       </label>
                     )}
                   </div>
+                  <QrItemNote
+                    id={`qr-menu-note-${food.id}`}
+                    foodName={food.name}
+                    value={selectedNotes[food.id] ?? ""}
+                    disabled={pending}
+                    onChange={(value) => changeSelectedNote(food, value)}
+                  />
                   <div className="flex items-center justify-end gap-2">
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="size-11"
-                        aria-label={`Vähennä ${selectionName}`}
-                        disabled={pending || selectedCount === 0}
-                        onClick={() =>
-                          changeQuantity(food.id, sizeId, tasteId, -1)
-                        }
-                      >
-                        −
-                      </Button>
-                      <span
-                        className="min-w-5 text-center text-sm"
-                        aria-live="polite"
-                      >
-                        {selectedCount}
-                      </span>
-                      <Button
-                        variant="secondary"
-                        size="icon"
-                        className="size-11"
-                        aria-label={`Lisää ${selectionName}`}
-                        disabled={pending || count >= 200}
-                        onClick={() =>
-                          changeQuantity(food.id, sizeId, tasteId, 1)
-                        }
-                      >
-                        +
-                      </Button>
-                    </div>
+                    <QrQuantityControl
+                      quantity={selectedCount}
+                      selectionName={selectionName}
+                      disabled={pending}
+                      limitReached={count >= 200}
+                      onChange={(delta) =>
+                        changeQuantity(food.id, sizeId, tasteId, note, delta)
+                      }
+                    />
                   </div>
                 </div>
               )}
@@ -434,7 +584,7 @@ function QrMenuView({
           if (!open) setDetailsFood(null);
         }}
       >
-        {detailsFood && (
+        {detailsFood && detailsSelection && (
           <DialogContent className="max-h-[90dvh] overflow-y-auto">
             <DialogHeader className="pr-10">
               <DialogTitle>{detailsFood.name}</DialogTitle>
@@ -456,7 +606,31 @@ function QrMenuView({
                 Tälle tuotteelle ei ole vielä lisätietokuvaa.
               </p>
             )}
-            <p className="font-semibold">{qrMoney(detailsFood.price)}</p>
+            <div className="flex items-center justify-between gap-3">
+              <p className="min-w-0 font-semibold">
+                {qrMoney(
+                  detailsFood.price +
+                    (detailsSelection.selectedSize?.moneyAdded ?? 0),
+                )}
+              </p>
+              {menu.state === "ORDERING" && (
+                <QrQuantityControl
+                  quantity={detailsSelection.selectedCount}
+                  selectionName={detailsSelection.selectionName}
+                  disabled={pending}
+                  limitReached={count >= 200}
+                  onChange={(delta) =>
+                    changeQuantity(
+                      detailsFood.id,
+                      detailsSelection.sizeId,
+                      detailsSelection.tasteId,
+                      detailsSelection.note,
+                      delta,
+                    )
+                  }
+                />
+              )}
+            </div>
           </DialogContent>
         )}
       </Dialog>
@@ -485,167 +659,8 @@ function QrMenuView({
   );
 }
 
-function QrItemView({
-  token,
-  menu,
-  itemId,
-}: {
-  token: string;
-  menu: QrMenu;
-  itemId: number | null;
-}) {
-  const router = useRouter();
-  const category = menu.categories.find((row) =>
-    row.food.some((food) => food.id === itemId),
-  );
-  const food = category?.food.find((row) => row.id === itemId);
-  const [sizeId, setSizeId] = useState<number | null>(null);
-  const [tasteId, setTasteId] = useState<number | null>(null);
-  const [quantity, setQuantity] = useState(1);
-  const [note, setNote] = useState("");
-  const pending = readQrPending(token) !== null;
-  if (!food || !category) {
-    return (
-      <QrProblem
-        title="Tuotetta ei löytynyt"
-        detail="Tuote ei ole enää saatavilla."
-        onRetry={() => router.push(pathFor(token))}
-      />
-    );
-  }
-  const size = category.foodSizes.find((row) => row.id === sizeId);
-  const total = (food.price + (size?.moneyAdded || 0)) * quantity;
-  const add = () => {
-    if (pending) return;
-    const cart = readQrCart(token);
-    if (cart.reduce((sum, item) => sum + item.quantity, 0) + quantity > 200)
-      return;
-    cart.push({
-      foodId: food.id,
-      foodSizeId: sizeId,
-      tasteId,
-      quantity,
-      note: note.trim(),
-    });
-    writeQrCart(token, cart);
-    router.push(pathFor(token));
-  };
-  return (
-    <>
-      <Button
-        variant="ghost"
-        className="mb-5 px-0"
-        onClick={() => router.push(pathFor(token))}
-      >
-        ← Ruokalista
-      </Button>
-      <QrFoodPhoto
-        key={`${food.id}:${food.img}`}
-        filename={food.img}
-        alt={food.name}
-        className="h-40 w-full rounded-lg"
-        sizes="(min-width: 640px) 536px, calc(100vw - 40px)"
-      />
-      <h1 className="mt-5 font-heading text-3xl font-semibold">{food.name}</h1>
-      <p className="mt-1 text-sm text-muted-foreground">{food.remark}</p>
-      <p className="mt-3 font-semibold">{qrMoney(food.price)}</p>
-      <section className="mt-6 space-y-5 rounded-lg border border-border bg-surface p-5">
-        <div>
-          <label htmlFor="qr-size" className="mb-2 block text-sm font-medium">
-            Koko
-          </label>
-          <select
-            id="qr-size"
-            className="h-12 w-full rounded-md border border-border bg-surface px-3"
-            value={sizeId ?? ""}
-            onChange={(event) =>
-              setSizeId(event.target.value ? Number(event.target.value) : null)
-            }
-          >
-            <option value="">Tavallinen</option>
-            {category.foodSizes.map((row) => (
-              <option key={row.id} value={row.id}>
-                {row.name} · +{qrMoney(row.moneyAdded)}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label htmlFor="qr-taste" className="mb-2 block text-sm font-medium">
-            Maku
-          </label>
-          <select
-            id="qr-taste"
-            className="h-12 w-full rounded-md border border-border bg-surface px-3"
-            value={tasteId ?? ""}
-            onChange={(event) =>
-              setTasteId(event.target.value ? Number(event.target.value) : null)
-            }
-          >
-            <option value="">Ei valintaa</option>
-            {category.tastes.map((row) => (
-              <option key={row.id} value={row.id}>
-                {row.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label htmlFor="qr-note" className="mb-2 block text-sm font-medium">
-            Huomautus keittiölle
-          </label>
-          <textarea
-            id="qr-note"
-            maxLength={500}
-            value={note}
-            onChange={(event) => setNote(event.target.value)}
-            className="min-h-24 w-full rounded-md border border-border bg-surface p-3"
-            placeholder="Esim. ei chiliä"
-          />
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium">Määrä</span>
-          <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              size="icon"
-              aria-label="Vähennä määrää"
-              onClick={() => setQuantity(Math.max(1, quantity - 1))}
-            >
-              −
-            </Button>
-            <span aria-live="polite">{quantity}</span>
-            <Button
-              variant="outline"
-              size="icon"
-              aria-label="Lisää määrää"
-              onClick={() => setQuantity(Math.min(200, quantity + 1))}
-            >
-              +
-            </Button>
-          </div>
-        </div>
-      </section>
-      {menu.state === "ORDERING" ? (
-        <>
-          <Button className="mt-6 h-12 w-full" disabled={pending} onClick={add}>
-            Lisää ostoskoriin · {qrMoney(total)}
-          </Button>
-          {pending && (
-            <p className="mt-3 text-sm text-olive">
-              Tarkista keskeneräinen lähetys ostoskorissa ennen muutoksia.
-            </p>
-          )}
-        </>
-      ) : (
-        <p className="mt-6 text-sm text-olive">
-          QR-tilaaminen on suljettu. Voit vain selata ruokalistaa.
-        </p>
-      )}
-    </>
-  );
-}
-
+// EN: Section — Cart review and order submission.
+// FI: Osio — Ostoskorin tarkistus ja tilauksen lähetys.
 function QrCartView({ token, menu }: { token: string; menu: QrMenu }) {
   const router = useRouter();
   const [cart, setCart] = useState<QrCartItem[]>(() => readQrCart(token));
@@ -730,8 +745,8 @@ function QrCartView({ token, menu }: { token: string; menu: QrMenu }) {
   return (
     <>
       <Button
-        variant="ghost"
-        className="mb-5 px-0"
+        variant="secondary"
+        className="mb-5 min-h-11 bg-gray-200 px-4 text-gray-900 hover:bg-gray-300"
         onClick={() => router.push(pathFor(token))}
       >
         ← Ruokalista
@@ -739,6 +754,9 @@ function QrCartView({ token, menu }: { token: string; menu: QrMenu }) {
       <h1 className="font-heading text-3xl font-semibold">Ostoskori</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         Tarkista tilaus ennen lähettämistä pöytään P{menu.tableNo}.
+      </p>
+      <p className="mt-2 text-xs text-muted-foreground">
+        Voit muuttaa huomautuksia palaamalla ruokalistaan.
       </p>
       <div className="mt-6 space-y-3">
         {rows.length === 0 && (
@@ -752,16 +770,20 @@ function QrCartView({ token, menu }: { token: string; menu: QrMenu }) {
             className="rounded-lg border border-border bg-surface p-4"
           >
             <div className="flex justify-between gap-4">
-              <h2 className="font-medium">
+              <h2 className="min-w-0 break-words font-medium">
                 {row.food?.name || "Tuote ei ole enää saatavilla"}
               </h2>
-              <span>{qrMoney(row.total)}</span>
+              <span className="shrink-0 tabular-nums">
+                {qrMoney(row.total)}
+              </span>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
               {[row.size?.name, row.taste?.name].filter(Boolean).join(" · ")}
             </p>
             {row.item.note && (
-              <p className="mt-1 text-xs text-olive">{row.item.note}</p>
+              <p className="mt-2 whitespace-pre-wrap break-words text-sm text-olive">
+                Huomautus keittiölle: {row.item.note}
+              </p>
             )}
             {!pending && (
               <div className="mt-3 flex items-center gap-3">
@@ -812,10 +834,45 @@ function QrCartView({ token, menu }: { token: string; menu: QrMenu }) {
           {error}
         </p>
       )}
-      <div className="mt-6 flex justify-between border-t border-border pt-4 font-semibold">
-        <span>Yhteensä</span>
-        <span>{qrMoney(total)}</span>
-      </div>
+      <section
+        aria-label="Tilausyhteenveto"
+        className="mt-6 border-t border-border pt-4"
+      >
+        <h2 className="font-semibold">Tilausyhteenveto</h2>
+        <ul className="mt-3 space-y-3 text-sm">
+          {rows.map((row) => (
+            <li
+              key={row.index}
+              className="flex items-start justify-between gap-3"
+            >
+              <span className="min-w-0 break-words">
+                {row.item.quantity} ×{" "}
+                {row.food?.name || "Tuote ei ole enää saatavilla"}
+                {[row.size?.name, row.taste?.name].filter(Boolean).length >
+                  0 && (
+                  <span>
+                    {" "}
+                    ·{" "}
+                    {[row.size?.name, row.taste?.name]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                )}
+                {row.item.note && (
+                  <span className="text-olive"> ({row.item.note})</span>
+                )}
+              </span>
+              <span className="shrink-0 tabular-nums">
+                {qrMoney(row.total)}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <div className="mt-4 flex justify-between border-t border-border pt-4 font-semibold">
+          <span>Yhteensä</span>
+          <span className="shrink-0 tabular-nums">{qrMoney(total)}</span>
+        </div>
+      </section>
       <Button
         className="mt-6 h-12 w-full"
         disabled={
@@ -839,6 +896,8 @@ function QrCartView({ token, menu }: { token: string; menu: QrMenu }) {
   );
 }
 
+// EN: Section — Recovery of an uncertain order submission.
+// FI: Osio — Epävarman tilauslähetyksen palautus.
 function QrPendingRecovery({ token }: { token: string }) {
   const router = useRouter();
   const [pending, setPending] = useState(() => readQrPending(token));
@@ -892,6 +951,8 @@ function QrPendingRecovery({ token }: { token: string }) {
   );
 }
 
+// EN: Section — Order confirmation and status polling.
+// FI: Osio — Tilauksen vahvistus ja tilan säännöllinen päivitys.
 function QrStatusView({
   token,
   orderId,
@@ -1069,8 +1130,10 @@ function QrStatusView({
   );
 }
 
+// EN: Section — Customer context loading and view selection.
+// FI: Osio — Asiakaskontekstin lataus ja näkymän valinta.
 export default function QrCustomer({ view }: { view: View }) {
-  const params = useParams<{ tableToken: string; menuItemId?: string }>();
+  const params = useParams<{ tableToken: string }>();
   const search = useSearchParams();
   const token = params.tableToken;
   const router = useRouter();
@@ -1088,10 +1151,7 @@ export default function QrCustomer({ view }: { view: View }) {
         const nextContext = await loadQrContext(token);
         if (!live) return;
         setContext(nextContext);
-        if (
-          nextContext.state !== "CLOSED" &&
-          ["menu", "item", "cart"].includes(view)
-        ) {
+        if (nextContext.state !== "CLOSED" && ["menu", "cart"].includes(view)) {
           const nextMenu = await loadQrMenu(token);
           if (live) setMenu(nextMenu);
         }
@@ -1105,10 +1165,6 @@ export default function QrCustomer({ view }: { view: View }) {
       live = false;
     };
   }, [token, view, retry]);
-  const itemId = useMemo(
-    () => orderIdFrom(params.menuItemId || null),
-    [params.menuItemId],
-  );
   const selectedOrderId =
     orderIdFrom(search.get("orderId")) || lastQrOrder(token);
   return (
@@ -1121,8 +1177,7 @@ export default function QrCustomer({ view }: { view: View }) {
           detail={error}
           onRetry={() => setRetry((value) => value + 1)}
         />
-      ) : context?.state === "CLOSED" &&
-        ["menu", "item", "cart"].includes(view) ? (
+      ) : context?.state === "CLOSED" && ["menu", "cart"].includes(view) ? (
         <>
           <QrProblem
             title="QR-tilaaminen on suljettu"
@@ -1132,8 +1187,6 @@ export default function QrCustomer({ view }: { view: View }) {
         </>
       ) : view === "menu" && menu ? (
         <QrMenuView token={token} menu={menu} cart={readQrCart(token)} />
-      ) : view === "item" && menu ? (
-        <QrItemView token={token} menu={menu} itemId={itemId} />
       ) : view === "cart" && menu ? (
         <QrCartView token={token} menu={menu} />
       ) : view === "confirmation" || view === "status" ? (

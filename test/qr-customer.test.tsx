@@ -1,6 +1,11 @@
-import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import QrCustomer from "@/app/order/[tableToken]/_components/qr-customer";
 
@@ -13,7 +18,7 @@ const { get, post, push, replace } = vi.hoisted(() => ({
 
 vi.mock("@/lib/api", () => ({ publicApi: { get, post } }));
 vi.mock("next/navigation", () => ({
-  useParams: () => ({ tableToken: "A".repeat(43), menuItemId: "7" }),
+  useParams: () => ({ tableToken: "A".repeat(43) }),
   useRouter: () => ({ push, replace, refresh: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),
 }));
@@ -43,7 +48,10 @@ const menu = {
   ],
 };
 
-const mockLoad = (state: "ORDERING" | "MENU_ONLY" | "CLOSED" = "ORDERING") => {
+const mockLoad = (
+  state: "ORDERING" | "MENU_ONLY" | "CLOSED" = "ORDERING",
+  remark = "Mieto",
+) => {
   get.mockImplementation(async (path: string) => {
     if (path.endsWith("/context"))
       return {
@@ -51,7 +59,19 @@ const mockLoad = (state: "ORDERING" | "MENU_ONLY" | "CLOSED" = "ORDERING") => {
           result: { state, tableNo: 12, restaurantName: "Koivurannan Keittiö" },
         },
       };
-    if (path.endsWith("/menu")) return { data: { result: { ...menu, state } } };
+    if (path.endsWith("/menu"))
+      return {
+        data: {
+          result: {
+            ...menu,
+            state,
+            categories: menu.categories.map((category) => ({
+              ...category,
+              food: category.food.map((food) => ({ ...food, remark })),
+            })),
+          },
+        },
+      };
     if (path.endsWith("/service-call")) return { data: { result: null } };
     throw new Error(`Unexpected GET ${path}`);
   });
@@ -65,7 +85,47 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("anonymous QR customer", () => {
-  it("shows uploaded food photos in the menu and item detail", async () => {
+  it("restores saved selections and notes when returning to the menu", async () => {
+    const user = userEvent.setup();
+    const item = {
+      foodId: 7,
+      foodSizeId: 4,
+      tasteId: 5,
+      quantity: 2,
+      note: "Ilman sipulia",
+    };
+    localStorage.setItem(`qr02:${token}:cart`, JSON.stringify([item]));
+    render(<QrCustomer view="menu" />);
+    const toggle = await screen.findByRole("button", {
+      name: "Huomautus keittiölle: Basilikakana",
+    });
+    expect(
+      (
+        screen.getByRole("combobox", {
+          name: "Koko: Basilikakana",
+        }) as HTMLSelectElement
+      ).value,
+    ).toBe("4");
+    expect(
+      (
+        screen.getByRole("combobox", {
+          name: "Maku: Basilikakana",
+        }) as HTMLSelectElement
+      ).value,
+    ).toBe("5");
+    await user.click(toggle);
+    const note = screen.getByRole("textbox", {
+      name: "Huomautus keittiölle: Basilikakana",
+    });
+    expect((note as HTMLTextAreaElement).value).toBe("Ilman sipulia");
+    await user.clear(note);
+    await user.type(note, "Ilman chiliä");
+    expect(
+      JSON.parse(localStorage.getItem(`qr02:${token}:cart`) || "[]"),
+    ).toEqual([{ ...item, note: "Ilman chiliä" }]);
+  });
+
+  it("shows uploaded food photos in the menu", async () => {
     render(<QrCustomer view="menu" />);
     await screen.findByText("Basilikakana");
     expect(
@@ -73,10 +133,6 @@ describe("anonymous QR customer", () => {
         'img[src="http://localhost:3001/uploads/qr-menu-photo.webp"]',
       ),
     ).toBeTruthy();
-
-    cleanup();
-    render(<QrCustomer view="item" />);
-    expect(await screen.findByAltText("Basilikakana")).toBeTruthy();
   });
 
   it("opens the separate More info image without changing the list image", async () => {
@@ -89,7 +145,7 @@ describe("anonymous QR customer", () => {
       ),
     ).toBeTruthy();
     await user.click(
-      screen.getByRole("button", { name: "Lisätiedot: Basilikakana" }),
+      screen.getByRole("button", { name: "Katso tiedot: Basilikakana" }),
     );
     expect(screen.getByRole("dialog")).toBeTruthy();
     expect(
@@ -98,6 +154,128 @@ describe("anonymous QR customer", () => {
       ),
     ).toBeTruthy();
   });
+
+  it("shares the selected size, taste, note and quantity between the details dialog and menu", async () => {
+    const user = userEvent.setup();
+    const plainItem = {
+      foodId: 7,
+      foodSizeId: null,
+      tasteId: null,
+      quantity: 1,
+      note: "",
+    };
+    localStorage.setItem(`qr02:${token}:cart`, JSON.stringify([plainItem]));
+    render(<QrCustomer view="menu" />);
+    await screen.findByText("Basilikakana");
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Koko: Basilikakana" }),
+      "4",
+    );
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Maku: Basilikakana" }),
+      "5",
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "Huomautus keittiölle: Basilikakana",
+      }),
+    );
+    await user.type(
+      screen.getByRole("textbox", {
+        name: "Huomautus keittiölle: Basilikakana",
+      }),
+      "Ilman sipulia",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Lisää Basilikakana, Iso, Tulinen" }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Katso tiedot: Basilikakana" }),
+    );
+    const dialog = within(screen.getByRole("dialog"));
+    expect(dialog.getByText(/25,00/)).toBeTruthy();
+    expect(dialog.getByText("1")).toBeTruthy();
+    const add = dialog.getByRole("button", {
+      name: "Lisää Basilikakana, Iso, Tulinen",
+    });
+    await user.click(add);
+    await user.click(add);
+    await user.click(
+      dialog.getByRole("button", {
+        name: "Vähennä Basilikakana, Iso, Tulinen",
+      }),
+    );
+    expect(dialog.getByText("2")).toBeTruthy();
+    expect(
+      JSON.parse(localStorage.getItem(`qr02:${token}:cart`) || "[]"),
+    ).toEqual([
+      plainItem,
+      {
+        ...plainItem,
+        foodSizeId: 4,
+        tasteId: 5,
+        quantity: 2,
+        note: "Ilman sipulia",
+      },
+    ]);
+    await user.click(dialog.getByRole("button", { name: "Sulje" }));
+    expect(
+      screen.getByRole("button", { name: "Ostoskori, 3 tuotetta" }),
+    ).toBeTruthy();
+    await user.click(
+      screen.getByRole("button", {
+        name: "Vähennä Basilikakana, Iso, Tulinen",
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Katso tiedot: Basilikakana" }),
+    );
+    expect(within(screen.getByRole("dialog")).getByText("1")).toBeTruthy();
+  });
+
+  it.each(["pending", "limit"] as const)(
+    "preserves the %s guard in the details quantity controls",
+    async (guard) => {
+      const user = userEvent.setup();
+      const item = {
+        foodId: 7,
+        foodSizeId: null,
+        tasteId: null,
+        quantity: guard === "limit" ? 200 : 1,
+        note: "",
+      };
+      localStorage.setItem(`qr02:${token}:cart`, JSON.stringify([item]));
+      if (guard === "pending")
+        localStorage.setItem(
+          `qr02:${token}:pending`,
+          JSON.stringify({
+            idempotencyKey: "36e85e2c-734a-4f3f-8b49-5d538d68df17",
+            expectedTotal: 20,
+            items: [item],
+          }),
+        );
+      render(<QrCustomer view="menu" />);
+      await user.click(
+        await screen.findByRole("button", {
+          name: "Katso tiedot: Basilikakana",
+        }),
+      );
+      const dialog = within(screen.getByRole("dialog"));
+      const add = dialog.getByRole("button", {
+        name: "Lisää Basilikakana, Tavallinen, Ei valintaa",
+      }) as HTMLButtonElement;
+      const remove = dialog.getByRole("button", {
+        name: "Vähennä Basilikakana, Tavallinen, Ei valintaa",
+      }) as HTMLButtonElement;
+      expect(add.disabled).toBe(true);
+      expect(remove.disabled).toBe(guard === "pending");
+      if (guard === "limit") {
+        await user.click(remove);
+        expect(dialog.getByText("199")).toBeTruthy();
+        expect(add.disabled).toBe(false);
+      }
+    },
+  );
 
   it("lets a customer start another order from the status page while ordering is open", async () => {
     const user = userEvent.setup();
@@ -144,12 +322,150 @@ describe("anonymous QR customer", () => {
   });
 
   it("allows browsing but not adding an item in menu-only mode", async () => {
+    const user = userEvent.setup();
     mockLoad("MENU_ONLY");
     render(<QrCustomer view="menu" />);
     expect(await screen.findByText("Basilikakana")).toBeTruthy();
     expect(
       screen.queryByRole("button", { name: /Lisää Basilikakana/ }),
     ).toBeNull();
+    expect(
+      screen.queryByRole("textbox", { name: /Huomautus keittiölle/ }),
+    ).toBeNull();
+    await user.click(
+      screen.getByRole("button", { name: "Katso tiedot: Basilikakana" }),
+    );
+    expect(
+      within(screen.getByRole("dialog")).queryByRole("button", {
+        name: /Lisää Basilikakana/,
+      }),
+    ).toBeNull();
+  });
+
+  it.each(["", "   "])(
+    "shows Finnish ingredient guidance when the restaurant remark is empty (%j)",
+    async (remark) => {
+      const user = userEvent.setup();
+      mockLoad("ORDERING", remark);
+      render(<QrCustomer view="menu" />);
+      expect(
+        await screen.findByText(
+          "Katso kaikki ainesosat kohdasta Katso tiedot.",
+        ),
+      ).toBeTruthy();
+      expect(screen.queryByRole("textbox", { name: /Huomautus/ })).toBeNull();
+      await user.click(
+        screen.getByRole("button", {
+          name: "Huomautus keittiölle: Basilikakana",
+        }),
+      );
+      const note = screen.getByRole("textbox", {
+        name: "Huomautus keittiölle: Basilikakana",
+      }) as HTMLTextAreaElement;
+      expect(note.value).toBe("");
+      expect(note.maxLength).toBe(500);
+      await user.click(
+        screen.getByRole("button", {
+          name: "Lisää Basilikakana, Tavallinen, Ei valintaa",
+        }),
+      );
+      expect(
+        JSON.parse(localStorage.getItem(`qr02:${token}:cart`) || "[]")[0].note,
+      ).toBe("");
+    },
+  );
+
+  it.each(["menu"] as const)(
+    "keeps the %s note collapsed until clicked and preserves text when closed",
+    async (view) => {
+      const user = userEvent.setup();
+      render(<QrCustomer view={view} />);
+      const toggle = await screen.findByRole("button", {
+        name: "Huomautus keittiölle: Basilikakana",
+      });
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+      expect(screen.queryByRole("textbox", { name: /Huomautus/ })).toBeNull();
+      await user.click(toggle);
+      expect(toggle.getAttribute("aria-expanded")).toBe("true");
+      const note = screen.getByRole("textbox", {
+        name: "Huomautus keittiölle: Basilikakana",
+      }) as HTMLTextAreaElement;
+      await user.type(note, "Ilman sipulia");
+      await user.click(toggle);
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+      expect(screen.queryByRole("textbox", { name: /Huomautus/ })).toBeNull();
+      await user.click(toggle);
+      expect(
+        (
+          screen.getByRole("textbox", {
+            name: /Huomautus/,
+          }) as HTMLTextAreaElement
+        ).value,
+      ).toBe("Ilman sipulia");
+    },
+  );
+
+  it("saves a note typed after adding a portion and preserves differently customized portions", async () => {
+    const user = userEvent.setup();
+    const otherItem = {
+      foodId: 7,
+      foodSizeId: 4,
+      tasteId: null,
+      quantity: 1,
+      note: "Ilman chiliä",
+    };
+    localStorage.setItem(`qr02:${token}:cart`, JSON.stringify([otherItem]));
+    render(<QrCustomer view="menu" />);
+    await screen.findByText("Basilikakana");
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Koko: Basilikakana" }),
+      "",
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "Huomautus keittiölle: Basilikakana",
+      }),
+    );
+    const note = screen.getByRole("textbox", {
+      name: "Huomautus keittiölle: Basilikakana",
+    });
+    const add = screen.getByRole("button", {
+      name: "Lisää Basilikakana, Tavallinen, Ei valintaa",
+    });
+    await user.clear(note);
+    await user.click(add);
+    await user.type(note, "  Ilman sipulia  ");
+    await user.click(add);
+    expect(
+      JSON.parse(localStorage.getItem(`qr02:${token}:cart`) || "[]"),
+    ).toEqual([
+      otherItem,
+      {
+        foodId: 7,
+        foodSizeId: null,
+        tasteId: null,
+        quantity: 2,
+        note: "Ilman sipulia",
+      },
+    ]);
+    expect(
+      screen.getByRole("button", { name: "Ostoskori, 3 tuotetta" }),
+    ).toBeTruthy();
+    await user.click(
+      screen.getByRole("button", { name: "Ostoskori, 3 tuotetta" }),
+    );
+    expect(push).toHaveBeenCalledWith(`/order/${token}/cart`);
+    cleanup();
+    render(<QrCustomer view="cart" />);
+    expect(
+      await screen.findByText("Huomautus keittiölle: Ilman sipulia"),
+    ).toBeTruthy();
+    expect(screen.queryByRole("textbox", { name: /Huomautus/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Muokkaa/ })).toBeNull();
+    const back = screen.getByRole("button", { name: "← Ruokalista" });
+    expect(back.getAttribute("data-variant")).toBe("secondary");
+    await user.click(back);
+    expect(push).toHaveBeenCalledWith(`/order/${token}`);
   });
 
   it("changes quantity and taste directly in the menu and updates the cart count", async () => {
@@ -207,7 +523,7 @@ describe("anonymous QR customer", () => {
       { foodId: 7, foodSizeId: null, tasteId: null, quantity: 1, note: "" },
     ]);
     expect(
-      screen.getByRole("button", { name: "Lisätiedot: Basilikakana" }),
+      screen.getByRole("button", { name: "Katso tiedot: Basilikakana" }),
     ).toBeTruthy();
     expect(screen.queryByRole("textbox", { name: /Huomautus/ })).toBeNull();
   });
@@ -281,6 +597,13 @@ describe("anonymous QR customer", () => {
         .hasAttribute("disabled"),
     ).toBe(true);
     expect(
+      (
+        screen.getByRole("button", {
+          name: "Huomautus keittiölle: Basilikakana",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(
       screen.getByRole("button", { name: "Ostoskori, 0 tuotetta" }),
     ).toBeTruthy();
   });
@@ -304,6 +627,20 @@ describe("anonymous QR customer", () => {
     expect(
       screen.getByRole("button", { name: "Ostoskori, 199 tuotetta" }),
     ).toBeTruthy();
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Koko: Basilikakana" }),
+      "",
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "Huomautus keittiölle: Basilikakana",
+      }),
+    );
+    await user.clear(
+      screen.getByRole("textbox", {
+        name: "Huomautus keittiölle: Basilikakana",
+      }),
+    );
     await user.click(
       screen.getByRole("button", {
         name: "Lisää Basilikakana, Tavallinen, Ei valintaa",
@@ -327,27 +664,47 @@ describe("anonymous QR customer", () => {
     ]);
   });
 
-  it("adds a customized item to the browser cart", async () => {
+  it("shows a read-only note and detailed summary in the cart and submits the saved selections", async () => {
     const user = userEvent.setup();
-    render(<QrCustomer view="item" />);
-    await screen.findByText("Basilikakana");
-    await user.selectOptions(screen.getByLabelText("Koko"), "4");
-    await user.selectOptions(screen.getByLabelText("Maku"), "5");
-    await user.type(screen.getByLabelText("Huomautus keittiölle"), "Ei chiliä");
-    await user.click(screen.getByRole("button", { name: /Lisää ostoskoriin/ }));
-    const stored = JSON.parse(
-      window.localStorage.getItem(`qr02:${token}:cart`) || "[]",
+    const item = {
+      foodId: 7,
+      foodSizeId: 4,
+      tasteId: 5,
+      quantity: 1,
+      note: "Ei chiliä",
+    };
+    localStorage.setItem(`qr02:${token}:cart`, JSON.stringify([item]));
+    post.mockResolvedValueOnce({
+      data: { result: { orderId: 42, status: "SUBMITTED", total: 25 } },
+    });
+    render(<QrCustomer view="cart" />);
+    expect(
+      await screen.findByText("Huomautus keittiölle: Ei chiliä"),
+    ).toBeTruthy();
+    expect(screen.queryByRole("textbox", { name: /Huomautus/ })).toBeNull();
+    const summary = within(
+      screen.getByRole("region", { name: "Tilausyhteenveto" }),
     );
-    expect(stored).toEqual([
-      {
-        foodId: 7,
-        foodSizeId: 4,
-        tasteId: 5,
-        quantity: 1,
-        note: "Ei chiliä",
-      },
-    ]);
-    expect(push).toHaveBeenCalledWith(`/order/${token}`);
+    const line = summary.getByRole("listitem");
+    expect(line.textContent).toContain(
+      "1 × Basilikakana · Iso · Tulinen (Ei chiliä)",
+    );
+    expect(line.textContent).toMatch(/25,00/);
+    const expectedItem = item;
+    expect(
+      JSON.parse(localStorage.getItem(`qr02:${token}:cart`) || "[]"),
+    ).toEqual([expectedItem]);
+    await user.click(screen.getByRole("button", { name: "Lähetä tilaus" }));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(`/qr/${token}/orders`, {
+        idempotencyKey: expect.any(String),
+        expectedTotal: 25,
+        items: [expectedItem],
+      }),
+    );
+    expect(replace).toHaveBeenCalledWith(
+      `/order/${token}/confirmation?orderId=42`,
+    );
   });
 
   it("retries an unknown submit with the exact key and clears the cart after success", async () => {
@@ -371,6 +728,10 @@ describe("anonymous QR customer", () => {
     await screen.findByText("Basilikakana");
     await user.click(screen.getByRole("button", { name: "Lähetä tilaus" }));
     await screen.findByText("Yhteys epäonnistui. Yritä uudelleen.");
+    expect(screen.getByText("Huomautus keittiölle: Ei chiliä")).toBeTruthy();
+    expect(
+      screen.queryByRole("textbox", { name: /Huomautus keittiölle/ }),
+    ).toBeNull();
     const pending = JSON.parse(
       window.localStorage.getItem(`qr02:${token}:pending`) || "null",
     );

@@ -58,11 +58,12 @@ export type QrPending = {
   items: QrCartItem[];
 };
 
-export const qrMoney = (amount: number) =>
-  new Intl.NumberFormat("fi-FI", {
-    style: "currency",
-    currency: "EUR",
-  }).format(amount);
+const currencyFormatter = new Intl.NumberFormat("fi-FI", {
+  style: "currency",
+  currency: "EUR",
+});
+
+export const qrMoney = (amount: number) => currencyFormatter.format(amount);
 
 export const qrErrorCode = (error: unknown): string | null =>
   isAxiosError(error) && typeof error.response?.data?.code === "string"

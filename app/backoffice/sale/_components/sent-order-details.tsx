@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { OrderItemDetails } from "@/components/orders/order-item-details";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -94,28 +95,7 @@ export default function SentOrderDetails({
                 <StatusBadge tone="success">Maksettu</StatusBadge>
               )}
             </div>
-            <ul className="space-y-3">
-              {detail.items.map((item, index) => (
-                <li key={index} className="border-b border-border pb-3 text-sm">
-                  <div className="flex justify-between gap-2 font-medium">
-                    <span>
-                      {item.quantity} × {item.name}
-                    </span>
-                    <span>{currency.format(item.lineTotal)}</span>
-                  </div>
-                  {item.modifiers.map((modifier, modifierIndex) => (
-                    <p
-                      key={modifierIndex}
-                      className="text-xs text-muted-foreground"
-                    >
-                      {modifier.name} (
-                      {currency.format(modifier.priceAdjustment)})
-                    </p>
-                  ))}
-                  {item.note && <p className="text-xs">Huom: {item.note}</p>}
-                </li>
-              ))}
-            </ul>
+            <OrderItemDetails items={detail.items} currency={currency} />
             <p className="text-right font-semibold">
               Yhteensä {currency.format(detail.total)}
             </p>

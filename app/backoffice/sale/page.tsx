@@ -41,6 +41,8 @@ import QrTableOrders from "./_components/qr-table-orders";
 import CustomizationModal from "./_components/customization-modal";
 import ReceiptPreview from "./_components/receipt-preview";
 
+// EN: Section — Submission types and persisted draft attempts.
+// FI: Osio — Lähetystyypit ja tallennetut luonnoksen lähetysyritykset.
 type OrderLocation =
   | { tableNo: number; serviceType?: never }
   | { serviceType: "TAKEAWAY"; tableNo?: never };
@@ -94,6 +96,8 @@ const readDraftAttempt = (scope: DraftScope): DraftPendingAttempt | null => {
   }
 };
 
+// EN: Section — Confirmation types and response helpers.
+// FI: Osio — Vahvistustyypit ja vastausten apufunktiot.
 type ConfirmationConfig = {
   title: string;
   description: string;
@@ -115,7 +119,11 @@ const hasFinalHttpResponse = (error: unknown) => {
 };
 
 // Renders the POS sale page interface.
+// EN: Section — Counter POS page.
+// FI: Osio — Kassan sivu.
 export default function Page() {
+  // EN: Section — Page state and request references.
+  // FI: Osio — Sivun tila ja pyyntöviitteet.
   const [foods, setFoods] = useState<Food[]>([]);
   const [tasted, setTasted] = useState<Taste[]>([]);
   const [sizes, setSized] = useState<FoodSize[]>([]);
@@ -168,6 +176,8 @@ export default function Page() {
   const [confirmation, setConfirmation] = useState<ConfirmationConfig | null>(
     null,
   );
+  // EN: Section — Catalog search and active cart coordination.
+  // FI: Osio — Ruokalistan haku ja aktiivisen ostoskorin hallinta.
   const visibleFoods = useMemo(() => {
     const query = searchQuery.trim().toLocaleLowerCase("fi-FI");
     return query
@@ -246,6 +256,8 @@ export default function Page() {
     return () => window.clearTimeout(timer);
   }, [draftScope]);
 
+  // EN: Section — Sent orders: loading, details, cancellation and polling.
+  // FI: Osio — Lähetetyt tilaukset: lataus, tiedot, peruutus ja säännöllinen päivitys.
   const refreshSentOrders = useCallback(
     async (scope: DraftScope, view: SentView) => {
       const requestId = ++pendingRequestId.current;
@@ -353,6 +365,8 @@ export default function Page() {
     };
   }, [refreshSentOrders, draftScope, sentView]);
 
+  // EN: Section — Confirmation dialog coordination.
+  // FI: Osio — Vahvistusikkunan hallinta.
   // EN: Resolves one confirmation at a time without coupling POS mutations to legacy modal APIs.
   // FI: Ratkaisee yhden vahvistuksen kerrallaan sitomatta POS-mutaatioita vanhoihin modaali-API:hin.
   const requestConfirmation = useCallback((config: ConfirmationConfig) => {
@@ -370,6 +384,8 @@ export default function Page() {
     resolve?.(confirmed);
   }, []);
 
+  // EN: Section — Catalog loading and filtering.
+  // FI: Osio — Ruokalistan lataus ja suodatus.
   // Loads foods for the current workflow.
   async function getFoods() {
     setCatalogStatus("loading");
@@ -469,6 +485,8 @@ export default function Page() {
     await updateQuantity(id, qty);
   };
   // Coordinates open modal edit behavior for this module.
+  // EN: Section — Item customization: sizes, tastes and detail rows.
+  // FI: Osio — Tuotteiden muokkaus: koot, maut ja lisätietorivit.
   const openModalEdit = async (item: SaleTemp) => {
     if (customizationBusy || checkoutBusy || draftLocked) return;
     setCustomizationOpen(true);
@@ -696,6 +714,8 @@ export default function Page() {
   };
   // EN: Receipt kind comes from the caller; API paths do not reliably distinguish an unpaid pre-bill from a paid receipt.
   // FI: Kuitin tyyppi tulee kutsujalta; API-polut eivät luotettavasti erota maksamatonta esilaskua maksetusta kuitista.
+  // EN: Section — Receipt loading and printing.
+  // FI: Osio — Kuittien lataus ja tulostus.
   const showReceipt = async (
     path: string,
     payload: Record<string, unknown>,
@@ -774,6 +794,8 @@ export default function Page() {
     }
   };
 
+  // EN: Section — Payment preparation and checkout.
+  // FI: Osio — Maksun valmistelu ja maksaminen.
   // Coordinates prepare payment while preserving transaction behavior.
   const preparePayment = () => {
     const saved = draftMode ? readDraftAttempt(draftScope) : null;
@@ -901,6 +923,8 @@ export default function Page() {
     }
   };
 
+  // EN: Section — Recovery of earlier kitchen submissions.
+  // FI: Osio — Aikaisempien keittiölähetysten palautus.
   // EN: Old uncertain kitchen sends may be replayed for recovery; the endpoint cannot create a new unpaid Order.
   // FI: Vanha epävarma keittiölähetys voidaan palauttaa; rajapinta ei voi luoda uutta maksamatonta tilausta.
   const recoverKitchenAttempt = async () => {
@@ -934,6 +958,8 @@ export default function Page() {
     }
   };
 
+  // EN: Section — Table and service type selection.
+  // FI: Osio — Pöydän ja palvelutyypin valinta.
   // Handles table change events and preserves existing side effects.
   const handleTableChange = (value: string) => {
     pendingRequestId.current += 1;
@@ -961,6 +987,8 @@ export default function Page() {
     setDraftPending(readDraftAttempt(next === "TAKEAWAY" ? "TAKEAWAY" : table));
   };
 
+  // EN: Section — Receipt reprint and preview cleanup.
+  // FI: Osio — Kuitin uudelleentulostus ja esikatselun siivous.
   // Manages reprint last bill while preserving cleanup behavior.
   const reprintLastBill = async () => {
     if (!lastCompletedBillId || receiptBusy || checkoutBusy) return;
@@ -979,6 +1007,8 @@ export default function Page() {
     setBillUrl("");
   };
 
+  // EN: Section — Page layout and dialogs.
+  // FI: Osio — Sivun asettelu ja valintaikkunat.
   return (
     <div className="counter-pos min-h-dvh bg-canvas font-sans text-foreground md:grid md:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_400px]">
       <section className="min-w-0 bg-canvas">
