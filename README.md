@@ -25,9 +25,9 @@ The backend verifies permissions, prices, totals, and order transitions. Fronten
 
 ## Kitchen staff
 
-แอดมินเพิ่มหรือแก้บัญชีพนักงานครัวได้ที่ **Henkilöstö → Lisää työntekijä → Rooli: Keittiöhenkilökunta**. บัญชีใช้ role `kitchen` และ Login แล้วเข้า `/backoffice/kitchen` แบบ full-screen; เปิดหน้า backoffice อื่นจะถูกส่งกลับครัว.
+Admins can create or edit kitchen staff accounts under **Henkilöstö → Lisää työntekijä → Rooli: Keittiöhenkilökunta**. These accounts use the `kitchen` role and land on the full-screen `/backoffice/kitchen` board after sign-in. Other backoffice routes redirect them to the kitchen board.
 
-พนักงานครัวดูคิว กด **Aloita** เพื่อเริ่มทำ กด **Merkitse valmiiksi** เมื่อพร้อม และกด **Kirjaudu ulos** เพื่อออกจากระบบได้. Role นี้ไม่มีสิทธิ์ยืนยันการเสิร์ฟ ชำระเงิน หรือจัดการพนักงาน. ชื่อหน้ายังคง **Keittiö**; `admin/user/waiter` คงสิทธิ์เดิม. ต้องใช้ backend เวอร์ชันที่รองรับ `kitchen` ร่วมกัน และการเพิ่ม role นี้ไม่ต้องทำ database migration.
+Kitchen staff can view the queue, select **Aloita** to start preparation, select **Merkitse valmiiksi** when an order is ready, and use **Kirjaudu ulos** to sign out. This role cannot confirm serving, process payments, or manage staff. The page remains named **Keittiö**, and existing `admin/user/waiter` permissions remain unchanged. Use a matching backend that supports `kitchen`; this role requires no database migration.
 
 ## Stack and requirements
 
