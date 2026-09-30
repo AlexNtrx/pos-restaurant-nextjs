@@ -43,6 +43,7 @@ export default function StaffShell({
   const qrModeVersionRef = useRef(0);
 
   useEffect(() => {
+    if (userLevel === "waiter") return;
     let active = true;
     const version = qrModeVersionRef.current;
     void api
@@ -62,7 +63,7 @@ export default function StaffShell({
     return () => {
       active = false;
     };
-  }, []);
+  }, [userLevel]);
 
   useEffect(() => {
     // EN: QR settings notify the persistent shell so its mode badge changes without reloading the page.

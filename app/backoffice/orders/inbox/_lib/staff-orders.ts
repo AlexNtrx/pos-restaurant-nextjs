@@ -13,7 +13,7 @@ export type OrderStatus =
 
 export type StaffOrder = {
   id: number;
-  channel: "COUNTER" | "QR";
+  channel: "COUNTER" | "QR" | "STAFF";
   serviceType: "DINE_IN" | "TAKEAWAY";
   status: OrderStatus;
   version: number;
@@ -52,6 +52,10 @@ export type StaffOrderDetail = StaffOrder & {
   }[];
 };
 
+export function orderChannelLabel(channel: StaffOrder["channel"]) {
+  return channel === "QR" ? "QR" : channel === "STAFF" ? "Tarjoilija" : "Kassa";
+}
+
 type OrderPage = {
   results: StaffOrder[];
   nextCursor: string | null;
@@ -60,7 +64,7 @@ type OrderPage = {
 
 export async function fetchOrderPages(filters: {
   status?: OrderStatus;
-  channel?: "COUNTER" | "QR";
+  channel?: "COUNTER" | "QR" | "STAFF";
   updatedAfter?: string;
   submittedFrom?: string;
   submittedBefore?: string;

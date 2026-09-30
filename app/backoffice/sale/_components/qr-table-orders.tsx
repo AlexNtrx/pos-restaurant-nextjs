@@ -15,6 +15,7 @@ import { getApiErrorMessage } from "@/lib/api-error";
 import {
   changeOrderStatus,
   fetchOrderPages,
+  orderChannelLabel,
   type StaffOrder,
 } from "@/app/backoffice/orders/inbox/_lib/staff-orders";
 import TableSessionCheckout from "@/app/backoffice/settings/tables/_components/table-session-checkout";
@@ -71,17 +72,15 @@ export default function QrTableOrders({ tableNo }: { tableNo: number }) {
         throw new Error("Invalid table orders");
       if (currentRequest !== requestId.current) return;
       setSessionId(id);
-      setOrders(
-        page?.results.filter(
-          (order) => order.channel === "QR" && active(order),
-        ) ?? [],
-      );
+      setOrders(page?.results.filter(active) ?? []);
       setError("");
     } catch (cause) {
       if (currentRequest === requestId.current) {
         setSessionId(null);
         setOrders([]);
-        setError(getApiErrorMessage(cause, "QR-tilauksia ei voitu ladata."));
+        setError(
+          getApiErrorMessage(cause, "Pöydän tilauksia ei voitu ladata."),
+        );
       }
     }
   }, [tableNo]);
@@ -141,10 +140,10 @@ export default function QrTableOrders({ tableNo }: { tableNo: number }) {
   return (
     <section
       className="mt-6 border-t border-border pt-4"
-      aria-label="QR orders"
+      aria-label="Table orders"
     >
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold">Pöydän QR-tilaukset</h3>
+        <h3 className="text-sm font-semibold">Pöydän tilaukset</h3>
         <Button
           type="button"
           variant="ghost"
@@ -161,11 +160,11 @@ export default function QrTableOrders({ tableNo }: { tableNo: number }) {
       )}
       {!sessionId ? (
         <p className="mt-3 text-xs text-muted-foreground">
-          Pöydässä ei ole avointa QR-istuntoa.
+          Pöydässä ei ole avointa istuntoa.
         </p>
       ) : orders.length === 0 ? (
         <p className="mt-3 text-xs text-muted-foreground">
-          Ei avoimia QR-tilauksia.
+          Ei avoimia tilauksia.
         </p>
       ) : (
         <div className="mt-3 space-y-3">
@@ -176,7 +175,8 @@ export default function QrTableOrders({ tableNo }: { tableNo: number }) {
             >
               <div className="flex justify-between gap-2 font-semibold">
                 <span>
-                  QR #{order.id} · {order.status}
+                  {orderChannelLabel(order.channel)} #{order.id} ·{" "}
+                  {order.status}
                 </span>
                 <span>{euros(order.total)}</span>
               </div>
@@ -225,7 +225,7 @@ export default function QrTableOrders({ tableNo }: { tableNo: number }) {
           variant="outline"
           onClick={() => setCheckoutSessionId(sessionId)}
         >
-          Maksa QR-istunto
+          Maksa pöytäistunto
         </Button>
       )}
       {checkoutSessionId !== null && (

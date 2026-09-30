@@ -39,7 +39,7 @@ import {
 import api from "@/lib/api";
 import { getApiErrorMessage, isPermissionDeniedError } from "@/lib/api-error";
 
-type UserLevel = "admin" | "user";
+type UserLevel = "admin" | "user" | "waiter";
 type StaffUser = {
   id: number;
   name: string;
@@ -55,7 +55,7 @@ function isStaffUser(value: unknown): value is StaffUser {
     typeof user.id === "number" &&
     typeof user.name === "string" &&
     typeof user.username === "string" &&
-    (user.level === "admin" || user.level === "user")
+    (user.level === "admin" || user.level === "user" || user.level === "waiter")
   );
 }
 
@@ -292,6 +292,7 @@ export default function StaffPage() {
                 onChange={(event) => setLevel(event.target.value as UserLevel)}
               >
                 <option value="user">Työntekijä</option>
+                <option value="waiter">Tarjoilija</option>
                 <option value="admin">Ylläpitäjä</option>
               </select>
             </FormField>

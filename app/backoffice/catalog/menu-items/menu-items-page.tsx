@@ -549,12 +549,12 @@ export default function MenuItemsPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="availability-api-pending">
-                  Saatavuus · API
+                  Saatavuus
                 </SelectItem>
               </SelectContent>
             </Select>
             <p className="absolute top-[52px] -left-[calc(100%+16px)] mt-0! w-[calc(200%+16px)] text-[11px]! leading-4! font-medium! text-[#636657]! md:top-[49px] md:left-0 md:w-max">
-              Saatavuussuodatin vaatii API-varmistuksen
+              Saatavuussuodatus ei ole vielä käytettävissä.
             </p>
           </div>
         </div>

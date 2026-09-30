@@ -80,23 +80,38 @@ describe("TW-03 staff shell and navigation", () => {
     ).toBe(false);
     expect(getBackofficeLanding("admin")).toBe("/backoffice/dashboard");
     expect(getBackofficeLanding("user")).toBe("/backoffice/sale");
+    expect(getBackofficeLanding("waiter")).toBe("/backoffice/waiter");
+    expect(canAccessBackofficePath("/backoffice/waiter", "waiter")).toBe(true);
+    expect(canAccessBackofficePath("/backoffice/service-calls", "waiter")).toBe(
+      true,
+    );
+    expect(canAccessBackofficePath("/backoffice/sale", "waiter")).toBe(false);
+    expect(canAccessBackofficePath("/backoffice/kitchen", "waiter")).toBe(
+      false,
+    );
+    expect(
+      canAccessBackofficePath("/backoffice/settings/tables", "waiter"),
+    ).toBe(false);
   });
 
   it("shows only navigation groups permitted by the existing role contract", () => {
     expect(
       getVisibleBackofficeNavigation("user").map(({ label }) => label),
-    ).toEqual(["Kassa", "Keittiö", "Palvelukutsut", "Asetukset"]);
+    ).toEqual(["Kassa", "Tarjoilija", "Keittiö", "Asetukset"]);
+    expect(
+      getVisibleBackofficeNavigation("waiter").map(({ label }) => label),
+    ).toEqual(["Tarjoilija"]);
     expect(
       getVisibleBackofficeNavigation("admin").map(({ label }) => label),
     ).toEqual([
       "Yhteenveto",
-      "Ruokalista",
       "Kassa",
+      "Tarjoilija",
       "Keittiö",
-      "Palvelukutsut",
-      "Kuittihistoria",
       "Tilaushistoria",
+      "Kuittihistoria",
       "Raportit",
+      "Ruokalista",
       "Asetukset",
     ]);
   });
@@ -140,9 +155,7 @@ describe("TW-03 staff shell and navigation", () => {
       screen.getAllByRole("link", { name: "Yhteenveto" }).length,
     ).toBeGreaterThan(0);
     expect(screen.getAllByText("Keittiö").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Helsinki · Keskusta").length).toBeGreaterThan(
-      0,
-    );
+    expect(screen.queryByText("Helsinki · Keskusta")).toBeNull();
     expect(screen.getAllByText("QR-tilaaminen").length).toBeGreaterThan(0);
     expect((await screen.findAllByText("Ei käytössä")).length).toBeGreaterThan(
       0,

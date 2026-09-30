@@ -70,7 +70,12 @@ export default function Sidebar({
   const [signOutOpen, setSignOutOpen] = useState(false);
   const groups = getVisibleBackofficeNavigation(userLevel);
   const showLabels = !collapsed || mobile;
-  const roleLabel = userLevel === "admin" ? "Ylläpitäjä" : "Työntekijä";
+  const roleLabel =
+    userLevel === "admin"
+      ? "Ylläpitäjä"
+      : userLevel === "waiter"
+        ? "Tarjoilija"
+        : "Työntekijä";
   const displayName = name.trim() || "Tuntematon";
 
   const signOut = () => {
@@ -102,9 +107,6 @@ export default function Sidebar({
               <div className="min-w-0">
                 <div className="truncate font-heading text-2xl leading-none font-semibold text-[#fbfaf7]">
                   Ravintola POS
-                </div>
-                <div className="mt-0.5 truncate text-[11px] text-[#e7e5de]">
-                  Helsinki · Keskusta
                 </div>
               </div>
             ) : (
@@ -198,7 +200,7 @@ export default function Sidebar({
                   {roleLabel}: {displayName}
                 </div>
                 <div className="truncate text-[10px] text-[#c6c3b5]">
-                  Versio 0.1 · Workshop
+                  Versio 0.1 · Työpaja
                 </div>
               </div>
               <Button

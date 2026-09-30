@@ -28,7 +28,7 @@ const operationalMetrics = [
 
 type DashboardOrder = {
   id: number;
-  channel: "COUNTER" | "QR";
+  channel: "COUNTER" | "QR" | "STAFF";
   status: string;
   tableNo: number | null;
   total: number;
@@ -74,14 +74,14 @@ function isOperations(value: unknown): value is Operations {
     !Array.isArray(result.recentOrders)
   )
     return false;
-  // EN: Only Counter takeaway orders have no table; QR orders must retain their table number.
-  // FI: Vain kassan noutotilaukset ovat pöydättömiä; QR-tilauksilla on oltava pöytänumero.
+  // EN: Only Counter takeaway orders have no table; QR and waiter orders must retain their table number.
+  // FI: Vain kassan noutotilaukset ovat pöydättömiä; QR- ja tarjoilijatilauksilla on oltava pöytänumero.
   return result.recentOrders.every(
     (order: unknown) =>
       !!order &&
       typeof order === "object" &&
       typeof (order as DashboardOrder).id === "number" &&
-      ["COUNTER", "QR"].includes((order as DashboardOrder).channel) &&
+      ["COUNTER", "QR", "STAFF"].includes((order as DashboardOrder).channel) &&
       typeof (order as DashboardOrder).status === "string" &&
       (Number.isSafeInteger((order as DashboardOrder).tableNo) ||
         ((order as DashboardOrder).channel === "COUNTER" &&
@@ -234,7 +234,11 @@ export default function Dashboard() {
                         {localTime.format(new Date(order.submittedAt))}
                       </TableCell>
                       <TableCell>
-                        {order.channel === "QR" ? "QR" : "Kassa"}
+                        {order.channel === "QR"
+                          ? "QR"
+                          : order.channel === "STAFF"
+                            ? "Tarjoilija"
+                            : "Kassa"}
                       </TableCell>
                       <TableCell>{order.tableNo ?? "Mukaan"}</TableCell>
                       <TableCell>{currency.format(order.total)}</TableCell>

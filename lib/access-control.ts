@@ -1,4 +1,4 @@
-export const userLevels = ["admin", "user"] as const;
+export const userLevels = ["admin", "user", "waiter"] as const;
 export type UserLevel = (typeof userLevels)[number];
 
 export type NavigationIcon =
@@ -26,13 +26,17 @@ export type BackofficeNavigationGroup = {
   roles: readonly UserLevel[];
   legacyPaths?: readonly string[];
   unavailable?: boolean;
+  hiddenFromNavigation?: boolean;
   activeExact?: boolean;
   children?: readonly BackofficeNavigationChild[];
 };
 
 const adminOnly = ["admin"] as const;
 const allStaff = ["admin", "user"] as const;
+const serviceStaff = ["admin", "user", "waiter"] as const;
 
+// EN: Show the admin home first, then daily service, review and administration; role filtering preserves this order.
+// FI: Näytä ylläpitäjän etusivu ensin, sitten päivittäinen palvelutyö, seuranta ja hallinta; roolisuodatus säilyttää järjestyksen.
 export const backofficeNavigation: readonly BackofficeNavigationGroup[] = [
   {
     id: "overview",
@@ -40,6 +44,89 @@ export const backofficeNavigation: readonly BackofficeNavigationGroup[] = [
     label: "Yhteenveto",
     icon: "overview",
     roles: adminOnly,
+  },
+  {
+    id: "orders",
+    href: "/backoffice/orders/new",
+    label: "Kassa",
+    icon: "orders",
+    roles: allStaff,
+    children: [
+      {
+        href: "/backoffice/orders/new",
+        label: "Uusi tilaus",
+        legacyPaths: ["/backoffice/sale"],
+        roles: allStaff,
+      },
+      {
+        href: "/backoffice/orders/inbox",
+        label: "Saapuvat tilaukset",
+        roles: allStaff,
+      },
+    ],
+  },
+  {
+    id: "waiter",
+    href: "/backoffice/waiter",
+    label: "Tarjoilija",
+    icon: "orders",
+    roles: serviceStaff,
+  },
+  {
+    id: "kitchen",
+    href: "/backoffice/kitchen",
+    label: "Keittiö",
+    icon: "kitchen",
+    roles: allStaff,
+  },
+  {
+    id: "serviceCalls",
+    href: "/backoffice/service-calls",
+    label: "Palvelukutsut",
+    icon: "orders",
+    roles: serviceStaff,
+    // EN: Calls open in the waiter dialog; keep direct-route authorization without a duplicate sidebar item.
+    // FI: Kutsut avataan tarjoilijan dialogissa; säilytä suoran reitin käyttöoikeus ilman sivupalkin kaksoislinkkiä.
+    hiddenFromNavigation: true,
+  },
+  {
+    id: "orderHistory",
+    href: "/backoffice/orders/history/orders",
+    label: "Tilaushistoria",
+    icon: "orderHistory",
+    roles: adminOnly,
+  },
+  {
+    id: "receipts",
+    href: "/backoffice/orders/history",
+    label: "Kuittihistoria",
+    icon: "receipts",
+    roles: adminOnly,
+    legacyPaths: ["/backoffice/salereport"],
+    // EN: The Order history URL is nested under this route, so only the receipt page highlights this item.
+    // FI: Tilaushistorian URL on tämän reitin alla, joten vain kuittisivu korostaa tämän kohdan.
+    activeExact: true,
+  },
+  {
+    id: "reports",
+    href: "/backoffice/reports/daily-sales",
+    label: "Raportit",
+    icon: "reports",
+    roles: adminOnly,
+    children: [
+      {
+        href: "/backoffice/reports/daily-sales",
+        label: "Päivämyynti",
+        legacyPaths: ["/backoffice/dailysales"],
+        roles: adminOnly,
+      },
+      {
+        href: "/backoffice/reports/monthly-sales",
+        label: "Kuukausimyynti",
+        legacyPaths: ["/backoffice/monthlysales"],
+        roles: adminOnly,
+      },
+    ],
   },
   {
     id: "catalog",
@@ -75,79 +162,6 @@ export const backofficeNavigation: readonly BackofficeNavigationGroup[] = [
         href: "/backoffice/catalog/modifiers",
         label: "Lisävalinnat",
         legacyPaths: ["/backoffice/taste"],
-        roles: adminOnly,
-      },
-    ],
-  },
-  {
-    id: "orders",
-    href: "/backoffice/orders/new",
-    label: "Kassa",
-    icon: "orders",
-    roles: allStaff,
-    children: [
-      {
-        href: "/backoffice/orders/new",
-        label: "Uusi tilaus",
-        legacyPaths: ["/backoffice/sale"],
-        roles: allStaff,
-      },
-      {
-        href: "/backoffice/orders/inbox",
-        label: "Saapuvat tilaukset",
-        roles: allStaff,
-      },
-    ],
-  },
-  {
-    id: "kitchen",
-    href: "/backoffice/kitchen",
-    label: "Keittiö",
-    icon: "kitchen",
-    roles: allStaff,
-  },
-  {
-    id: "serviceCalls",
-    href: "/backoffice/service-calls",
-    label: "Palvelukutsut",
-    icon: "orders",
-    roles: allStaff,
-  },
-  {
-    id: "receipts",
-    href: "/backoffice/orders/history",
-    label: "Kuittihistoria",
-    icon: "receipts",
-    roles: adminOnly,
-    legacyPaths: ["/backoffice/salereport"],
-    // EN: The Order history URL is nested under this route, so only the receipt page highlights this item.
-    // FI: Tilaushistorian URL on tämän reitin alla, joten vain kuittisivu korostaa tämän kohdan.
-    activeExact: true,
-  },
-  {
-    id: "orderHistory",
-    href: "/backoffice/orders/history/orders",
-    label: "Tilaushistoria",
-    icon: "orderHistory",
-    roles: adminOnly,
-  },
-  {
-    id: "reports",
-    href: "/backoffice/reports/daily-sales",
-    label: "Raportit",
-    icon: "reports",
-    roles: adminOnly,
-    children: [
-      {
-        href: "/backoffice/reports/daily-sales",
-        label: "Päivämyynti",
-        legacyPaths: ["/backoffice/dailysales"],
-        roles: adminOnly,
-      },
-      {
-        href: "/backoffice/reports/monthly-sales",
-        label: "Kuukausimyynti",
-        legacyPaths: ["/backoffice/monthlysales"],
         roles: adminOnly,
       },
     ],
@@ -192,7 +206,8 @@ export function isUserLevel(value: unknown): value is UserLevel {
 }
 
 export function getBackofficeLanding(level: UserLevel) {
-  return level === "admin" ? "/backoffice/dashboard" : "/backoffice/sale";
+  if (level === "admin") return "/backoffice/dashboard";
+  return level === "waiter" ? "/backoffice/waiter" : "/backoffice/sale";
 }
 
 function hasRole(roles: readonly UserLevel[], level: UserLevel) {
@@ -229,7 +244,10 @@ export function isNavigationGroupActive(
 
 export function getVisibleBackofficeNavigation(level: UserLevel) {
   return backofficeNavigation
-    .filter(({ roles }) => hasRole(roles, level))
+    .filter(
+      ({ roles, hiddenFromNavigation }) =>
+        !hiddenFromNavigation && hasRole(roles, level),
+    )
     .map((group) => ({
       ...group,
       children: group.children?.filter(({ roles }) => hasRole(roles, level)),

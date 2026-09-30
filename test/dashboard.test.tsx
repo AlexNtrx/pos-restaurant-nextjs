@@ -75,6 +75,7 @@ describe("HIS-01 operational dashboard", () => {
         recentOrders: [
           { ...order, id: 18, channel: "COUNTER", tableNo: null },
           { ...order, id: 17, channel: "QR", tableNo: 5 },
+          { ...order, id: 19, channel: "STAFF", tableNo: 7 },
           { ...order, id: 16, channel: "COUNTER", tableNo: 6 },
         ],
       },
@@ -84,6 +85,9 @@ describe("HIS-01 operational dashboard", () => {
     const takeaway = await screen.findByRole("row", { name: /#18/ });
     expect(within(takeaway).getByText("Mukaan")).toBeTruthy();
     expect(within(takeaway).getByText("25,00 €")).toBeTruthy();
+    expect(
+      within(screen.getByRole("row", { name: /#19/ })).getByText("Tarjoilija"),
+    ).toBeTruthy();
     expect(
       within(screen.getByRole("row", { name: /#17/ })).getByText("5"),
     ).toBeTruthy();

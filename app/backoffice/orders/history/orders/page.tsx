@@ -85,7 +85,9 @@ export default function OrderRecordsPage() {
   const today = dayjs().tz(zone).format("YYYY-MM-DD");
   const [fromDate, setFromDate] = useState(today);
   const [toDate, setToDate] = useState(today);
-  const [channel, setChannel] = useState<"ALL" | "COUNTER" | "QR">("ALL");
+  const [channel, setChannel] = useState<"ALL" | "COUNTER" | "QR" | "STAFF">(
+    "ALL",
+  );
   const [sessionInput, setSessionInput] = useState("");
   const [orders, setOrders] = useState<StaffOrder[]>([]);
   const [state, setState] = useState<
@@ -214,6 +216,7 @@ export default function OrderRecordsPage() {
             <option value="ALL">Kaikki</option>
             <option value="COUNTER">Kassa</option>
             <option value="QR">QR</option>
+            <option value="STAFF">Tarjoilija</option>
           </select>
         </label>
         <label className="space-y-1 text-xs font-medium text-muted-foreground">
@@ -274,9 +277,11 @@ export default function OrderRecordsPage() {
                   <TableCell>
                     {order.channel === "QR"
                       ? "QR"
-                      : order.serviceType === "TAKEAWAY"
-                        ? "Mukaan"
-                        : "Kassa"}
+                      : order.channel === "STAFF"
+                        ? "Tarjoilija"
+                        : order.serviceType === "TAKEAWAY"
+                          ? "Mukaan"
+                          : "Kassa"}
                   </TableCell>
                   <TableCell>
                     {order.serviceType === "TAKEAWAY"
@@ -318,7 +323,7 @@ export default function OrderRecordsPage() {
             <DialogTitle>Tilaus #{selectedId}</DialogTitle>
             <DialogDescription>
               {detail
-                ? `${detail.serviceType === "TAKEAWAY" ? `Mukaan · Nouto #${detail.id}` : `${detail.channel === "QR" ? "QR" : "Kassa"} · pöytä ${detail.tableNo}`} · ${statusLabels[detail.status]}`
+                ? `${detail.serviceType === "TAKEAWAY" ? `Mukaan · Nouto #${detail.id}` : `${detail.channel === "QR" ? "QR" : detail.channel === "STAFF" ? "Tarjoilija" : "Kassa"} · pöytä ${detail.tableNo}`} · ${statusLabels[detail.status]}`
                 : "Tilauksen tiedot"}
             </DialogDescription>
           </DialogHeader>

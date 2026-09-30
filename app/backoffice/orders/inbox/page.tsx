@@ -75,7 +75,12 @@ function OrderSummary({
             Tilaus #{order.id}
           </h2>
           <p className="text-xs text-muted-foreground">
-            {order.channel === "QR" ? "QR" : "Kassa"} ·{" "}
+            {order.channel === "QR"
+              ? "QR"
+              : order.channel === "STAFF"
+                ? "Tarjoilija"
+                : "Kassa"}{" "}
+            ·{" "}
             {order.serviceType === "TAKEAWAY"
               ? `Mukaan · Nouto #${order.id}`
               : `Pöytä ${order.tableNo}`}{" "}
@@ -442,7 +447,7 @@ export default function StaffOrderInboxPage() {
             <DialogTitle>Tilaus #{selectedId}</DialogTitle>
             <DialogDescription>
               {detail
-                ? `${detail.channel === "QR" ? "QR" : "Kassa"} · ${detail.serviceType === "TAKEAWAY" ? `Mukaan · Nouto #${detail.id}` : `Pöytä ${detail.tableNo}`} · ${localTime.format(new Date(detail.submittedAt))}`
+                ? `${detail.channel === "QR" ? "QR" : detail.channel === "STAFF" ? "Tarjoilija" : "Kassa"} · ${detail.serviceType === "TAKEAWAY" ? `Mukaan · Nouto #${detail.id}` : `Pöytä ${detail.tableNo}`} · ${localTime.format(new Date(detail.submittedAt))}`
                 : "Ladataan tilauksen tietoja"}
             </DialogDescription>
           </DialogHeader>

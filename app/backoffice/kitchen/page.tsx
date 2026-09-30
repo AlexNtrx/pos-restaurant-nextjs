@@ -107,9 +107,11 @@ function KitchenCard({
           <p className="mt-1 text-[12px] leading-5 text-[#767168]">
             {order.channel === "QR"
               ? "QR"
-              : order.serviceType === "TAKEAWAY"
-                ? "Mukaan"
-                : "Kassa"}
+              : order.channel === "STAFF"
+                ? "Tarjoilija"
+                : order.serviceType === "TAKEAWAY"
+                  ? "Mukaan"
+                  : "Kassa"}
             {order.tableNo == null ? "" : ` · Pöytä ${order.tableNo}`} ·{" "}
             {timeFormatter.format(new Date(order.submittedAt))}
           </p>

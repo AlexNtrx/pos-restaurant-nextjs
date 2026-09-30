@@ -14,8 +14,8 @@ const cormorantGaramond = Cormorant_Garamond({
 });
 
 export const metadata: Metadata = {
-  title: "Restaurant POS",
-  description: "Restaurant point-of-sale system",
+  title: "Ravintola POS",
+  description: "Ravintolan kassajärjestelmä",
   // Renders the root layout interface.
 };
 

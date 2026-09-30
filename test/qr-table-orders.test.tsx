@@ -65,7 +65,9 @@ describe("Kassa QR table orders", () => {
         nextStatus: "CONFIRMED",
       }),
     );
-    await user.click(screen.getByRole("button", { name: "Maksa QR-istunto" }));
+    await user.click(
+      screen.getByRole("button", { name: "Maksa pöytäistunto" }),
+    );
     expect(screen.getByText("Session checkout opened")).toBeTruthy();
     get.mockImplementation(async (path: string) => {
       if (path === "/tables")
@@ -75,7 +77,30 @@ describe("Kassa QR table orders", () => {
     await user.click(
       screen.getByRole("button", { name: "Session checkout opened" }),
     );
-    await screen.findByText("Pöydässä ei ole avointa QR-istuntoa.");
+    await screen.findByText("Pöydässä ei ole avointa istuntoa.");
     expect(screen.getByText("Session checkout opened")).toBeTruthy();
+  });
+
+  it("shows waiter orders in the same table session for cashier review", async () => {
+    get.mockImplementation(async (path: string) => {
+      if (path === "/tables")
+        return { data: { results: [{ tableNo: 12, openSession: { id: 9 } }] } };
+      if (path === "/orders")
+        return {
+          data: {
+            results: [
+              { ...qrOrder, id: 44, channel: "STAFF", status: "READY" },
+            ],
+            nextCursor: null,
+            serverTime: "2026-09-29T12:00:00.000Z",
+          },
+        };
+      throw new Error(`Unexpected GET ${path}`);
+    });
+    render(<QrTableOrders tableNo={12} />);
+    expect(await screen.findByText("Tarjoilija #44 · READY")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Maksa pöytäistunto" }),
+    ).toBeTruthy();
   });
 });
