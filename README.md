@@ -17,17 +17,22 @@ The Next.js frontend for restaurant counter sales, customer QR ordering, kitchen
 - Customer QR menu, sizes and modifiers, notes, cart, submission, and order tracking.
 - Table sessions, QR modes, staff order inbox, and table-session settlement.
 - Kitchen board for confirmed, preparing, and ready orders.
-- Dedicated `kitchen` accounts, displayed as **Keittiöhenkilökunta**, with access only to the **Keittiö** board.
+- Role-based access for `admin`, `user`, `waiter`, and `kitchen` accounts.
 - Waiter table ordering, serving confirmation, and customer service calls.
 - Catalog and staff management, restaurant settings, operational dashboard, order history, receipt history, and sales reports.
 
-The backend verifies permissions, prices, totals, and order transitions. Frontend route guards are interface controls.
+### Staff roles
 
-## Kitchen staff
+| Role      | Sign-in destination     | Access                                                                                                                                                                       |
+| --------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `admin`   | `/backoffice/dashboard` | All staff workflows, staff and catalog management, restaurant settings, dashboard, history, and reports.                                                                     |
+| `user`    | `/backoffice/sale`      | Counter sales and payments, incoming orders, kitchen preparation, waiter operations, service calls, and table-session operations. No admin-only management or reports.       |
+| `waiter`  | `/backoffice/waiter`    | Table ordering, order tracking, serving, permitted unpaid-order cancellation, and service calls. No counter payments or kitchen preparation.                                 |
+| `kitchen` | `/backoffice/kitchen`   | Kitchen board only: view orders, start preparation, mark ready, and sign out. No serving, payments, or management. Displayed as **Keittiöhenkilökunta** in staff management. |
 
-Admins can create or edit kitchen staff accounts under **Henkilöstö → Lisää työntekijä → Rooli: Keittiöhenkilökunta**. These accounts use the `kitchen` role and land on the full-screen `/backoffice/kitchen` board after sign-in. Other backoffice routes redirect them to the kitchen board.
+Admins create and edit staff accounts in **Henkilöstö**. The backend verifies the active account and current database role for every protected operation; frontend route guards control navigation. Customers use session-scoped QR access without a staff account.
 
-Kitchen staff can view the queue, select **Aloita** to start preparation, select **Merkitse valmiiksi** when an order is ready, and use **Kirjaudu ulos** to sign out. This role cannot confirm serving, process payments, or manage staff. The page remains named **Keittiö**, and existing `admin/user/waiter` permissions remain unchanged. Use a matching backend that supports `kitchen`; this role requires no database migration.
+The backend verifies prices, totals, and order transitions.
 
 ## Stack and requirements
 
