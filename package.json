@@ -2,7 +2,12 @@
   "name": "my-app",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
+    "test": "vitest run --maxWorkers=2 && npm run test:report-contracts && npm run test:release-config",
+    "typecheck": "tsc --noEmit",
     "dev": "next dev",
     "build": "next build",
     "build:release": "node scripts/build-release.mjs",
@@ -18,12 +23,12 @@
     "test:shell": "vitest run test/staff-shell.test.tsx"
   },
   "dependencies": {
-    "axios": "^1.18.1",
+    "axios": "^1.20.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dayjs": "^1.11.21",
     "lucide-react": "^1.31.0",
-    "next": "16.2.9",
+    "next": "16.3.8",
     "qrcode": "^1.5.4",
     "radix-ui": "^1.6.7",
     "react": "19.2.4",
@@ -41,12 +46,12 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.9",
+    "eslint-config-next": "16.3.8",
     "jsdom": "^30.0.1",
     "prettier": "3.9.6",
     "shadcn": "^4.16.2",
     "tailwindcss": "^4",
     "typescript": "5.9.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   }
 }

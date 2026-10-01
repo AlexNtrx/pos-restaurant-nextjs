@@ -52,3 +52,34 @@ test("check mode fails without an origin and does not start a build", () => {
   assert.equal(result.status, 1);
   assert.match(result.stderr, /NEXT_PUBLIC_API_SERVER/);
 });
+
+test("Next config refuses missing or loopback origins in standard production builds", () => {
+  const configPath = fileURLToPath(
+    new URL("../next.config.mjs", import.meta.url),
+  );
+  for (const origin of [
+    "",
+    "http://localhost:3001",
+    "https://localhost:3001",
+  ]) {
+    const result = spawnSync(process.execPath, [configPath], {
+      env: {
+        ...process.env,
+        NODE_ENV: "production",
+        NEXT_PUBLIC_API_SERVER: origin,
+      },
+      encoding: "utf8",
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /NEXT_PUBLIC_API_SERVER/);
+  }
+  const result = spawnSync(process.execPath, [configPath], {
+    env: {
+      ...process.env,
+      NODE_ENV: "production",
+      NEXT_PUBLIC_API_SERVER: "https://api.restaurant.example",
+    },
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr);
+});
