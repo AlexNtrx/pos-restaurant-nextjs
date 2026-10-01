@@ -82,9 +82,8 @@ function SignInBranding({
       </div>
 
       {showMeta && (
-        <div className="mt-auto hidden space-y-5 text-[11px] leading-[1.35] text-[#d8d4cc] md:block">
-          <p className="tracking-[0.08em]">KASSA · QR · KEITTIÖ</p>
-          <p>v0.1 · kehitysversio</p>
+        <div className="mt-auto hidden text-[11px] leading-[1.35] text-[#d8d4cc] md:block">
+          <p>v2.0.0</p>
         </div>
       )}
     </>
@@ -200,9 +199,6 @@ export default function SignInPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
-              <p className="pt-1 text-right text-[13px] leading-[1.2] text-[#767168]">
-                Unohditko salasanasi?
-              </p>
             </div>
 
             <button
@@ -215,9 +211,11 @@ export default function SignInPage() {
             </button>
           </form>
 
-          <div className="mt-12 space-y-12 text-[13px] leading-[1.25] text-[#767168]">
-            <p>Asiakkaan QR-tilaaminen ei käytä henkilökunnan tiliä.</p>
-            <p>Tarvitsetko apua? Ota yhteys ylläpitäjään.</p>
+          <div className="mt-12 text-[13px] leading-[1.25] text-[#767168]">
+            <p>
+              Unohditko salasanasi tai tarvitsetko apua? Ota yhteys
+              ylläpitäjään.
+            </p>
           </div>
         </div>
       </main>
