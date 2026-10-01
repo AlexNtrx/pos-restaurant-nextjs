@@ -3,12 +3,13 @@
 The Next.js frontend for restaurant counter sales, customer QR ordering, kitchen preparation, and waiter service. The interface primarily uses Finnish labels.
 
 - [Backend repository](https://github.com/AlexNtrx/pos-restaurant-backend)
+- [Live frontend](https://pos-restaurant-nextjs.vercel.app)
 - [Frontend v2.0.0 release](https://github.com/AlexNtrx/pos-restaurant-nextjs/releases/tag/v2.0.0)
 - [Backend v2.0.0 release](https://github.com/AlexNtrx/pos-restaurant-backend/releases/tag/v2.0.0)
 
 ## Release status
 
-`v2.0.0` is a published source release. Project records include checks and browser verification for multiple workflows against a disposable test database. Production deployment checks and pilot acceptance remain outstanding.
+`v2.0.0` is a published source release. The frontend is deployed on Vercel and the backend on Render. The sign-in page, backend health endpoint, and frontend-origin CORS preflight have been verified. Neon migration verification, persistent upload storage, real-account sign-in, and pilot acceptance remain outstanding.
 
 ## Features
 
@@ -111,6 +112,14 @@ npm run format:check
 Focused scripts include `test:pos`, `test:ui`, and `test:shell`. Component and contract tests do not replace browser verification against a running backend.
 
 ## Release build
+
+### Vercel deployment
+
+Use the repository root (`./`), the Next.js framework preset, and Node.js 24.x. `vercel.json` sets the install command to `npm ci` and the build command to `npm run build:release`; leave the output directory at the framework default.
+
+Set `NEXT_PUBLIC_API_SERVER=https://next-pos-api.onrender.com` in Vercel before building. The backend must allow `https://pos-restaurant-nextjs.vercel.app` in `CORS_ORIGINS`. Keep database URLs and authentication secrets in the backend environment only. Pushes to `main` trigger production deployments.
+
+### Build locally
 
 Set `NEXT_PUBLIC_API_SERVER` in the build environment to the real HTTPS backend origin, then run:
 
