@@ -145,20 +145,26 @@ export default function RestaurantSettingsPage() {
     setError("");
     try {
       const response = await api.get("/organization/info");
-      if (!isOrganization(response.data?.result)) {
-        throw new Error("Ravintolan asetuksia ei ole määritetty.");
+      const organization = response.data?.result;
+      if (organization !== null && !isOrganization(organization)) {
+        throw new Error("Palvelin palautti virheelliset ravintolan tiedot.");
       }
-      const organization = response.data.result;
-      setForm({
-        name: organization.name,
-        address: organization.address,
-        phone: organization.phone,
-        email: organization.email,
-        website: organization.website,
-        bankNo: organization.bankNo,
-        logo: organization.logo,
-        taxCode: organization.taxCode,
-      });
+      // EN: A missing organization is the initial setup state, so keep the creation form available.
+      // FI: Puuttuva ravintola tarkoittaa alkumääritystä, joten pidä luontilomake käytettävissä.
+      setForm(
+        organization === null
+          ? { ...emptyForm }
+          : {
+              name: organization.name,
+              address: organization.address,
+              phone: organization.phone,
+              email: organization.email,
+              website: organization.website,
+              bankNo: organization.bankNo,
+              logo: organization.logo,
+              taxCode: organization.taxCode,
+            },
+      );
       updateSelectedFile(null);
       setFieldErrors({});
       setFormError("");

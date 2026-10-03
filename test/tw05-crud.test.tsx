@@ -292,6 +292,41 @@ describe("TW-05 CRUD dialogs", () => {
     expect(screen.getByRole("button", { name: "Poista aino" })).toBeTruthy();
   });
 
+  it("allows initial restaurant setup when the API has no organization", async () => {
+    api.get.mockResolvedValue({ data: { result: null } });
+    const user = userEvent.setup();
+    render(<RestaurantSettingsPage />);
+    await user.type(
+      await screen.findByLabelText(/^Ravintolan nimi/),
+      "New restaurant",
+    );
+    await user.type(screen.getByLabelText(/^Osoite/), "Test street 1");
+    await user.type(screen.getByLabelText(/^Puhelin/), "123456");
+    await user.type(screen.getByLabelText(/^Y-tunnus/), "TEST-1");
+    await user.click(
+      screen.getByRole("button", { name: "Tallenna muutokset" }),
+    );
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        "/organization/create",
+        expect.objectContaining({
+          name: "New restaurant",
+          taxCode: "TEST-1",
+          logo: "",
+        }),
+      ),
+    );
+  });
+
+  it("rejects malformed organization data instead of treating it as initial setup", async () => {
+    api.get.mockResolvedValue({ data: {} });
+    render(<RestaurantSettingsPage />);
+    expect(await screen.findByText("Asetuksia ei voitu ladata")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Tallenna muutokset" }),
+    ).toBeNull();
+  });
+
   it("saves restaurant settings without uploading when the logo is unchanged", async () => {
     api.get.mockResolvedValue({
       data: {
