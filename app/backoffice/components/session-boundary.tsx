@@ -18,6 +18,10 @@ import {
 import { Button } from "@/components/ui/button";
 import StaffShell from "./staff-shell";
 import { StaffRoleContext } from "@/lib/staff-role-context";
+import {
+  AUTH_REQUEST_TIMEOUT_MS,
+  AUTH_SLOW_NOTICE_MS,
+} from "@/lib/auth-request-policy";
 
 //Types
 type SessionState =
@@ -26,10 +30,6 @@ type SessionState =
   | { status: "unauthenticated" }
   | { status: "forbidden" }
   | { status: "verification-error"; message: string };
-
-//Timer
-// Validates is user level response before it is used.
-const VERIFY_SESSION_TIMEOUT_MS = 10_000;
 
 //Helper functions
 function isUserLevelResponse(data: unknown): data is { level: UserLevel } {
@@ -62,6 +62,7 @@ export default function SessionBoundary({
   const router = useRouter();
   const pathname = usePathname();
   const [state, setState] = useState<SessionState>({ status: "checking" });
+  const [isSlow, setIsSlow] = useState(false);
   const verificationStartedRef = useRef(false);
   const activeVerificationRef = useRef<AbortController | null>(null); //cancellation
   const verificationRequestIdRef = useRef(0);
@@ -79,12 +80,13 @@ export default function SessionBoundary({
 
       const requestId = ++verificationRequestIdRef.current; //request #1,2,3
 
-      //timer cancellation 10ms
+      // EN: Use the same bounded cold-start allowance as login and cancel verification when its deadline expires.
+      // FI: Käytä kirjautumisen kanssa samaa rajattua käynnistymisodotusta ja peruuta tarkistus määräajan päättyessä.
       let timedOut = false;
       const timeoutId = window.setTimeout(() => {
         timedOut = true;
         controller.abort();
-      }, VERIFY_SESSION_TIMEOUT_MS); //10ms
+      }, AUTH_REQUEST_TIMEOUT_MS);
 
       const session = readAuthSession(); //token, name, userID
 
@@ -103,6 +105,7 @@ export default function SessionBoundary({
       try {
         const { data } = await api.get<unknown>("/user/getLevelByToken", {
           signal: controller.signal,
+          timeout: AUTH_REQUEST_TIMEOUT_MS,
         });
 
         if (requestId !== verificationRequestIdRef.current) return;
@@ -130,7 +133,7 @@ export default function SessionBoundary({
         setState({
           status: "verification-error",
           message: timedOut
-            ? "Session verification timed out. Please try again."
+            ? "Istunnon tarkistus kesti liian kauan. Yritä uudelleen. Tallennettu istunto säilytettiin."
             : getVerificationError(error),
         });
       } finally {
@@ -174,16 +177,25 @@ export default function SessionBoundary({
   // Retry session verification
   // Preserves retry verification sequencing and retry behavior.
   const retryVerification = () => {
+    setIsSlow(false);
     setState({ status: "checking" });
     void verifySession(true);
   };
+
+  useEffect(() => {
+    if (state.status !== "checking") return;
+    const timer = window.setTimeout(() => setIsSlow(true), AUTH_SLOW_NOTICE_MS);
+    return () => window.clearTimeout(timer);
+  }, [state.status]);
 
   //  UI guards
   if (state.status === "checking") {
     return (
       <main className="flex min-h-screen items-center justify-center bg-canvas p-4 font-sans">
         <p role="status" className="text-sm text-muted-foreground">
-          Istuntoa tarkistetaan…
+          {isSlow
+            ? "Palvelimen vastausta odotetaan. Istuntoa tarkistetaan; odota tämän yrityksen valmistumista."
+            : "Istuntoa tarkistetaan…"}
         </p>
       </main>
     );

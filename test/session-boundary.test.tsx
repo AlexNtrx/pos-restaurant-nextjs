@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 
 const mocks = vi.hoisted(() => ({
   pathname: "/backoffice/dashboard",
@@ -33,6 +33,7 @@ vi.mock("@/app/backoffice/components/staff-shell", () => ({
 }));
 
 import SessionBoundary from "@/app/backoffice/components/session-boundary";
+import { AUTH_REQUEST_TIMEOUT_MS } from "@/lib/auth-request-policy";
 
 function storeSession() {
   localStorage.setItem("mytokenfornextjsproject", "token");
@@ -48,9 +49,47 @@ beforeEach(() => {
   localStorage.clear();
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 describe("backoffice session boundary navigation", () => {
+  it("bounds a slow verification, preserves credentials and never renders unverified content", async () => {
+    vi.useFakeTimers();
+    storeSession();
+    mocks.apiGet.mockImplementation(
+      (path, { signal }) =>
+        new Promise((_, reject) => {
+          signal.addEventListener("abort", () =>
+            reject({ isAxiosError: true, code: "ERR_CANCELED" }),
+          );
+        }),
+    );
+    render(
+      <SessionBoundary>
+        <div>Protected content</div>
+      </SessionBoundary>,
+    );
+    await act(() => vi.advanceTimersByTimeAsync(5_000));
+    expect(screen.getByRole("status").textContent).toContain(
+      "Palvelimen vastausta odotetaan",
+    );
+    expect(mocks.apiGet).toHaveBeenCalledExactlyOnceWith(
+      "/user/getLevelByToken",
+      expect.objectContaining({ timeout: AUTH_REQUEST_TIMEOUT_MS }),
+    );
+    await act(() =>
+      vi.advanceTimersByTimeAsync(AUTH_REQUEST_TIMEOUT_MS - 5_000),
+    );
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Istunnon tarkistus kesti liian kauan",
+    );
+    expect(localStorage.getItem("mytokenfornextjsproject")).toBe("token");
+    expect(screen.queryByText("Protected content")).toBeNull();
+    expect(mocks.replace).not.toHaveBeenCalled();
+    expect(mocks.apiGet).toHaveBeenCalledOnce();
+  });
   it("redirects kitchen staff to their fullscreen board without rendering forbidden content", async () => {
     storeSession();
     mocks.pathname = "/backoffice/staff";

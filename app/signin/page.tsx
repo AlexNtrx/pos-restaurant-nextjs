@@ -1,11 +1,15 @@
 "use client";
 import type { SubmitEventHandler } from "react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { isAxiosError } from "axios";
 import { toast } from "sonner";
 import { publicApi } from "@/lib/api";
 import { writeAuthSession } from "@/lib/auth-session";
+import {
+  AUTH_REQUEST_TIMEOUT_MS,
+  AUTH_SLOW_NOTICE_MS,
+} from "@/lib/auth-request-policy";
 
 type SignInResponse = {
   token: string;
@@ -39,6 +43,9 @@ function getSignInErrorMessage(error: unknown) {
     }
 
     if (!error.response) {
+      if (["ECONNABORTED", "ETIMEDOUT"].includes(error.code ?? "")) {
+        return "API-palvelin ei vastannut ajoissa. Yritä uudelleen.";
+      }
       return "Yhteyttä API-palvelimeen ei voitu muodostaa. Yritä uudelleen.";
     }
 
@@ -94,11 +101,29 @@ export default function SignInPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSlow, setIsSlow] = useState(false);
+  const requestRef = useRef<AbortController | null>(null);
   const router = useRouter();
 
-  // Enforces the existing authentication and session behavior.
+  useEffect(() => {
+    if (!isSubmitting) return;
+    const timer = window.setTimeout(() => setIsSlow(true), AUTH_SLOW_NOTICE_MS);
+    return () => window.clearTimeout(timer);
+  }, [isSubmitting]);
+
+  useEffect(
+    () => () => {
+      requestRef.current?.abort();
+      requestRef.current = null;
+    },
+    [],
+  );
+
+  // EN: Hold one login attempt until it resolves; leaving this page must not persist a late response.
+  // FI: Pidä vain yksi kirjautumisyritys kerrallaan; sivulta poistumisen jälkeen saapuvaa vastausta ei tallenneta.
   const signIn: SubmitEventHandler<HTMLFormElement> = async (event) => {
     event.preventDefault();
+    if (requestRef.current) return;
 
     const normalizedUsername = username.trim();
 
@@ -109,6 +134,9 @@ export default function SignInPage() {
       return;
     }
 
+    const controller = new AbortController();
+    requestRef.current = controller;
+    setIsSlow(false);
     setIsSubmitting(true);
 
     try {
@@ -117,7 +145,11 @@ export default function SignInPage() {
         password,
       };
 
-      const { data } = await publicApi.post<unknown>("/user/signIn", payload);
+      const { data } = await publicApi.post<unknown>("/user/signIn", payload, {
+        timeout: AUTH_REQUEST_TIMEOUT_MS,
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted) return;
 
       if (!isSignInResponse(data)) {
         throw new Error("Invalid sign-in response");
@@ -131,11 +163,16 @@ export default function SignInPage() {
 
       router.replace("/backoffice");
     } catch (error: unknown) {
+      if (controller.signal.aborted) return;
       toast.error("Kirjautuminen epäonnistui", {
         description: getSignInErrorMessage(error),
       });
     } finally {
-      setIsSubmitting(false);
+      if (requestRef.current === controller) {
+        requestRef.current = null;
+        setIsSubmitting(false);
+        setIsSlow(false);
+      }
     }
   };
 
@@ -160,7 +197,11 @@ export default function SignInPage() {
             </p>
           </header>
 
-          <form className="mt-12 space-y-6" onSubmit={signIn}>
+          <form
+            className="mt-12 space-y-6"
+            onSubmit={signIn}
+            aria-busy={isSubmitting}
+          >
             <div className="space-y-2">
               <label
                 className="block text-[13px] font-medium text-[#4f4c45]"
@@ -175,6 +216,7 @@ export default function SignInPage() {
                 className="h-12 w-full rounded-lg border border-[#d8d4cc] bg-[#fbfaf7] px-4 text-[14px] text-[#1f201d] outline-none transition placeholder:text-[#9b978e] focus:border-[#706f5e] focus:ring-2 focus:ring-[#706f5e]/20"
                 placeholder="esim. kassa01"
                 autoComplete="username"
+                disabled={isSubmitting}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
@@ -195,6 +237,7 @@ export default function SignInPage() {
                 className="h-12 w-full rounded-lg border border-[#d8d4cc] bg-[#fbfaf7] px-4 text-[14px] text-[#1f201d] outline-none transition placeholder:text-[#9b978e] focus:border-[#706f5e] focus:ring-2 focus:ring-[#706f5e]/20"
                 placeholder="••••••••••"
                 autoComplete="current-password"
+                disabled={isSubmitting}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -209,6 +252,13 @@ export default function SignInPage() {
             >
               {isSubmitting ? "Kirjaudutaan…" : "Kirjaudu"}
             </button>
+            {isSubmitting && (
+              <p role="status" className="text-sm text-[#767168]">
+                {isSlow
+                  ? "Palvelimen vastausta odotetaan. Käynnistyminen voi kestää hetken; odota tämän yrityksen valmistumista."
+                  : "Kirjautumista tarkistetaan…"}
+              </p>
+            )}
           </form>
 
           <div className="mt-12 text-[13px] leading-[1.25] text-[#767168]">
