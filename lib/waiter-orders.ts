@@ -77,7 +77,6 @@ export async function loadWaiterOrders() {
     fetchOrderPages({ status: "CONFIRMED" }),
     fetchOrderPages({ status: "PREPARING" }),
     fetchOrderPages({ status: "READY" }),
-    fetchOrderPages({ status: "SERVED" }),
   ]);
   // EN: Parallel stage reads can overlap during a transition; keep the latest version once per order.
   // FI: Rinnakkaiset tilahaut voivat limittyä tilan muuttuessa; säilytä vain tilauksen uusin versio.
@@ -90,7 +89,11 @@ export async function loadWaiterOrders() {
         orders.set(order.id, order);
     }
   }
-  return [...orders.values()].sort((left, right) => left.id - right.id);
+  return [...orders.values()]
+    .filter((order) =>
+      ["SUBMITTED", "CONFIRMED", "PREPARING", "READY"].includes(order.status),
+    )
+    .sort((left, right) => left.id - right.id);
 }
 
 export async function cancelWaiterOrder(order: StaffOrder, reason: string) {
@@ -102,7 +105,12 @@ export async function serveWaiterOrder(order: StaffOrder) {
     `/orders/${order.id}/serve`,
     { expectedVersion: order.version },
   );
-  if (!response.data?.result?.id)
+  if (
+    response.data?.result?.id !== order.id ||
+    !Number.isSafeInteger(response.data.result.version) ||
+    response.data.result.version <= order.version ||
+    !["SERVED", "COMPLETED"].includes(response.data.result.status)
+  )
     throw new Error("Palvelin palautti virheellisen tilaustilan.");
   return response.data.result;
 }

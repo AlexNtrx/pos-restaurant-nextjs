@@ -131,13 +131,14 @@ it("offers cancellation only before preparation and payment", async () => {
       within(row).getByRole("button", { name: "Peru tilaus" }),
     ).toBeTruthy();
   }
-  for (const id of [41, 32, 42]) {
+  for (const id of [41, 32]) {
     const row = screen.getByText(`Pöytä 4 · Tilaus #${id}`).closest("li")!;
     expect(
       within(row).queryByRole("button", { name: "Peru tilaus" }),
     ).toBeNull();
   }
   expect(screen.getByText("QR · Valmistelussa")).toBeTruthy();
+  expect(screen.queryByText("Pöytä 4 · Tilaus #42")).toBeNull();
 });
 
 it("refreshes stale cancellation without showing success or keeping a retry dialog", async () => {
@@ -226,7 +227,7 @@ it("takes a table order and tracks progress without a waiter QR confirmation tas
   const waiting = screen.getByText("Pöytä 4 · Tilaus #31").closest("li")!;
   expect(within(waiting).getByText("QR · Odottaa vahvistusta")).toBeTruthy();
   expect(
-    within(waiting).queryByRole("button", { name: "Tarjoiltu" }),
+    within(waiting).queryByRole("button", { name: "Merkitse tarjoilluksi" }),
   ).toBeNull();
   await user.selectOptions(screen.getByLabelText("Tuote"), "5");
   await user.click(screen.getByRole("button", { name: "Lisää tilaukseen" }));
@@ -238,6 +239,25 @@ it("takes a table order and tracks progress without a waiter QR confirmation tas
     { foodId: 5, foodSizeId: null, tasteId: null, quantity: 1, note: "" },
   ]);
   expect(mocks.sendOrder.mock.calls[0][3]).toBe(20);
-  await user.click(screen.getByRole("button", { name: "Tarjoiltu" }));
+  await user.click(
+    screen.getByRole("button", { name: "Merkitse tarjoilluksi" }),
+  );
   await waitFor(() => expect(mocks.serveOrder).toHaveBeenCalledWith(ready));
+  await waitFor(() =>
+    expect(screen.queryByText("Pöytä 4 · Tilaus #32")).toBeNull(),
+  );
+  expect(
+    screen.getByRole("heading", { name: "Tilausten seuranta (1)" }),
+  ).toBeTruthy();
+});
+
+it("keeps the ready order visible if serving fails", async () => {
+  mocks.serveOrder.mockRejectedValue(new Error("Tallennus epäonnistui."));
+  const user = userEvent.setup();
+  render(<WaiterPage />);
+  await user.click(
+    await screen.findByRole("button", { name: "Merkitse tarjoilluksi" }),
+  );
+  await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+  expect(screen.getByText("Pöytä 4 · Tilaus #32")).toBeTruthy();
 });

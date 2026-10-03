@@ -1,6 +1,10 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import api from "@/lib/api";
-import { cancelWaiterOrder, loadWaiterOrders } from "@/lib/waiter-orders";
+import {
+  cancelWaiterOrder,
+  loadWaiterOrders,
+  serveWaiterOrder,
+} from "@/lib/waiter-orders";
 import type { StaffOrder } from "@/app/backoffice/orders/inbox/_lib/staff-orders";
 
 vi.mock("@/lib/api", () => ({
@@ -8,6 +12,24 @@ vi.mock("@/lib/api", () => ({
 }));
 
 beforeEach(() => vi.clearAllMocks());
+
+it("accepts serving only after the selected order advances to a saved served state", async () => {
+  const order = { id: 23, version: 4, status: "READY" } as StaffOrder;
+  for (const result of [
+    { id: 23, version: 5, status: "READY" },
+    { id: 23, version: 4, status: "SERVED" },
+    { id: 24, version: 5, status: "SERVED" },
+  ]) {
+    vi.mocked(api.patch).mockResolvedValueOnce({ data: { result } });
+    await expect(serveWaiterOrder(order)).rejects.toThrow(
+      "virheellisen tilaustilan",
+    );
+  }
+  vi.mocked(api.patch).mockResolvedValueOnce({
+    data: { result: { ...order, version: 5, status: "SERVED" } },
+  });
+  expect((await serveWaiterOrder(order)).status).toBe("SERVED");
+});
 
 // EN: Axios 1.20 treats params as unknown; assert the request shape inside the mock.
 // FI: Axios 1.20 käsittelee parametrit unknown-tyyppisinä; tarkista pyyntö mockissa.
@@ -24,7 +46,7 @@ const requestStatus = (params: unknown): string => {
 };
 
 it("loads every active dine-in stage without including takeaway orders", async () => {
-  const stages = ["SUBMITTED", "CONFIRMED", "PREPARING", "READY", "SERVED"];
+  const stages = ["SUBMITTED", "CONFIRMED", "PREPARING", "READY"];
   vi.mocked(api.get).mockImplementation(async (_url, config) => ({
     data: {
       results: [
@@ -47,6 +69,12 @@ it("loads every active dine-in stage without including takeaway orders", async (
   const orders = await loadWaiterOrders();
   expect(orders.map((order) => order.status)).toEqual(stages);
   expect(orders.every((order) => order.serviceType === "DINE_IN")).toBe(true);
+  expect(api.get).not.toHaveBeenCalledWith(
+    "/orders",
+    expect.objectContaining({
+      params: expect.objectContaining({ status: "SERVED" }),
+    }),
+  );
 });
 
 it("shows a transitioning order once at the latest version across stage reads", async () => {

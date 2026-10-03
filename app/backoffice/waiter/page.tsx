@@ -57,6 +57,7 @@ export default function WaiterPage() {
   const [success, setSuccess] = useState("");
   const pendingKey = useRef<string | null>(null);
   const mounted = useRef(false);
+  const servedVersions = useRef(new Map<number, number>());
 
   const revoke = useCallback(() => {
     setTables([]);
@@ -86,7 +87,15 @@ export default function WaiterPage() {
     try {
       const orders = await loadWaiterOrders();
       if (!mounted.current) return;
-      setOrders(orders);
+      // EN: A poll started before serving must not reinsert the older READY snapshot after confirmation.
+      // FI: Ennen tarjoilua alkanut kysely ei saa palauttaa vanhaa READY-tietoa vahvistuksen jälkeen.
+      setOrders(
+        orders.filter(
+          (order) =>
+            !["SERVED", "COMPLETED"].includes(order.status) &&
+            (servedVersions.current.get(order.id) ?? 0) < order.version,
+        ),
+      );
     } catch (cause) {
       if (mounted.current) showError(cause, "Tilausjonoa ei voitu päivittää.");
     }
@@ -213,7 +222,11 @@ export default function WaiterPage() {
     setWorkingId(order.id);
     setError("");
     try {
-      await serveWaiterOrder(order);
+      const served = await serveWaiterOrder(order);
+      servedVersions.current.set(order.id, served.version);
+      setOrders((current) =>
+        current.filter((candidate) => candidate.id !== order.id),
+      );
       await refreshQueues();
     } catch (cause) {
       showError(cause, "Tilaus muuttui. Päivitä jono ja yritä uudelleen.");
@@ -628,7 +641,9 @@ function OrderTracking({
                       disabled={workingId !== null}
                       onClick={() => onServe(order)}
                     >
-                      {workingId === order.id ? "Tallennetaan…" : "Tarjoiltu"}
+                      {workingId === order.id
+                        ? "Tallennetaan…"
+                        : "Merkitse tarjoilluksi"}
                     </Button>
                   )}
                   {canCancelOrder(order) && (
