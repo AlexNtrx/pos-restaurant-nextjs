@@ -19,7 +19,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 
-import config from "@/app/config";
+import FoodPhoto from "@/components/catalog/food-photo";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -72,10 +72,6 @@ const currencyFormatter = new Intl.NumberFormat("fi-FI", {
 type LoadStatus = "loading" | "ready" | "error" | "forbidden";
 type CategoryFilter = "all" | number;
 
-function imageUrl(fileName: string) {
-  return `${config.apiServer}/uploads/${fileName}`;
-}
-
 function getPageSize() {
   if (typeof window === "undefined") return 24;
   if (window.matchMedia("(min-width: 1280px)").matches) return 24;
@@ -118,13 +114,11 @@ function MenuItemCard({
   return (
     <article className="flex min-w-0 flex-col rounded-xl border border-[#d6d6cf] bg-white">
       {food.img ? (
-        <div
-          role="img"
-          aria-label={food.name}
-          className="aspect-4/3 w-full shrink-0 rounded-t-[11px] bg-[#f0f0e8] bg-cover bg-center"
-          style={{
-            backgroundImage: `url(${JSON.stringify(imageUrl(food.img))})`,
-          }}
+        <FoodPhoto
+          filename={food.img}
+          alt={food.name}
+          sizes="(min-width: 768px) 320px, calc(100vw - 48px)"
+          className="aspect-4/3 w-full shrink-0 rounded-t-[11px] bg-[#f0f0e8]"
         />
       ) : (
         <div className="flex aspect-4/3 w-full shrink-0 flex-col items-center justify-center gap-2 rounded-t-[11px] bg-[#f0f0e8] text-muted-foreground">
@@ -717,7 +711,7 @@ export default function MenuItemsPage() {
             <FormField
               id="menu-item-image"
               label="Ruokalistan kuva"
-              description="Näkyy ruokalistassa. JPEG, PNG, WEBP tai GIF, enintään 5 MB."
+              description="Näkyy ruokalistassa. JPEG, PNG, WEBP tai GIF, enintään 5 MB, 24 megapikseliä ja 8000 px/sivu."
             >
               <Input
                 ref={fileInputRef}
@@ -731,7 +725,7 @@ export default function MenuItemsPage() {
             <FormField
               id="menu-item-detail-image"
               label="Lisätietokuva"
-              description="Näkyy Lisätiedot-ikkunassa. JPEG, PNG, WEBP tai GIF, enintään 5 MB."
+              description="Näkyy Lisätiedot-ikkunassa. JPEG, PNG, WEBP tai GIF, enintään 5 MB, 24 megapikseliä ja 8000 px/sivu."
             >
               <Input
                 ref={detailFileInputRef}

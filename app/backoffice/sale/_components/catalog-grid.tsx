@@ -1,4 +1,4 @@
-import config from "@/app/config";
+import FoodPhoto from "@/components/catalog/food-photo";
 import type { Food } from "@/lib/sale-contracts";
 
 export type CatalogStatus = "loading" | "ready" | "error";
@@ -104,13 +104,12 @@ export default function CatalogGrid({
           onClick={() => onSelect(food.id)}
           className="group h-[202px] w-[158px] overflow-hidden rounded-[10px] border border-border bg-surface p-0 text-left transition-[border-color,background-color] hover:border-action focus-visible:border-2 focus-visible:border-action focus-visible:ring-0 focus-visible:outline-none active:bg-[#efece6] disabled:cursor-wait xl:h-[220px] xl:w-[181px]"
         >
-          <div className="-mx-px h-[118px] w-[calc(100%+2px)] shrink-0 overflow-hidden bg-[#efece6] xl:h-[136px]">
-            <img
-              src={config.apiServer + "/uploads/" + food.img}
-              alt={food.name}
-              className="h-full w-full object-cover group-active:opacity-[0.86]"
-            />
-          </div>
+          <FoodPhoto
+            filename={food.img}
+            alt={food.name}
+            sizes="(min-width: 1280px) 181px, 158px"
+            className="-mx-px h-[118px] w-[calc(100%+2px)] shrink-0 group-active:opacity-[0.86] xl:h-[136px]"
+          />
           <div className="-mx-px flex h-[84px] w-[calc(100%+2px)] shrink-0 flex-col gap-1 overflow-hidden p-[12px]">
             <span className="line-clamp-2 h-9 text-sm leading-[18px] font-semibold tracking-[0.1px] text-foreground">
               {food.name}

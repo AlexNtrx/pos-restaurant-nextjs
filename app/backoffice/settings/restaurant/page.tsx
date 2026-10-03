@@ -470,7 +470,8 @@ export default function RestaurantSettingsPage() {
                 {logoFileName || "Logoa ei ole valittu"}
               </p>
               <p className="!m-0 text-xs !leading-[15px] text-muted-foreground">
-                JPEG, PNG, WEBP tai GIF · enintään 5 MB
+                JPEG, PNG, WEBP tai GIF · enintään 5 MB, 24 megapikseliä ja 8000
+                px/sivu
               </p>
               <label
                 htmlFor="restaurant-logo"

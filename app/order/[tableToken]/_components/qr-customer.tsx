@@ -1,10 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Image from "next/image";
+import FoodPhoto, { originalImageUrl } from "@/components/catalog/food-photo";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ChevronDown, ImageIcon } from "lucide-react";
-import config from "@/app/config";
+import { ChevronDown } from "lucide-react";
 import ServiceCallCard from "./service-call-card";
 import { Button } from "@/components/ui/button";
 import {
@@ -49,55 +48,6 @@ const orderIdFrom = (value: string | null) => {
 
 // EN: Section — Menu images and shared view components.
 // FI: Osio — Ruokalistan kuvat ja yhteiset näkymäkomponentit.
-// EN: Public menu images use only safe uploaded filenames from the API origin.
-// FI: Julkisen ruokalistan kuvat käyttävät vain turvallisia ladattuja tiedostonimiä API-osoitteesta.
-function foodImageUrl(filename: string) {
-  if (
-    typeof filename !== "string" ||
-    filename.length === 0 ||
-    filename.length > 160 ||
-    !/^[\w.-]+\.(?:jpe?g|png|webp|gif)$/i.test(filename)
-  )
-    return null;
-  return `${config.apiServer}/uploads/${encodeURIComponent(filename)}`;
-}
-
-function QrFoodPhoto({
-  filename,
-  alt,
-  className,
-  sizes,
-  fit = "cover",
-}: {
-  filename: string;
-  alt: string;
-  className: string;
-  sizes: string;
-  fit?: "cover" | "contain";
-}) {
-  const [failed, setFailed] = useState(false);
-  const src = foodImageUrl(filename);
-  return (
-    <div
-      className={`relative flex items-center justify-center overflow-hidden bg-[#efece6] ${className}`}
-    >
-      {src && !failed ? (
-        <Image
-          src={src}
-          alt={alt}
-          fill
-          unoptimized
-          sizes={sizes}
-          className={fit === "contain" ? "object-contain" : "object-cover"}
-          onError={() => setFailed(true)}
-        />
-      ) : (
-        <ImageIcon aria-hidden="true" className="size-7 text-olive/40" />
-      )}
-    </div>
-  );
-}
-
 function QrFrame({
   context,
   token,
@@ -464,7 +414,7 @@ function QrMenuView({
               className="overflow-hidden rounded-lg border border-border bg-surface"
             >
               <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-3 p-3">
-                <QrFoodPhoto
+                <FoodPhoto
                   key={`${food.id}:${food.img}`}
                   filename={food.img}
                   alt=""
@@ -593,14 +543,27 @@ function QrMenuView({
               </DialogDescription>
             </DialogHeader>
             {detailsFood.detailImg ? (
-              <QrFoodPhoto
-                key={`${detailsFood.id}:${detailsFood.detailImg}`}
-                filename={detailsFood.detailImg}
-                alt={detailsFood.name}
-                className="h-[65dvh] max-h-[600px] w-full rounded-lg"
-                sizes="(min-width: 640px) 536px, calc(100vw - 72px)"
-                fit="contain"
-              />
+              <div className="space-y-2">
+                <FoodPhoto
+                  key={`${detailsFood.id}:${detailsFood.detailImg}`}
+                  filename={detailsFood.detailImg}
+                  variant="detail"
+                  alt={detailsFood.name}
+                  className="h-[65dvh] max-h-[600px] w-full rounded-lg"
+                  sizes="(min-width: 640px) 536px, calc(100vw - 72px)"
+                  fit="contain"
+                />
+                {originalImageUrl(detailsFood.detailImg) && (
+                  <a
+                    href={originalImageUrl(detailsFood.detailImg)!}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-olive underline underline-offset-4"
+                  >
+                    Avaa alkuperäinen kuva
+                  </a>
+                )}
+              </div>
             ) : (
               <p className="rounded-lg bg-[#efece6] px-4 py-8 text-center text-sm text-muted-foreground">
                 Tälle tuotteelle ei ole vielä lisätietokuvaa.

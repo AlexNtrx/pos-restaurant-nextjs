@@ -28,7 +28,7 @@ vi.mock("@/app/config", () => ({
 import SalePage from "@/app/backoffice/sale/page";
 import CounterOrderCheckout from "@/app/backoffice/sale/_components/counter-order-checkout";
 
-const food = { id: 1, name: "Test meal", img: "", price: 25 };
+const food = { id: 1, name: "Test meal", img: "test-meal.jpg", price: 25 };
 const cart = {
   results: [],
   summary: { baseAmount: 0, addedAmount: 0, total: 0 },

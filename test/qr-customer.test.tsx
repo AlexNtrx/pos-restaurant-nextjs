@@ -130,7 +130,7 @@ describe("anonymous QR customer", () => {
     await screen.findByText("Basilikakana");
     expect(
       document.querySelector(
-        'img[src="http://localhost:3001/uploads/qr-menu-photo.webp"]',
+        'img[src="http://localhost:3001/uploads/variants/card/qr-menu-photo.webp"]',
       ),
     ).toBeTruthy();
   });
@@ -141,7 +141,7 @@ describe("anonymous QR customer", () => {
     await screen.findByText("Basilikakana");
     expect(
       document.querySelector(
-        'img[src="http://localhost:3001/uploads/qr-menu-photo.webp"]',
+        'img[src="http://localhost:3001/uploads/variants/card/qr-menu-photo.webp"]',
       ),
     ).toBeTruthy();
     await user.click(
@@ -150,7 +150,7 @@ describe("anonymous QR customer", () => {
     expect(screen.getByRole("dialog")).toBeTruthy();
     expect(
       document.querySelector(
-        'img[src="http://localhost:3001/uploads/qr-detail-poster.jpg"]',
+        'img[src="http://localhost:3001/uploads/variants/detail/qr-detail-poster.jpg"]',
       ),
     ).toBeTruthy();
   });
