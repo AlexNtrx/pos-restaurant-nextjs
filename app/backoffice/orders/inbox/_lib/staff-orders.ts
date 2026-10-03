@@ -62,14 +62,17 @@ type OrderPage = {
   serverTime: string;
 };
 
-export async function fetchOrderPages(filters: {
-  status?: OrderStatus;
-  channel?: "COUNTER" | "QR" | "STAFF";
-  updatedAfter?: string;
-  submittedFrom?: string;
-  submittedBefore?: string;
-  tableSessionId?: number;
-}): Promise<{ results: StaffOrder[]; serverTime: string }> {
+export async function fetchOrderPages(
+  filters: {
+    status?: OrderStatus;
+    channel?: "COUNTER" | "QR" | "STAFF";
+    updatedAfter?: string;
+    submittedFrom?: string;
+    submittedBefore?: string;
+    tableSessionId?: number;
+  },
+  signal?: AbortSignal,
+): Promise<{ results: StaffOrder[]; serverTime: string }> {
   const results: StaffOrder[] = [];
   const cursors = new Set<string>();
   let cursor: string | null = null;
@@ -77,6 +80,7 @@ export async function fetchOrderPages(filters: {
   do {
     const page: OrderPage = (
       await api.get<OrderPage>("/orders", {
+        signal,
         params: { ...filters, limit: 100, ...(cursor ? { cursor } : {}) },
       })
     ).data;
@@ -84,6 +88,7 @@ export async function fetchOrderPages(filters: {
       !page ||
       !Array.isArray(page.results) ||
       typeof page.serverTime !== "string" ||
+      !Number.isFinite(Date.parse(page.serverTime)) ||
       (page.nextCursor !== null && typeof page.nextCursor !== "string")
     )
       throw new Error("Palvelin palautti virheellisen tilauslistan.");

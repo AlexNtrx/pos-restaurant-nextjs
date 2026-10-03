@@ -26,6 +26,7 @@ import {
   type StaffOrder,
 } from "@/app/backoffice/orders/inbox/_lib/staff-orders";
 import { getApiErrorMessage, isPermissionDeniedError } from "@/lib/api-error";
+import { usePolling } from "@/lib/use-polling";
 import {
   changeKitchenStatus,
   fetchKitchenSnapshot,
@@ -213,89 +214,77 @@ export default function KitchenPage() {
   const currentOrders = useRef<StaffOrder[]>([]);
   const watermark = useRef<string | null>(null);
   const pollCount = useRef(0);
-  const busy = useRef(false);
-  const requestedFull = useRef(false);
-  const mounted = useRef(false);
 
-  const sync = useCallback(async (forceFull = false) => {
-    if (busy.current) {
-      requestedFull.current ||= forceFull;
-      return;
-    }
-    busy.current = true;
-    try {
-      // EN: Incremental updates include cancellation; periodic full reads repair missed or delayed changes.
-      // FI: Osittaiset päivitykset sisältävät peruutukset; määräaikainen täysi haku korjaa väliin jääneet muutokset.
-      const full = forceFull || !watermark.current || pollCount.current >= 12;
-      const page = full
-        ? await fetchKitchenSnapshot()
-        : await fetchOrderPages({ updatedAfter: watermark.current! });
-      if (!mounted.current) return;
-      if (!full) {
-        const cancelled = page.results.find(
-          (order) =>
-            order.status === "CANCELLED" &&
-            currentOrders.current.some((current) => current.id === order.id),
+  const pollQueue = useCallback(
+    async (signal: AbortSignal, forceFull: boolean) => {
+      try {
+        // EN: Incremental updates include cancellation; periodic full reads repair missed or delayed changes.
+        // FI: Osittaiset päivitykset sisältävät peruutukset; määräaikainen täysi haku korjaa väliin jääneet muutokset.
+        const full = forceFull || !watermark.current || pollCount.current >= 12;
+        const page = full
+          ? await fetchKitchenSnapshot(signal)
+          : await fetchOrderPages({ updatedAfter: watermark.current! }, signal);
+        if (signal.aborted) return;
+        if (!full) {
+          const cancelled = page.results.find(
+            (order) =>
+              order.status === "CANCELLED" &&
+              currentOrders.current.some((current) => current.id === order.id),
+          );
+          if (cancelled)
+            setNotice(
+              `Tilaus #${cancelled.id} peruttu ja poistettu keittiöstä.`,
+            );
+        }
+        const merged = mergeKitchenOrders(
+          full ? [] : currentOrders.current,
+          page.results,
         );
-        if (cancelled)
-          setNotice(`Tilaus #${cancelled.id} peruttu ja poistettu keittiöstä.`);
-      }
-      const merged = mergeKitchenOrders(
-        full ? [] : currentOrders.current,
-        page.results,
-      );
-      currentOrders.current = merged;
-      setOrders(merged);
-      watermark.current = new Date(
-        Date.parse(page.serverTime) - 5_000,
-      ).toISOString();
-      pollCount.current = full ? 0 : pollCount.current + 1;
-      setLastUpdate(page.serverTime);
-      setError("");
-      setState("ready");
-    } catch (cause: unknown) {
-      if (!mounted.current) return;
-      if (
-        isPermissionDeniedError(cause) ||
-        (isAxiosError(cause) && cause.response?.status === 401)
-      ) {
-        currentOrders.current = [];
-        watermark.current = null;
-        pollCount.current = 0;
-        setOrders([]);
-        setPending(null);
-        setLastUpdate(null);
+        currentOrders.current = merged;
+        setOrders(merged);
+        watermark.current = new Date(
+          Date.parse(page.serverTime) - 5_000,
+        ).toISOString();
+        pollCount.current = full ? 0 : pollCount.current + 1;
+        setLastUpdate(page.serverTime);
         setError("");
-        setState("forbidden");
-      } else {
-        setError(
-          getApiErrorMessage(cause, "Keittiön tilauksia ei voitu päivittää."),
-        );
-        setState((previous) => (previous === "ready" ? "ready" : "error"));
+        setState("ready");
+      } catch (cause: unknown) {
+        if (signal.aborted) return;
+        if (
+          isPermissionDeniedError(cause) ||
+          (isAxiosError(cause) && cause.response?.status === 401)
+        ) {
+          currentOrders.current = [];
+          watermark.current = null;
+          pollCount.current = 0;
+          setOrders([]);
+          setPending(null);
+          setLastUpdate(null);
+          setError("");
+          setState("forbidden");
+        } else {
+          setError(
+            getApiErrorMessage(cause, "Keittiön tilauksia ei voitu päivittää."),
+          );
+          setState((previous) => (previous === "ready" ? "ready" : "error"));
+        }
+        throw cause;
       }
-    } finally {
-      busy.current = false;
-      if (requestedFull.current) {
-        requestedFull.current = false;
-        watermark.current = null;
-      }
-    }
-  }, []);
+    },
+    [],
+  );
+
+  const sync = usePolling(pollQueue, { enabled: state !== "forbidden" });
 
   useEffect(() => {
-    mounted.current = true;
-    const first = window.setTimeout(() => void sync(true), 0);
     const clock = window.setTimeout(() => setNow(Date.now()), 0);
-    const polling = window.setInterval(() => void sync(), 5_000);
     const ticking = window.setInterval(() => setNow(Date.now()), 1_000);
     return () => {
-      mounted.current = false;
-      window.clearTimeout(first);
       window.clearTimeout(clock);
-      window.clearInterval(polling);
       window.clearInterval(ticking);
     };
-  }, [sync]);
+  }, []);
 
   async function applyAction() {
     if (!pending || savingId !== null) return;
@@ -322,14 +311,14 @@ export default function KitchenPage() {
             ? `Tilaus #${action.id} merkitty valmiiksi.`
             : `Tilaus #${action.id} merkitty tarjoilluksi.`,
       );
-      void sync(true);
+      void sync();
     } catch (cause: unknown) {
       setPending(null);
       if (isAxiosError(cause) && cause.response?.status === 409) {
         setNotice(
           "Tilaus muuttui toisessa laitteessa. Päivitä tiedot ennen uutta toimintoa.",
         );
-        void sync(true);
+        void sync();
       } else if (
         isPermissionDeniedError(cause) ||
         (isAxiosError(cause) && cause.response?.status === 401)
@@ -438,7 +427,7 @@ export default function KitchenPage() {
                 ? `Yhteys katkesi. Näytetään viimeksi ladatut tiedot. ${error}`
                 : "Tiedot voivat olla vanhentuneita. Tarkista yhteys."}
             </p>
-            <Button variant="outline" size="sm" onClick={() => void sync(true)}>
+            <Button variant="outline" size="sm" onClick={() => void sync()}>
               Yritä uudelleen
             </Button>
           </div>
@@ -455,7 +444,7 @@ export default function KitchenPage() {
             title="Keittiön tilauksia ei voitu ladata"
             description={error}
             action={
-              <Button onClick={() => void sync(true)}>Yritä uudelleen</Button>
+              <Button onClick={() => void sync()}>Yritä uudelleen</Button>
             }
           />
         ) : (

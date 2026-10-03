@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { isAxiosError } from "axios";
+import { usePolling } from "@/lib/use-polling";
 import FoodPhoto, { originalImageUrl } from "@/components/catalog/food-photo";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ChevronDown } from "lucide-react";
@@ -930,23 +932,34 @@ function QrStatusView({
   const router = useRouter();
   const [order, setOrder] = useState<QrOrder | null>(null);
   const [error, setError] = useState("");
-  const refresh = useCallback(async () => {
-    if (!orderId) return;
-    try {
-      setOrder(await loadQrOrder(token, orderId));
-      setError("");
-    } catch (failure) {
-      setError(qrErrorText(failure));
-    }
-  }, [token, orderId]);
-  useEffect(() => {
-    const initial = window.setTimeout(() => void refresh(), 0);
-    const timer = window.setInterval(() => void refresh(), 10_000);
-    return () => {
-      window.clearTimeout(initial);
-      window.clearInterval(timer);
-    };
-  }, [refresh]);
+  const [unavailable, setUnavailable] = useState(false);
+  const poll = useCallback(
+    async (signal: AbortSignal) => {
+      if (!orderId) return;
+      try {
+        const result = await loadQrOrder(token, orderId, signal);
+        if (signal.aborted) return;
+        setOrder(result);
+        setError("");
+      } catch (failure) {
+        if (signal.aborted) return;
+        if (
+          isAxiosError(failure) &&
+          [403, 404, 410].includes(failure.response?.status ?? 0)
+        ) {
+          setOrder(null);
+          setUnavailable(true);
+        }
+        setError(qrErrorText(failure));
+        throw failure;
+      }
+    },
+    [token, orderId],
+  );
+  const refresh = usePolling(poll, {
+    intervalMs: 10_000,
+    enabled: Boolean(orderId) && !unavailable,
+  });
   if (!orderId)
     return (
       <QrProblem

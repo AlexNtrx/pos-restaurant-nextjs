@@ -339,9 +339,12 @@ describe("POS safety net", () => {
     );
     render(<SalePage />);
     expect(await screen.findByText("Ei keskeneräisiä tilauksia.")).toBeTruthy();
-    expect(api.get).toHaveBeenCalledWith("/counterOrder/sent", {
-      params: { tableNo: 1, view: "active" },
-    });
+    expect(api.get).toHaveBeenCalledWith(
+      "/counterOrder/sent",
+      expect.objectContaining({
+        params: { tableNo: 1, view: "active" },
+      }),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Historia" }));
     expect(
       await screen.findByRole("button", { name: "View Order #81" }),
@@ -349,9 +352,12 @@ describe("POS safety net", () => {
     expect(
       screen.getByRole("button", { name: "Print paid Order #81" }),
     ).toBeTruthy();
-    expect(api.get).toHaveBeenCalledWith("/counterOrder/sent", {
-      params: { tableNo: 1, view: "history" },
-    });
+    expect(api.get).toHaveBeenCalledWith(
+      "/counterOrder/sent",
+      expect.objectContaining({
+        params: { tableNo: 1, view: "history" },
+      }),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Käynnissä" }));
     await waitFor(() =>
       expect(
@@ -394,7 +400,7 @@ describe("POS safety net", () => {
 
   it("allows payment and preview printing while Kitchen still prepares an Order", async () => {
     let status = "CONFIRMED";
-    const interval = vi.spyOn(window, "setInterval");
+    const interval = vi.spyOn(window, "setTimeout");
     api.get.mockImplementation((path: string) => {
       if (path === "/food/filter/all")
         return Promise.resolve({ data: { results: [food] } });
@@ -1390,9 +1396,12 @@ describe("POS safety net", () => {
       }),
     );
     await waitFor(() =>
-      expect(api.get).toHaveBeenCalledWith("/counterOrder/sent", {
-        params: { tableNo: 1, view: "active" },
-      }),
+      expect(api.get).toHaveBeenCalledWith(
+        "/counterOrder/sent",
+        expect.objectContaining({
+          params: { tableNo: 1, view: "active" },
+        }),
+      ),
     );
     expect(toast.success).toHaveBeenCalledWith("Tilaus lähetetty keittiöön");
   });

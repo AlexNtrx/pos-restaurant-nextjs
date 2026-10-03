@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { isAxiosError } from "axios";
+import { usePolling } from "@/lib/use-polling";
 import { Button } from "@/components/ui/button";
 import {
   changeServiceCallStatus,
@@ -20,26 +22,31 @@ export default function ServiceCallQueue() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [workingId, setWorkingId] = useState<number | null>(null);
+  const [forbidden, setForbidden] = useState(false);
 
-  const refresh = useCallback(async () => {
+  const poll = useCallback(async (signal: AbortSignal) => {
     try {
-      setCalls(await loadStaffServiceCalls());
+      const calls = await loadStaffServiceCalls(signal);
+      if (signal.aborted) return;
+      setCalls(calls);
       setError("");
     } catch (failure) {
+      if (signal.aborted) return;
+      if (
+        isAxiosError(failure) &&
+        [401, 403].includes(failure.response?.status ?? 0)
+      ) {
+        setCalls([]);
+        setForbidden(true);
+      }
       setError(serviceCallErrorText(failure));
+      throw failure;
     } finally {
-      setLoading(false);
+      if (!signal.aborted) setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    const initial = window.setTimeout(() => void refresh(), 0);
-    const interval = window.setInterval(() => void refresh(), 5_000);
-    return () => {
-      window.clearTimeout(initial);
-      window.clearInterval(interval);
-    };
-  }, [refresh]);
+  const refresh = usePolling(poll, { enabled: !forbidden });
 
   const advance = async (call: StaffServiceCall) => {
     setWorkingId(call.id);

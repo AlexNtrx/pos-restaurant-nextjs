@@ -45,7 +45,10 @@ describe("HIS-01 operational dashboard", () => {
     expect(screen.getByText("QR")).toBeTruthy();
     expect(screen.getByText("Odottaa")).toBeTruthy();
     expect(screen.getByText("25,00 €")).toBeTruthy();
-    expect(api.get).toHaveBeenCalledWith("/dashboard/operations");
+    expect(api.get).toHaveBeenCalledWith(
+      "/dashboard/operations",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
   });
 
   it("reports API errors instead of presenting invented metrics", async () => {

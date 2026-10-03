@@ -28,18 +28,26 @@ export type WaiterItem = {
   note: string;
 };
 
-export async function loadWaiterSetup() {
+export async function loadWaiterTables(signal?: AbortSignal) {
+  const { data } = await api.get<{ results: WaiterTable[] }>("/tables", {
+    signal,
+  });
+  if (!Array.isArray(data?.results))
+    throw new Error("Palvelin palautti virheelliset pöytätiedot.");
+  return data.results;
+}
+
+export async function loadWaiterSetup(signal?: AbortSignal) {
   const [tables, menu] = await Promise.all([
-    api.get<{ results: WaiterTable[] }>("/tables"),
-    api.get<{ result: { categories: WaiterCategory[] } }>("/waiter/menu"),
+    loadWaiterTables(signal),
+    api.get<{ result: { categories: WaiterCategory[] } }>("/waiter/menu", {
+      signal,
+    }),
   ]);
-  if (
-    !Array.isArray(tables.data?.results) ||
-    !Array.isArray(menu.data?.result?.categories)
-  )
+  if (!Array.isArray(menu.data?.result?.categories))
     throw new Error("Palvelin palautti virheelliset tarjoilijan tiedot.");
   return {
-    tables: tables.data.results,
+    tables,
     categories: menu.data.result.categories,
   };
 }
@@ -71,27 +79,47 @@ export async function sendWaiterOrder(
   return response.data.result;
 }
 
-export async function loadWaiterOrders() {
+export async function loadWaiterSnapshot(signal?: AbortSignal) {
   const pages = await Promise.all([
-    fetchOrderPages({ status: "SUBMITTED" }),
-    fetchOrderPages({ status: "CONFIRMED" }),
-    fetchOrderPages({ status: "PREPARING" }),
-    fetchOrderPages({ status: "READY" }),
+    fetchOrderPages({ status: "SUBMITTED" }, signal),
+    fetchOrderPages({ status: "CONFIRMED" }, signal),
+    fetchOrderPages({ status: "PREPARING" }, signal),
+    fetchOrderPages({ status: "READY" }, signal),
   ]);
+  // EN: Use the earliest stage watermark so transitions during parallel reads are caught by the next incremental round.
+  // FI: Käytä aikaisinta tilakohtaista aikaleimaa, jotta rinnakkaisten hakujen aikana muuttuneet tilat löytyvät seuraavalla päivityskierroksella.
+  return {
+    results: mergeWaiterOrders(
+      [],
+      pages.flatMap((page) => page.results),
+    ),
+    serverTime: pages
+      .map((page) => page.serverTime)
+      .sort((left, right) => Date.parse(left) - Date.parse(right))[0],
+  };
+}
+
+export async function loadWaiterOrders() {
+  return (await loadWaiterSnapshot()).results;
+}
+
+export function mergeWaiterOrders(
+  current: StaffOrder[],
+  changes: StaffOrder[],
+) {
   // EN: Parallel stage reads can overlap during a transition; keep the latest version once per order.
   // FI: Rinnakkaiset tilahaut voivat limittyä tilan muuttuessa; säilytä vain tilauksen uusin versio.
-  const orders = new Map<number, StaffOrder>();
-  for (const page of pages) {
-    for (const order of page.results) {
-      if (order.serviceType !== "DINE_IN") continue;
-      const current = orders.get(order.id);
-      if (!current || order.version > current.version)
-        orders.set(order.id, order);
-    }
+  const orders = new Map(current.map((order) => [order.id, order]));
+  for (const order of changes) {
+    const previous = orders.get(order.id);
+    if (!previous || order.version > previous.version)
+      orders.set(order.id, order);
   }
   return [...orders.values()]
-    .filter((order) =>
-      ["SUBMITTED", "CONFIRMED", "PREPARING", "READY"].includes(order.status),
+    .filter(
+      (order) =>
+        order.serviceType === "DINE_IN" &&
+        ["SUBMITTED", "CONFIRMED", "PREPARING", "READY"].includes(order.status),
     )
     .sort((left, right) => left.id - right.id);
 }

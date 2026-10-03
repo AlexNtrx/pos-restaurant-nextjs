@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { usePolling } from "@/lib/use-polling";
+import { isAxiosError } from "axios";
 import { Button } from "@/components/ui/button";
 import {
   loadCurrentServiceCall,
@@ -17,31 +19,35 @@ export default function ServiceCallCard({ token }: { token: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [now, setNow] = useState(0);
+  const [unavailable, setUnavailable] = useState(false);
 
-  const refresh = useCallback(async () => {
-    try {
-      const current = await loadCurrentServiceCall(token);
-      setCall(current);
-      setNow(Date.now());
-      setError("");
-    } catch (failure) {
-      setError(serviceCallErrorText(failure));
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
+  const poll = useCallback(
+    async (signal: AbortSignal) => {
+      try {
+        const current = await loadCurrentServiceCall(token, signal);
+        if (signal.aborted) return;
+        setCall(current);
+        setNow(Date.now());
+        setError("");
+      } catch (failure) {
+        if (signal.aborted) return;
+        if (
+          isAxiosError(failure) &&
+          [403, 404, 410].includes(failure.response?.status ?? 0)
+        ) {
+          setCall(null);
+          setUnavailable(true);
+        }
+        setError(serviceCallErrorText(failure));
+        throw failure;
+      } finally {
+        if (!signal.aborted) setLoading(false);
+      }
+    },
+    [token],
+  );
 
-  useEffect(() => {
-    const initial = window.setTimeout(() => void refresh(), 0);
-    const interval = window.setInterval(() => {
-      setNow(Date.now());
-      void refresh();
-    }, 5_000);
-    return () => {
-      window.clearTimeout(initial);
-      window.clearInterval(interval);
-    };
-  }, [refresh]);
+  const refresh = usePolling(poll, { enabled: !unavailable });
 
   const active =
     call?.status === "REQUESTED" || call?.status === "ACKNOWLEDGED";
@@ -55,6 +61,7 @@ export default function ServiceCallCard({ token }: { token: string }) {
     setError("");
     try {
       setCall(await requestServiceCall(token));
+      await refresh();
     } catch (failure) {
       await refresh();
       setError(serviceCallErrorText(failure));

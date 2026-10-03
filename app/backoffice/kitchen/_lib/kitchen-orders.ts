@@ -36,12 +36,12 @@ export function mergeKitchenOrders(
 
 // EN: The earliest server watermark covers Orders that change status while the three columns are read.
 // FI: Aikaisin palvelimen aikaleima kattaa tilaukset, joiden tila vaihtuu kolmen sarakkeen luvun aikana.
-export async function fetchKitchenSnapshot(): Promise<{
+export async function fetchKitchenSnapshot(signal?: AbortSignal): Promise<{
   results: StaffOrder[];
   serverTime: string;
 }> {
   const pages = await Promise.all(
-    kitchenStatuses.map((status) => fetchOrderPages({ status })),
+    kitchenStatuses.map((status) => fetchOrderPages({ status }, signal)),
   );
   const serverTime = pages
     .map((page) => page.serverTime)

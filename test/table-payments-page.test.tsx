@@ -3,7 +3,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import TablePaymentsPage from "@/app/backoffice/orders/tables/page";
 const mocks = vi.hoisted(() => ({ load: vi.fn(), pending: vi.fn() }));
-vi.mock("@/lib/waiter-orders", () => ({ loadWaiterSetup: mocks.load }));
+vi.mock("@/lib/waiter-orders", () => ({ loadWaiterTables: mocks.load }));
 vi.mock(
   "@/app/backoffice/settings/tables/_components/table-session-checkout",
   () => ({
@@ -15,12 +15,10 @@ vi.mock(
 );
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.load.mockResolvedValue({
-    tables: [
-      { id: 1, tableNo: 4, openSession: { id: 12 } },
-      { id: 2, tableNo: 5, openSession: null },
-    ],
-  });
+  mocks.load.mockResolvedValue([
+    { id: 1, tableNo: 4, openSession: { id: 12 } },
+    { id: 2, tableNo: 5, openSession: null },
+  ]);
   mocks.pending.mockReturnValue([]);
 });
 afterEach(cleanup);
@@ -35,7 +33,7 @@ it("opens existing table settlement from Kassa without QR or table administratio
   expect(screen.queryByRole("button", { name: /QR|Lisää pöytä/ })).toBeNull();
 });
 it("allows reconciliation of a pending payment after its session has closed", async () => {
-  mocks.load.mockResolvedValue({ tables: [] });
+  mocks.load.mockResolvedValue([]);
   mocks.pending.mockReturnValue([{ sessionId: 13, tableNo: 5 }]);
   const user = userEvent.setup();
   render(<TablePaymentsPage />);

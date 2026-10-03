@@ -125,9 +125,14 @@ export const submitQrOrder = async (token: string, pending: QrPending) => {
   return response.data.result;
 };
 
-export const loadQrOrder = async (token: string, orderId: number) => {
+export const loadQrOrder = async (
+  token: string,
+  orderId: number,
+  signal?: AbortSignal,
+) => {
   const response = await publicApi.get<{ result: QrOrder }>(
     `/qr/${encoded(token)}/orders/${orderId}`,
+    { signal },
   );
   if (!Number.isSafeInteger(response.data?.result?.id))
     throw new Error("Invalid QR status response");

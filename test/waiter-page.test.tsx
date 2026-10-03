@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
+  act,
   cleanup,
   render,
   screen,
@@ -11,6 +12,7 @@ import WaiterPage from "@/app/backoffice/waiter/page";
 import type { StaffOrder } from "@/app/backoffice/orders/inbox/_lib/staff-orders";
 
 const mocks = vi.hoisted(() => ({
+  get: vi.fn(),
   loadSetup: vi.fn(),
   loadQueues: vi.fn(),
   openTable: vi.fn(),
@@ -21,15 +23,22 @@ const mocks = vi.hoisted(() => ({
   changeCall: vi.fn(),
 }));
 
+vi.mock("@/lib/api", () => ({ default: { get: mocks.get } }));
+
 vi.mock("@/lib/service-calls", () => ({
   loadStaffServiceCalls: mocks.loadCalls,
   changeServiceCallStatus: mocks.changeCall,
   serviceCallErrorText: () => "Yhteys epäonnistui.",
 }));
 
-vi.mock("@/lib/waiter-orders", () => ({
+vi.mock("@/lib/waiter-orders", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/waiter-orders")>()),
   loadWaiterSetup: mocks.loadSetup,
   loadWaiterOrders: mocks.loadQueues,
+  loadWaiterSnapshot: async (signal: AbortSignal) => ({
+    results: await mocks.loadQueues(signal),
+    serverTime: new Date().toISOString(),
+  }),
   openWaiterTable: mocks.openTable,
   sendWaiterOrder: mocks.sendOrder,
   serveWaiterOrder: mocks.serveOrder,
@@ -86,7 +95,11 @@ beforeEach(() => {
   mocks.loadQueues.mockResolvedValue([incoming, ready]);
   mocks.openTable.mockResolvedValue(11);
   mocks.sendOrder.mockResolvedValue({ id: 33 });
-  mocks.serveOrder.mockResolvedValue({ ...ready, status: "SERVED" });
+  mocks.serveOrder.mockResolvedValue({
+    ...ready,
+    version: 5,
+    status: "SERVED",
+  });
   mocks.cancelOrder.mockResolvedValue({ ...incoming, status: "CANCELLED" });
   mocks.loadCalls.mockResolvedValue([]);
 });
@@ -160,7 +173,10 @@ it("refreshes stale cancellation without showing success or keeping a retry dial
   expect(within(row).queryByRole("button", { name: "Peru tilaus" })).toBeNull();
 });
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 it("handles service calls in a dialog without navigation or losing the order draft", async () => {
   const user = userEvent.setup();
@@ -260,4 +276,49 @@ it("keeps the ready order visible if serving fails", async () => {
   );
   await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
   expect(screen.getByText("Pöytä 4 · Tilaus #32")).toBeTruthy();
+});
+
+it("discards a delayed READY read after serving and coalesces the post-action refresh", async () => {
+  const user = userEvent.setup();
+  render(<WaiterPage />);
+  await screen.findByText("Pöytä 4 · Tilaus #32");
+  let resolveOld!: (orders: StaffOrder[]) => void;
+  let oldSignal!: AbortSignal;
+  mocks.loadQueues.mockImplementationOnce((signal: AbortSignal) => {
+    oldSignal = signal;
+    return new Promise<StaffOrder[]>((resolve) => {
+      resolveOld = resolve;
+    });
+  });
+  await user.click(screen.getByRole("button", { name: "Päivitä tilaukset" }));
+  await user.click(
+    screen.getByRole("button", { name: "Merkitse tarjoilluksi" }),
+  );
+  await waitFor(() => expect(oldSignal.aborted).toBe(true));
+  expect(screen.queryByText("Pöytä 4 · Tilaus #32")).toBeNull();
+  await act(async () => resolveOld([incoming, ready]));
+  await waitFor(() => expect(mocks.loadQueues).toHaveBeenCalledTimes(3));
+  expect(screen.queryByText("Pöytä 4 · Tilaus #32")).toBeNull();
+  expect(screen.getByText("Pöytä 4 · Tilaus #31")).toBeTruthy();
+});
+
+it("does not restore access from an older setup read after queue permission is revoked", async () => {
+  let release!: (setup: unknown) => void;
+  mocks.loadSetup.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+  );
+  mocks.loadQueues.mockRejectedValueOnce({
+    isAxiosError: true,
+    response: { status: 403 },
+  });
+  render(<WaiterPage />);
+  await screen.findByRole("heading", { name: "Pääsy estetty" });
+  await act(async () =>
+    release({ tables: [{ id: 7, tableNo: 4 }], categories: [] }),
+  );
+  expect(screen.getByRole("heading", { name: "Pääsy estetty" })).toBeTruthy();
+  expect(screen.queryByText("Pöytä 4")).toBeNull();
 });

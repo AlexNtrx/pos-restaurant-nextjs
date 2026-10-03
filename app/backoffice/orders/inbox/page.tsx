@@ -17,6 +17,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { getApiErrorMessage, isPermissionDeniedError } from "@/lib/api-error";
+import { usePolling } from "@/lib/use-polling";
 import {
   changeOrderStatus,
   fetchOrderDetail,
@@ -145,8 +146,6 @@ export default function StaffOrderInboxPage() {
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [now, setNow] = useState(0);
-  const busy = useRef(false);
-  const requestedFull = useRef(false);
   const watermark = useRef<string | null>(null);
   const polls = useRef(0);
   const mounted = useRef(false);
@@ -165,60 +164,56 @@ export default function StaffOrderInboxPage() {
     polls.current = 0;
   }, []);
 
-  const sync = useCallback(async (forceFull = false) => {
-    if (busy.current) {
-      requestedFull.current ||= forceFull;
-      return;
-    }
-    busy.current = true;
-    try {
-      // EN: Overlap incremental polling and periodically reconcile the full queue to tolerate delayed transactions.
-      // FI: Limittäinen päivityshaku ja määräajoin tehtävä täysi täsmäytys huomioivat viivästyneet transaktiot.
-      const full = forceFull || !watermark.current || polls.current >= 12;
-      const page = await fetchOrderPages(
-        full ? { status: "SUBMITTED" } : { updatedAfter: watermark.current! },
-      );
-      if (!mounted.current) return;
-      setOrders((current) =>
-        full
-          ? mergeActiveOrders([], page.results)
-          : mergeActiveOrders(current, page.results),
-      );
-      watermark.current = new Date(
-        Date.parse(page.serverTime) - 5_000,
-      ).toISOString();
-      polls.current = full ? 0 : polls.current + 1;
-      setError("");
-      setState("ready");
-    } catch (cause: unknown) {
-      if (!mounted.current) return;
-      if (
-        isPermissionDeniedError(cause) ||
-        (isAxiosError(cause) && cause.response?.status === 401)
-      ) {
-        // EN: The polling callback stays stable; clear cached data on access loss before any stale render.
-        // FI: Kyselyfunktio pysyy vakaana; tyhjennä välimuistissa olevat tiedot ennen vanhan näkymän piirtämistä.
-        setOrders([]);
-        setHandled([]);
-        setSelectedId(null);
-        setDetail(null);
-        setAction(null);
+  const pollQueue = useCallback(
+    async (signal: AbortSignal, forceFull: boolean) => {
+      try {
+        // EN: Overlap incremental polling and periodically reconcile the full queue to tolerate delayed transactions.
+        // FI: Limittäinen päivityshaku ja määräajoin tehtävä täysi täsmäytys huomioivat viivästyneet transaktiot.
+        const full = forceFull || !watermark.current || polls.current >= 12;
+        const page = await fetchOrderPages(
+          full ? { status: "SUBMITTED" } : { updatedAfter: watermark.current! },
+          signal,
+        );
+        if (signal.aborted) return;
+        setOrders((current) =>
+          full
+            ? mergeActiveOrders([], page.results)
+            : mergeActiveOrders(current, page.results),
+        );
+        watermark.current = new Date(
+          Date.parse(page.serverTime) - 5_000,
+        ).toISOString();
+        polls.current = full ? 0 : polls.current + 1;
         setError("");
-        setState("forbidden");
-        watermark.current = null;
-        polls.current = 0;
-        return;
+        setState("ready");
+      } catch (cause: unknown) {
+        if (signal.aborted) return;
+        if (
+          isPermissionDeniedError(cause) ||
+          (isAxiosError(cause) && cause.response?.status === 401)
+        ) {
+          // EN: The polling callback stays stable; clear cached data on access loss before any stale render.
+          // FI: Kyselyfunktio pysyy vakaana; tyhjennä välimuistissa olevat tiedot ennen vanhan näkymän piirtämistä.
+          setOrders([]);
+          setHandled([]);
+          setSelectedId(null);
+          setDetail(null);
+          setAction(null);
+          setError("");
+          setState("forbidden");
+          watermark.current = null;
+          polls.current = 0;
+          throw cause;
+        }
+        setError(getApiErrorMessage(cause, "Tilauksia ei voitu päivittää."));
+        setState((previous) => (previous === "ready" ? "ready" : "error"));
+        throw cause;
       }
-      setError(getApiErrorMessage(cause, "Tilauksia ei voitu päivittää."));
-      setState((previous) => (previous === "ready" ? "ready" : "error"));
-    } finally {
-      busy.current = false;
-      if (mounted.current && requestedFull.current) {
-        requestedFull.current = false;
-        watermark.current = null;
-      }
-    }
-  }, []);
+    },
+    [],
+  );
+
+  const sync = usePolling(pollQueue, { enabled: state !== "forbidden" });
 
   const loadHandled = useCallback(async () => {
     try {
@@ -253,18 +248,15 @@ export default function StaffOrderInboxPage() {
   useEffect(() => {
     mounted.current = true;
     const clock = window.setTimeout(() => setNow(Date.now()), 0);
-    const first = window.setTimeout(() => void sync(true), 0);
     const interval = window.setInterval(() => {
       setNow(Date.now());
-      void sync();
     }, 5_000);
     return () => {
       mounted.current = false;
       window.clearTimeout(clock);
-      window.clearTimeout(first);
       window.clearInterval(interval);
     };
-  }, [sync]);
+  }, []);
 
   async function openDetail(id: number) {
     setSelectedId(id);
@@ -312,7 +304,7 @@ export default function StaffOrderInboxPage() {
       setReason("");
       setOrders((current) => mergeActiveOrders(current, [updated]));
       if (tab === "handled") void loadHandled();
-      void sync(true);
+      void sync();
     } catch (cause: unknown) {
       if (
         isPermissionDeniedError(cause) ||
@@ -329,7 +321,7 @@ export default function StaffOrderInboxPage() {
           setDetail(null);
         }
         setAction(null);
-        void sync(true);
+        void sync();
       } else {
         setDetailError(
           getApiErrorMessage(cause, "Tilausta ei voitu päivittää."),
@@ -349,7 +341,7 @@ export default function StaffOrderInboxPage() {
         actions={
           <Button
             size="sm"
-            onClick={() => void (tab === "active" ? sync(true) : loadHandled())}
+            onClick={() => void (tab === "active" ? sync() : loadHandled())}
           >
             Päivitä
           </Button>
@@ -399,9 +391,7 @@ export default function StaffOrderInboxPage() {
         <ErrorState
           title="Tilauksia ei voitu ladata"
           description={error}
-          action={
-            <Button onClick={() => void sync(true)}>Yritä uudelleen</Button>
-          }
+          action={<Button onClick={() => void sync()}>Yritä uudelleen</Button>}
         />
       ) : visible.length === 0 ? (
         <EmptyState

@@ -36,8 +36,13 @@ const isStaffServiceCall = (value: unknown): value is StaffServiceCall =>
 const qrPath = (token: string) =>
   `/qr/${encodeURIComponent(token)}/service-call`;
 
-export async function loadCurrentServiceCall(token: string) {
-  const { data } = await publicApi.get<{ result: unknown }>(qrPath(token));
+export async function loadCurrentServiceCall(
+  token: string,
+  signal?: AbortSignal,
+) {
+  const { data } = await publicApi.get<{ result: unknown }>(qrPath(token), {
+    signal,
+  });
   if (data?.result !== null && !isServiceCall(data?.result))
     throw new Error("Invalid service call response");
   return data.result as ServiceCall | null;
@@ -50,8 +55,10 @@ export async function requestServiceCall(token: string) {
   return data.result;
 }
 
-export async function loadStaffServiceCalls() {
-  const { data } = await api.get<{ results: unknown }>("/service-calls");
+export async function loadStaffServiceCalls(signal?: AbortSignal) {
+  const { data } = await api.get<{ results: unknown }>("/service-calls", {
+    signal,
+  });
   if (!Array.isArray(data?.results) || !data.results.every(isStaffServiceCall))
     throw new Error("Invalid staff service call response");
   return data.results as StaffServiceCall[];

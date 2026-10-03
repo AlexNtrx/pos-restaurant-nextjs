@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { isAxiosError } from "axios";
 import { ClipboardList, Plus, ReceiptText } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { usePolling } from "@/lib/use-polling";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -121,9 +123,12 @@ export default function Dashboard() {
   const [error, setError] = useState("");
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
 
-  const load = useCallback(async () => {
+  const poll = useCallback(async (signal: AbortSignal) => {
     try {
-      const response = await api.get<unknown>("/dashboard/operations");
+      const response = await api.get<unknown>("/dashboard/operations", {
+        signal,
+      });
+      if (signal.aborted) return;
       if (!isOperations(response.data))
         throw new Error("Palvelin palautti virheelliset yhteenvetotiedot.");
       setOperations(response.data);
@@ -131,19 +136,21 @@ export default function Dashboard() {
       setError("");
       setState("ready");
     } catch (reason: unknown) {
+      if (signal.aborted) return;
+      const denied =
+        isPermissionDeniedError(reason) ||
+        (isAxiosError(reason) && reason.response?.status === 401);
+      if (denied) setOperations(null);
       setError(getApiErrorMessage(reason, "Yhteenvetoa ei voitu ladata."));
-      setState(isPermissionDeniedError(reason) ? "forbidden" : "error");
+      setState(denied ? "forbidden" : "error");
+      throw reason;
     }
   }, []);
 
-  useEffect(() => {
-    const initial = window.setTimeout(() => void load(), 0);
-    const interval = window.setInterval(() => void load(), 15_000);
-    return () => {
-      window.clearTimeout(initial);
-      window.clearInterval(interval);
-    };
-  }, [load]);
+  const load = usePolling(poll, {
+    intervalMs: 15_000,
+    enabled: state !== "forbidden",
+  });
 
   if (state === "loading") return <LoadingState title="Yhteenvetoa ladataan" />;
   if (state === "forbidden")

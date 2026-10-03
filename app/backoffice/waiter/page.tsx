@@ -17,9 +17,12 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { getApiErrorMessage, isPermissionDeniedError } from "@/lib/api-error";
 import ServiceCallQueue from "@/app/backoffice/service-calls/_components/service-call-queue";
 import type { StaffOrder } from "@/app/backoffice/orders/inbox/_lib/staff-orders";
+import { fetchOrderPages } from "@/app/backoffice/orders/inbox/_lib/staff-orders";
+import { usePolling } from "@/lib/use-polling";
 import {
   cancelWaiterOrder,
-  loadWaiterOrders,
+  loadWaiterSnapshot,
+  mergeWaiterOrders,
   loadWaiterSetup,
   openWaiterTable,
   sendWaiterOrder,
@@ -52,14 +55,19 @@ export default function WaiterPage() {
     "loading" | "ready" | "error" | "forbidden"
   >("loading");
   const [error, setError] = useState("");
+  const [queueError, setQueueError] = useState("");
   const [saving, setSaving] = useState(false);
   const [workingId, setWorkingId] = useState<number | null>(null);
   const [success, setSuccess] = useState("");
   const pendingKey = useRef<string | null>(null);
   const mounted = useRef(false);
+  const accessRevoked = useRef(false);
   const servedVersions = useRef(new Map<number, number>());
+  const watermark = useRef<string | null>(null);
+  const polls = useRef(0);
 
   const revoke = useCallback(() => {
+    accessRevoked.current = true;
     setTables([]);
     setCategories([]);
     setOrders([]);
@@ -83,28 +91,55 @@ export default function WaiterPage() {
     [revoke],
   );
 
-  const refreshQueues = useCallback(async () => {
-    try {
-      const orders = await loadWaiterOrders();
-      if (!mounted.current) return;
-      // EN: A poll started before serving must not reinsert the older READY snapshot after confirmation.
-      // FI: Ennen tarjoilua alkanut kysely ei saa palauttaa vanhaa READY-tietoa vahvistuksen jälkeen.
-      setOrders(
-        orders.filter(
-          (order) =>
-            !["SERVED", "COMPLETED"].includes(order.status) &&
-            (servedVersions.current.get(order.id) ?? 0) < order.version,
-        ),
-      );
-    } catch (cause) {
-      if (mounted.current) showError(cause, "Tilausjonoa ei voitu päivittää.");
-    }
-  }, [showError]);
+  const pollQueues = useCallback(
+    async (signal: AbortSignal, reconcile: boolean) => {
+      try {
+        // EN: Read only changes between periodic full snapshots; include terminal changes so departed orders leave the queue.
+        // FI: Lue vain muutokset määräaikaisten kokonaishakujen välillä; hae myös päättävät tilat, jotta poistuneet tilaukset lähtevät jonosta.
+        const full = reconcile || !watermark.current || polls.current >= 12;
+        const page = full
+          ? await loadWaiterSnapshot(signal)
+          : await fetchOrderPages({ updatedAfter: watermark.current! }, signal);
+        if (signal.aborted || accessRevoked.current) return;
+        // EN: A poll started before serving must not reinsert the older READY snapshot after confirmation.
+        // FI: Ennen tarjoilua alkanut kysely ei saa palauttaa vanhaa READY-tietoa vahvistuksen jälkeen.
+        setOrders((current) =>
+          mergeWaiterOrders(full ? [] : current, page.results).filter(
+            (order) =>
+              !["SERVED", "COMPLETED"].includes(order.status) &&
+              (servedVersions.current.get(order.id) ?? 0) < order.version,
+          ),
+        );
+        watermark.current = new Date(
+          Date.parse(page.serverTime) - 5_000,
+        ).toISOString();
+        polls.current = full ? 0 : polls.current + 1;
+        setQueueError("");
+      } catch (cause) {
+        if (signal.aborted) return;
+        if (
+          isPermissionDeniedError(cause) ||
+          (isAxiosError(cause) && cause.response?.status === 401)
+        )
+          revoke();
+        else
+          setQueueError(
+            getApiErrorMessage(cause, "Tilausjonoa ei voitu päivittää."),
+          );
+        throw cause;
+      }
+    },
+    [revoke],
+  );
+
+  const refreshQueues = usePolling(pollQueues, {
+    enabled: state !== "forbidden",
+  });
 
   const refreshSetup = useCallback(async () => {
     try {
       const setup = await loadWaiterSetup();
-      if (!mounted.current) return;
+      if (!mounted.current || accessRevoked.current) return;
       setTables(setup.tables);
       setCategories(setup.categories);
       setTableId((current) =>
@@ -125,15 +160,12 @@ export default function WaiterPage() {
     mounted.current = true;
     const initial = window.setTimeout(() => {
       void refreshSetup();
-      void refreshQueues();
     }, 0);
-    const interval = window.setInterval(() => void refreshQueues(), 5_000);
     return () => {
       mounted.current = false;
       window.clearTimeout(initial);
-      window.clearInterval(interval);
     };
-  }, [refreshSetup, refreshQueues]);
+  }, [refreshSetup]);
 
   const selectedTable = tables.find((table) => table.id === tableId);
   const selectedCategory = categories.find((category) =>
@@ -305,12 +337,12 @@ export default function WaiterPage() {
           Päivitä tilaukset
         </Button>
       </div>
-      {error && (
+      {(error || queueError) && (
         <p
           role="alert"
           className="rounded-md border border-destructive p-3 text-sm text-destructive"
         >
-          {error}
+          {error || queueError}
         </p>
       )}
       {success && (

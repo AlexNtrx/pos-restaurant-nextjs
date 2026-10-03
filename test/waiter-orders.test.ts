@@ -3,6 +3,9 @@ import api from "@/lib/api";
 import {
   cancelWaiterOrder,
   loadWaiterOrders,
+  loadWaiterSnapshot,
+  loadWaiterTables,
+  mergeWaiterOrders,
   serveWaiterOrder,
 } from "@/lib/waiter-orders";
 import type { StaffOrder } from "@/app/backoffice/orders/inbox/_lib/staff-orders";
@@ -113,4 +116,72 @@ it("cancels the selected snapshot through the existing versioned status contract
     nextStatus: "CANCELLED",
     reason: "Asiakkaan pyyntö",
   });
+});
+
+it("reads tables without fetching the menu used by waiter order entry", async () => {
+  vi.mocked(api.get).mockResolvedValueOnce({
+    data: { results: [{ id: 1, tableNo: 4, openSession: null }] },
+  });
+  expect(await loadWaiterTables()).toHaveLength(1);
+  expect(api.get).toHaveBeenCalledTimes(1);
+  expect(api.get).toHaveBeenCalledWith("/tables", { signal: undefined });
+});
+
+it("loads all pages of each active stage and uses the earliest watermark", async () => {
+  const signal = new AbortController().signal;
+  vi.mocked(api.get).mockImplementation(async (_url, config) => {
+    const params = config?.params as { status: string; cursor?: string };
+    return {
+      data: {
+        results:
+          params.status === "SUBMITTED"
+            ? params.cursor
+              ? [
+                  {
+                    id: 101,
+                    version: 1,
+                    serviceType: "DINE_IN",
+                    status: "SUBMITTED",
+                  },
+                ]
+              : Array.from({ length: 100 }, (_, index) => ({
+                  id: index + 1,
+                  version: 1,
+                  serviceType: "DINE_IN",
+                  status: "SUBMITTED",
+                }))
+            : [],
+        nextCursor:
+          params.status === "SUBMITTED" && !params.cursor ? "next-page" : null,
+        serverTime:
+          params.status === "READY"
+            ? "2026-10-03T12:00:00.000Z"
+            : "2026-10-03T12:00:01.000Z",
+      },
+    };
+  });
+  const snapshot = await loadWaiterSnapshot(signal);
+  expect(snapshot.results).toHaveLength(101);
+  expect(snapshot.serverTime).toBe("2026-10-03T12:00:00.000Z");
+  expect(api.get).toHaveBeenCalledTimes(5);
+  expect(
+    vi
+      .mocked(api.get)
+      .mock.calls.every(([, config]) => config?.signal === signal),
+  ).toBe(true);
+});
+
+it("does not roll a queue back to a lower version and removes terminal changes", () => {
+  const ready = {
+    id: 23,
+    version: 4,
+    status: "READY",
+    serviceType: "DINE_IN",
+  } as StaffOrder;
+  expect(
+    mergeWaiterOrders([ready], [{ ...ready, version: 3, status: "PREPARING" }]),
+  ).toEqual([ready]);
+  expect(
+    mergeWaiterOrders([ready], [{ ...ready, version: 5, status: "SERVED" }]),
+  ).toEqual([]);
 });

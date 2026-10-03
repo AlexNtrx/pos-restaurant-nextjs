@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { getApiErrorMessage } from "@/lib/api-error";
-import { loadWaiterSetup, type WaiterTable } from "@/lib/waiter-orders";
+import { loadWaiterTables, type WaiterTable } from "@/lib/waiter-orders";
 import TableSessionCheckout, {
   listPendingTablePayments,
 } from "@/app/backoffice/settings/tables/_components/table-session-checkout";
@@ -26,8 +26,7 @@ export default function TablePaymentsPage() {
   const load = useCallback(async () => {
     try {
       setError("");
-      const setup = await loadWaiterSetup();
-      setTables(setup.tables);
+      setTables(await loadWaiterTables());
       setPending(listPendingTablePayments());
     } catch (cause) {
       setError(getApiErrorMessage(cause, "Pöytiä ei voitu ladata."));

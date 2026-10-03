@@ -65,11 +65,16 @@ beforeEach(() => {
   vi.clearAllMocks();
   currentStatus = "CONFIRMED";
   poll = undefined;
-  vi.spyOn(window, "setInterval").mockImplementation((handler, delay) => {
-    if (delay === 5_000) poll = handler as () => void;
-    return 1 as unknown as NodeJS.Timeout;
-  });
-  vi.spyOn(window, "clearInterval").mockImplementation(() => {});
+  const schedule = window.setTimeout.bind(window);
+  vi.spyOn(window, "setTimeout").mockImplementation(
+    (handler, delay, ...args) => {
+      if (delay === 5_000) {
+        poll = handler as () => void;
+        return 1 as unknown as NodeJS.Timeout;
+      }
+      return schedule(handler, delay, ...args) as unknown as NodeJS.Timeout;
+    },
+  );
   api.get.mockImplementation(
     (path: string, options?: { params?: { status?: string } }) => {
       if (path !== "/orders")

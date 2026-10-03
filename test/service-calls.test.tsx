@@ -35,7 +35,10 @@ const call = {
 beforeEach(() => {
   vi.clearAllMocks();
   loadCurrent.mockResolvedValue(null);
-  requestCall.mockResolvedValue(call);
+  requestCall.mockImplementation(async () => {
+    loadCurrent.mockResolvedValue(call);
+    return call;
+  });
   loadStaff.mockResolvedValue([call]);
 });
 

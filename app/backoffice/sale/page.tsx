@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, Printer, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { isAxiosError } from "axios";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import api from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { usePolling } from "@/lib/use-polling";
 import type { StaffOrderDetail } from "@/app/backoffice/orders/inbox/_lib/staff-orders";
 import { readAuthSession } from "@/lib/auth-session";
 import {
@@ -258,8 +260,9 @@ export default function Page() {
 
   // EN: Section — Sent orders: loading, details, cancellation and polling.
   // FI: Osio — Lähetetyt tilaukset: lataus, tiedot, peruutus ja säännöllinen päivitys.
-  const refreshSentOrders = useCallback(
-    async (scope: DraftScope, view: SentView) => {
+  const [sentForbidden, setSentForbidden] = useState(false);
+  const readSentOrders = useCallback(
+    async (scope: DraftScope, view: SentView, signal: AbortSignal) => {
       const requestId = ++pendingRequestId.current;
       if (scope !== "TAKEAWAY" && (!Number.isSafeInteger(scope) || scope < 1)) {
         setSentOrders([]);
@@ -267,6 +270,7 @@ export default function Page() {
       }
       try {
         const response = await api.get("/counterOrder/sent", {
+          signal,
           params:
             scope === "TAKEAWAY"
               ? { serviceType: "TAKEAWAY", view }
@@ -274,18 +278,35 @@ export default function Page() {
         });
         const parsed = parseSentCounterOrders(response.data);
         if (!parsed) throw new Error("Invalid sent orders response");
-        if (requestId === pendingRequestId.current) setSentOrders(parsed);
+        if (!signal.aborted && requestId === pendingRequestId.current)
+          setSentOrders(parsed);
       } catch (error: unknown) {
-        if (requestId === pendingRequestId.current) {
-          setSentOrders([]);
+        if (!signal.aborted && requestId === pendingRequestId.current) {
+          if (
+            isAxiosError(error) &&
+            [401, 403].includes(error.response?.status ?? 0)
+          ) {
+            setSentOrders([]);
+            setSentForbidden(true);
+          }
           toast.error("Unable to load sent orders", {
             description: errorMessage(error),
           });
+          throw error;
         }
       }
     },
     [],
   );
+
+  const pollSentOrders = useCallback(
+    (signal: AbortSignal) => readSentOrders(draftScope, sentView, signal),
+    [readSentOrders, draftScope, sentView],
+  );
+  const refreshSentOrders = usePolling(pollSentOrders, {
+    intervalMs: 10_000,
+    enabled: !sentForbidden,
+  });
 
   const loadSentOrderDetail = async (orderId: number) => {
     const requestId = ++sentDetailRequestId.current;
@@ -334,36 +355,16 @@ export default function Page() {
       )
         throw new Error("Invalid cancellation response");
       setSentOrderDetail(result);
-      await refreshSentOrders(draftScope, sentView);
+      await refreshSentOrders();
       toast.success(`Tilaus #${orderId} peruttu`);
     } catch (error: unknown) {
       const message = getApiErrorMessage(error, "Tilausta ei voitu perua.");
-      await Promise.all([
-        loadSentOrderDetail(orderId),
-        refreshSentOrders(draftScope, sentView),
-      ]);
+      await Promise.all([loadSentOrderDetail(orderId), refreshSentOrders()]);
       setSentOrderError(message);
     } finally {
       setSentOrderCancelling(false);
     }
   };
-
-  useEffect(() => {
-    const timer = window.setTimeout(
-      () => void refreshSentOrders(draftScope, sentView),
-      0,
-    );
-    // EN: Kitchen and payment updates happen on other screens, so refresh the selected sent-order view while Counter is open.
-    // FI: Keittiön ja maksun päivitykset tehdään muilla näytöillä, joten päivitä valittu lähetettyjen tilausten näkymä kassan ollessa auki.
-    const interval = window.setInterval(
-      () => void refreshSentOrders(draftScope, sentView),
-      10_000,
-    );
-    return () => {
-      window.clearTimeout(timer);
-      window.clearInterval(interval);
-    };
-  }, [refreshSentOrders, draftScope, sentView]);
 
   // EN: Section — Confirmation dialog coordination.
   // FI: Osio — Vahvistusikkunan hallinta.
@@ -894,7 +895,7 @@ export default function Page() {
         }
       } else await refreshCart();
       if (!draftMode) checkoutAttemptRef.current = null;
-      await refreshSentOrders(draftScope, sentView);
+      await refreshSentOrders();
       if (serviceType === "TAKEAWAY" && completed.pickupNo)
         toast.success(`Nouto #${completed.pickupNo} lähetetty keittiöön`);
       else if (serviceType === "DINE_IN")
@@ -943,7 +944,7 @@ export default function Page() {
         toast.warning(
           "Order found, but the local draft could not be cleared. Retry recovery.",
         );
-      await refreshSentOrders(draftScope, "active");
+      await refreshSentOrders();
       toast.success("Aiemmin lähetetty tilaus löytyi");
     } catch (error: unknown) {
       if (hasFinalHttpResponse(error)) {
@@ -1226,7 +1227,7 @@ export default function Page() {
                 variant="ghost"
                 size="sm"
                 disabled={checkoutBusy}
-                onClick={() => void refreshSentOrders(draftScope, sentView)}
+                onClick={() => void refreshSentOrders()}
               >
                 Päivitä
               </Button>
@@ -1466,11 +1467,11 @@ export default function Page() {
           order={payableOrder}
           onClose={() => setPayableOrder(null)}
           onBusyChange={setCheckoutBusy}
-          onRefresh={() => refreshSentOrders(draftScope, sentView)}
+          onRefresh={() => refreshSentOrders()}
           onPaid={async (billId) => {
             setPayableOrder(null);
             setLastCompletedBillId(billId);
-            await refreshSentOrders(draftScope, sentView);
+            await refreshSentOrders();
             try {
               await printBillAfterPay(billId);
             } catch {

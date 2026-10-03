@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import { isAxiosError } from "axios";
+import { usePolling } from "@/lib/use-polling";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -48,52 +50,62 @@ export default function QrTableOrders({ tableNo }: { tableNo: number }) {
   const [action, setAction] = useState<PendingAction | null>(null);
   const [reason, setReason] = useState("");
   const requestId = useRef(0);
+  const [forbidden, setForbidden] = useState(false);
 
-  const refresh = useCallback(async () => {
-    const currentRequest = ++requestId.current;
-    if (!Number.isSafeInteger(tableNo) || tableNo < 1) {
-      setSessionId(null);
-      setOrders([]);
-      setError("");
-      return;
-    }
-    try {
-      const response = await api.get<{ results: OpenTable[] }>("/tables");
-      const tables = response.data?.results;
-      if (!Array.isArray(tables)) throw new Error("Invalid table response");
-      const session = tables.find(
-        (row) => row.tableNo === tableNo,
-      )?.openSession;
-      const id = session?.id ?? null;
-      if (id !== null && (!Number.isSafeInteger(id) || id < 1))
-        throw new Error("Invalid table session");
-      const page = id ? await fetchOrderPages({ tableSessionId: id }) : null;
-      if (page?.results.some((order) => order.tableSessionId !== id))
-        throw new Error("Invalid table orders");
-      if (currentRequest !== requestId.current) return;
-      setSessionId(id);
-      setOrders(page?.results.filter(active) ?? []);
-      setError("");
-    } catch (cause) {
-      if (currentRequest === requestId.current) {
+  const poll = useCallback(
+    async (signal: AbortSignal) => {
+      const currentRequest = ++requestId.current;
+      if (!Number.isSafeInteger(tableNo) || tableNo < 1) {
         setSessionId(null);
         setOrders([]);
-        setError(
-          getApiErrorMessage(cause, "Pöydän tilauksia ei voitu ladata."),
-        );
+        setError("");
+        return;
       }
-    }
-  }, [tableNo]);
+      try {
+        const response = await api.get<{ results: OpenTable[] }>("/tables", {
+          signal,
+        });
+        if (signal.aborted) return;
+        const tables = response.data?.results;
+        if (!Array.isArray(tables)) throw new Error("Invalid table response");
+        const session = tables.find(
+          (row) => row.tableNo === tableNo,
+        )?.openSession;
+        const id = session?.id ?? null;
+        if (id !== null && (!Number.isSafeInteger(id) || id < 1))
+          throw new Error("Invalid table session");
+        const page = id
+          ? await fetchOrderPages({ tableSessionId: id }, signal)
+          : null;
+        if (page?.results.some((order) => order.tableSessionId !== id))
+          throw new Error("Invalid table orders");
+        if (signal.aborted || currentRequest !== requestId.current) return;
+        setSessionId(id);
+        setOrders(page?.results.filter(active) ?? []);
+        setError("");
+      } catch (cause) {
+        if (!signal.aborted && currentRequest === requestId.current) {
+          if (
+            isAxiosError(cause) &&
+            [401, 403].includes(cause.response?.status ?? 0)
+          ) {
+            setSessionId(null);
+            setOrders([]);
+            setForbidden(true);
+          }
+          setError(
+            getApiErrorMessage(cause, "Pöydän tilauksia ei voitu ladata."),
+          );
+          throw cause;
+        }
+      }
+    },
+    [tableNo],
+  );
 
-  useEffect(() => {
-    const first = window.setTimeout(() => void refresh(), 0);
-    const interval = window.setInterval(() => void refresh(), 5_000);
-    return () => {
-      requestId.current += 1;
-      window.clearTimeout(first);
-      window.clearInterval(interval);
-    };
-  }, [refresh]);
+  const refresh = usePolling(poll, {
+    enabled: !forbidden && Number.isSafeInteger(tableNo) && tableNo > 0,
+  });
 
   const confirm = async (order: StaffOrder) => {
     if (busy) return;
