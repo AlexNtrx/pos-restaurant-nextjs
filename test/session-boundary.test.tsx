@@ -102,7 +102,7 @@ describe("backoffice session boundary navigation", () => {
   it("redirects a verified user away from a direct unauthorized URL", async () => {
     storeSession();
     mocks.pathname = "/backoffice/staff";
-    mocks.apiGet.mockResolvedValue({ data: { level: "user" } });
+    mocks.apiGet.mockResolvedValue({ data: { level: "kassa" } });
 
     render(
       <SessionBoundary>

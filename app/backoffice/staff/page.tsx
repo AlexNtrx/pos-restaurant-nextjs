@@ -42,7 +42,7 @@ import { getApiErrorMessage, isPermissionDeniedError } from "@/lib/api-error";
 
 const roleLabels: Record<UserLevel, string> = {
   admin: "Ylläpitäjä",
-  user: "Työntekijä",
+  kassa: "Kassatyöntekijä",
   waiter: "Tarjoilija",
   kitchen: "Keittiöhenkilökunta",
 };
@@ -76,7 +76,7 @@ export default function StaffPage() {
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [level, setLevel] = useState<UserLevel>("user");
+  const [level, setLevel] = useState<UserLevel>("kassa");
   const [formError, setFormError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -114,7 +114,7 @@ export default function StaffPage() {
     setName("");
     setUsername("");
     setPassword("");
-    setLevel("user");
+    setLevel("kassa");
     setFormError("");
     setEditorOpen(true);
   };
@@ -297,7 +297,7 @@ export default function StaffPage() {
                 value={level}
                 onChange={(event) => setLevel(event.target.value as UserLevel)}
               >
-                <option value="user">Työntekijä</option>
+                <option value="kassa">Kassatyöntekijä</option>
                 <option value="waiter">Tarjoilija</option>
                 <option value="kitchen">Keittiöhenkilökunta</option>
                 <option value="admin">Ylläpitäjä</option>

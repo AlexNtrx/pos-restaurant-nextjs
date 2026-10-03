@@ -52,7 +52,7 @@ describe("TW-03 staff shell and navigation", () => {
       "waiter",
       "service-calls",
       "staff",
-      "user",
+      "kassa",
       "settings/tables",
       "settings/restaurant",
       "orders/history",
@@ -70,26 +70,29 @@ describe("TW-03 staff shell and navigation", () => {
       canAccessBackofficePath("/backoffice/catalog/menu-items", "admin"),
     ).toBe(true);
     expect(canAccessBackofficePath("/backoffice/food", "admin")).toBe(true);
-    expect(canAccessBackofficePath("/backoffice/orders/new", "user")).toBe(
+    expect(canAccessBackofficePath("/backoffice/orders/new", "kassa")).toBe(
       true,
     );
-    expect(canAccessBackofficePath("/backoffice/sale", "user")).toBe(true);
-    expect(canAccessBackofficePath("/backoffice/orders/inbox", "user")).toBe(
+    expect(canAccessBackofficePath("/backoffice/sale", "kassa")).toBe(true);
+    expect(canAccessBackofficePath("/backoffice/orders/inbox", "kassa")).toBe(
       true,
     );
-    expect(canAccessBackofficePath("/backoffice/user", "user")).toBe(false);
-    expect(canAccessBackofficePath("/backoffice/settings/tables", "user")).toBe(
-      true,
-    );
+    expect(canAccessBackofficePath("/backoffice/user", "kassa")).toBe(false);
     expect(
-      canAccessBackofficePath("/backoffice/settings/restaurant", "user"),
+      canAccessBackofficePath("/backoffice/settings/tables", "kassa"),
     ).toBe(false);
     expect(
-      canAccessBackofficePath("/backoffice/settings/qr-ordering", "user"),
+      canAccessBackofficePath("/backoffice/settings/restaurant", "kassa"),
+    ).toBe(false);
+    expect(
+      canAccessBackofficePath("/backoffice/settings/qr-ordering", "kassa"),
     ).toBe(false);
     expect(canAccessBackofficePath("/backoffice/kitchen", "admin")).toBe(true);
-    expect(canAccessBackofficePath("/backoffice/kitchen", "user")).toBe(true);
-    expect(canAccessBackofficePath("/backoffice/service-calls", "user")).toBe(
+    expect(canAccessBackofficePath("/backoffice/kitchen", "kassa")).toBe(false);
+    expect(canAccessBackofficePath("/backoffice/orders/tables", "kassa")).toBe(
+      true,
+    );
+    expect(canAccessBackofficePath("/backoffice/service-calls", "kassa")).toBe(
       true,
     );
     expect(canAccessBackofficePath("/backoffice/orders/history", "admin")).toBe(
@@ -98,17 +101,17 @@ describe("TW-03 staff shell and navigation", () => {
     expect(
       canAccessBackofficePath("/backoffice/orders/history/orders", "admin"),
     ).toBe(true);
-    expect(canAccessBackofficePath("/backoffice/orders/history", "user")).toBe(
+    expect(canAccessBackofficePath("/backoffice/orders/history", "kassa")).toBe(
       false,
     );
     expect(canAccessBackofficePath("/backoffice/salereport", "admin")).toBe(
       true,
     );
     expect(
-      canAccessBackofficePath("/backoffice/orders/history/orders", "user"),
+      canAccessBackofficePath("/backoffice/orders/history/orders", "kassa"),
     ).toBe(false);
     expect(getBackofficeLanding("admin")).toBe("/backoffice/dashboard");
-    expect(getBackofficeLanding("user")).toBe("/backoffice/sale");
+    expect(getBackofficeLanding("kassa")).toBe("/backoffice/sale");
     expect(getBackofficeLanding("waiter")).toBe("/backoffice/waiter");
     expect(canAccessBackofficePath("/backoffice/waiter", "waiter")).toBe(true);
     expect(canAccessBackofficePath("/backoffice/service-calls", "waiter")).toBe(
@@ -125,8 +128,8 @@ describe("TW-03 staff shell and navigation", () => {
 
   it("shows only navigation groups permitted by the existing role contract", () => {
     expect(
-      getVisibleBackofficeNavigation("user").map(({ label }) => label),
-    ).toEqual(["Kassa", "Tarjoilija", "Keittiö", "Asetukset"]);
+      getVisibleBackofficeNavigation("kassa").map(({ label }) => label),
+    ).toEqual(["Kassa", "Tarjoilija"]);
     expect(
       getVisibleBackofficeNavigation("waiter").map(({ label }) => label),
     ).toEqual(["Tarjoilija"]);
@@ -230,7 +233,7 @@ describe("TW-03 staff shell and navigation", () => {
 
   it("shows the localized staff role and name next to sign-out", () => {
     render(
-      <StaffShell name="Aino" userLevel="user">
+      <StaffShell name="Aino" userLevel="kassa">
         <div>Content</div>
       </StaffShell>,
     );

@@ -43,7 +43,7 @@ const openTable = {
 };
 const qrPath = `/order/${"A".repeat(43)}`;
 
-function mockLoad(level: "admin" | "user" = "admin") {
+function mockLoad(level: "admin" | "kassa" = "admin") {
   get.mockImplementation(async (path: string) => {
     if (path === "/tables") return { data: { results: [openTable] } };
     if (path === "/qr-mode") return { data: { result: { mode: "DISABLED" } } };
@@ -163,7 +163,7 @@ describe("QR-01 tables screen", () => {
         return { data: { results: [{ ...openTable, openSession: null }] } };
       if (path === "/qr-mode")
         return { data: { result: { mode: "DISABLED" } } };
-      if (path === "/user/getLevelByToken") return { data: { level: "user" } };
+      if (path === "/user/getLevelByToken") return { data: { level: "kassa" } };
       if (path === "/orders")
         return {
           data: {
@@ -220,7 +220,7 @@ describe("QR-01 tables screen", () => {
   });
 
   it("hides admin mutations from staff but lets them close a session", async () => {
-    mockLoad("user");
+    mockLoad("kassa");
     const user = userEvent.setup();
     render(<TablesSettingsPage />);
     await screen.findByRole("heading", { name: "Pöydät ja QR-istunnot" });

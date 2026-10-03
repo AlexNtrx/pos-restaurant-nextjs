@@ -151,7 +151,7 @@ export default function TablesSettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>("tables");
   const [tables, setTables] = useState<RestaurantTable[]>([]);
   const [mode, setMode] = useState<QrMode>("DISABLED");
-  const [level, setLevel] = useState<UserLevel>("user");
+  const [level, setLevel] = useState<UserLevel>("kassa");
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">(
     "loading",
   );

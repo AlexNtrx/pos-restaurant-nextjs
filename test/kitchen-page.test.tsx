@@ -20,7 +20,7 @@ import KitchenBoard from "@/app/backoffice/kitchen/page";
 import { StaffRoleContext } from "@/lib/staff-role-context";
 import type { UserLevel } from "@/lib/access-control";
 
-function KitchenPage({ level = "user" }: { level?: UserLevel }) {
+function KitchenPage({ level = "admin" }: { level?: UserLevel }) {
   return (
     <StaffRoleContext.Provider value={level}>
       <KitchenBoard />

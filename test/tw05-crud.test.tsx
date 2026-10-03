@@ -281,7 +281,7 @@ describe("TW-05 CRUD dialogs", () => {
       data: {
         results: [
           { id: 1, name: "Admin", username: "admin", level: "admin" },
-          { id: 2, name: "Aino", username: "aino", level: "user" },
+          { id: 2, name: "Aino", username: "aino", level: "kassa" },
         ],
       },
     });

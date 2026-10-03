@@ -197,7 +197,7 @@ function matchesSearch(order: StaffOrder, query: string) {
 export default function KitchenPage() {
   const level = useContext(StaffRoleContext);
   const router = useRouter();
-  const canServe = level === "admin" || level === "user";
+  const canServe = level === "admin";
   const [orders, setOrders] = useState<StaffOrder[]>([]);
   const [state, setState] = useState<
     "loading" | "ready" | "error" | "forbidden"

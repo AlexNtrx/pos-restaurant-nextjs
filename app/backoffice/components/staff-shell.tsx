@@ -43,7 +43,7 @@ export default function StaffShell({
   const qrModeVersionRef = useRef(0);
 
   useEffect(() => {
-    if (userLevel === "waiter") return;
+    if (userLevel !== "admin") return;
     let active = true;
     const version = qrModeVersionRef.current;
     void api

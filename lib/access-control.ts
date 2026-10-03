@@ -1,4 +1,4 @@
-export const userLevels = ["admin", "user", "waiter", "kitchen"] as const;
+export const userLevels = ["admin", "kassa", "waiter", "kitchen"] as const;
 export type UserLevel = (typeof userLevels)[number];
 
 export type NavigationIcon =
@@ -32,8 +32,8 @@ export type BackofficeNavigationGroup = {
 };
 
 const adminOnly = ["admin"] as const;
-const allStaff = ["admin", "user"] as const;
-const serviceStaff = ["admin", "user", "waiter"] as const;
+const allStaff = ["admin", "kassa"] as const;
+const serviceStaff = ["admin", "kassa", "waiter"] as const;
 
 // EN: Show the admin home first, then daily service, review and administration; role filtering preserves this order.
 // FI: Näytä ylläpitäjän etusivu ensin, sitten päivittäinen palvelutyö, seuranta ja hallinta; roolisuodatus säilyttää järjestyksen.
@@ -63,6 +63,11 @@ export const backofficeNavigation: readonly BackofficeNavigationGroup[] = [
         label: "Saapuvat tilaukset",
         roles: allStaff,
       },
+      {
+        href: "/backoffice/orders/tables",
+        label: "Pöytien maksut",
+        roles: allStaff,
+      },
     ],
   },
   {
@@ -77,7 +82,7 @@ export const backofficeNavigation: readonly BackofficeNavigationGroup[] = [
     href: "/backoffice/kitchen",
     label: "Keittiö",
     icon: "kitchen",
-    roles: ["admin", "user", "kitchen"],
+    roles: ["admin", "kitchen"],
   },
   {
     id: "serviceCalls",
@@ -171,12 +176,12 @@ export const backofficeNavigation: readonly BackofficeNavigationGroup[] = [
     href: "/backoffice/settings/tables",
     label: "Asetukset",
     icon: "settings",
-    roles: allStaff,
+    roles: adminOnly,
     children: [
       {
         href: "/backoffice/settings/tables",
         label: "Pöydät ja QR-istunnot",
-        roles: allStaff,
+        roles: adminOnly,
       },
       {
         href: "/backoffice/settings/restaurant",
