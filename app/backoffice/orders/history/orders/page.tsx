@@ -6,6 +6,7 @@ import utc from "dayjs/plugin/utc";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { OrderRefund } from "@/components/orders/order-refund";
 import {
   Dialog,
   DialogContent,
@@ -335,6 +336,14 @@ export default function OrderRecordsPage() {
             <LoadingState title="Tilausta ladataan" />
           ) : (
             <div className="space-y-5 text-sm">
+              <OrderRefund
+                key={detail.id}
+                order={detail}
+                onChanged={async () => {
+                  setDetail(await fetchOrderDetail(detail.id));
+                  await load();
+                }}
+              />
               <p className="font-medium">
                 Tilauksen summa: {currency.format(detail.total)} ·{" "}
                 {detail.tableSessionId

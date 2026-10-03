@@ -115,7 +115,7 @@ it("requires a reason and confirmation before cancelling and refreshes the queue
   );
 });
 
-it("offers cancellation for confirmed and served orders but not preparing or paid orders", async () => {
+it("offers cancellation only before preparation and payment", async () => {
   mocks.loadQueues.mockResolvedValue([
     { ...ready, paidAt: "2026-09-30T12:00:00.000Z" },
     { ...incoming, id: 40, status: "CONFIRMED" },
@@ -123,7 +123,7 @@ it("offers cancellation for confirmed and served orders but not preparing or pai
     { ...incoming, id: 42, status: "SERVED" },
   ]);
   render(<WaiterPage />);
-  for (const id of [40, 42]) {
+  for (const id of [40]) {
     const row = (await screen.findByText(`Pöytä 4 · Tilaus #${id}`)).closest(
       "li",
     )!;
@@ -131,7 +131,7 @@ it("offers cancellation for confirmed and served orders but not preparing or pai
       within(row).getByRole("button", { name: "Peru tilaus" }),
     ).toBeTruthy();
   }
-  for (const id of [41, 32]) {
+  for (const id of [41, 32, 42]) {
     const row = screen.getByText(`Pöytä 4 · Tilaus #${id}`).closest("li")!;
     expect(
       within(row).queryByRole("button", { name: "Peru tilaus" }),

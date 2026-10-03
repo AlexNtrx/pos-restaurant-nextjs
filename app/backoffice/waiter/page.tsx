@@ -699,6 +699,7 @@ function OrderTracking({
 function canCancelOrder(order: StaffOrder) {
   return (
     order.paidAt === null &&
-    ["SUBMITTED", "CONFIRMED", "READY", "SERVED"].includes(order.status)
+    order.preparingAt === null &&
+    ["SUBMITTED", "CONFIRMED"].includes(order.status)
   );
 }

@@ -277,6 +277,17 @@ export default function ReceiptHistoryPage() {
                   >
                     {bill.status === "use" ? "Voimassa" : "Peruttu"}
                   </StatusBadge>
+                  {bill.Refunds?.map((refund, index) => (
+                    <p key={index} className="mt-1 text-xs">
+                      {refund.status === "COMPLETED"
+                        ? "Palautettu"
+                        : refund.status === "FAILED"
+                          ? "Palautus epäonnistui"
+                          : "Palautus kesken"}
+                      : {currencyFormatter.format(refund.amount)}
+                      {refund.reference ? ` · ${refund.reference}` : ""}
+                    </p>
+                  ))}
                 </TableCell>
                 <TableCell className="text-right">
                   <Button size="sm" onClick={() => setSelectedBill(bill)}>
@@ -290,8 +301,9 @@ export default function ReceiptHistoryPage() {
       )}
 
       <p className="text-[11px] text-muted-foreground">
-        Valitse Avaa nähdäksesi kuitin tuotteet. Peruutustoiminnot säilyvät
-        legacy-näkymässä TW-05:een asti.
+        Valitse Avaa nähdäksesi kuitin tuotteet. Maksettujen tilausten
+        peruutukset ja palautukset käsitellään Tilaushistoriassa ennen
+        valmistuksen alkamista.
       </p>
 
       <Dialog

@@ -16,6 +16,14 @@ export type Bill = {
   serviceType: "DINE_IN" | "TAKEAWAY";
   Orders: { id: number }[];
   status: "use" | "cancelled";
+  Refunds?: {
+    amount: number;
+    status: "PENDING" | "FAILED" | "COMPLETED";
+    method: string;
+    reference: string | null;
+    completedAt: string | null;
+    reason: string;
+  }[];
   cancelledAt: string | null;
   cancelReason: string | null;
   User: { id: number; name: string };
@@ -73,6 +81,22 @@ const isBill = (value: unknown): value is Bill => {
       (order) => isRecord(order) && typeof order.id === "number",
     ) &&
     (value.status === "use" || value.status === "cancelled") &&
+    (value.Refunds === undefined ||
+      (Array.isArray(value.Refunds) &&
+        value.Refunds.every(
+          (refund) =>
+            isRecord(refund) &&
+            typeof refund.amount === "number" &&
+            ["PENDING", "FAILED", "COMPLETED"].includes(
+              String(refund.status),
+            ) &&
+            typeof refund.method === "string" &&
+            (refund.reference === null ||
+              typeof refund.reference === "string") &&
+            (refund.completedAt === null ||
+              typeof refund.completedAt === "string") &&
+            typeof refund.reason === "string",
+        ))) &&
     (typeof value.cancelledAt === "string" || value.cancelledAt === null) &&
     (typeof value.cancelReason === "string" || value.cancelReason === null) &&
     isUserSummary(value.User) &&

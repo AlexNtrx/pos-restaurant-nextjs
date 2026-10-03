@@ -491,6 +491,12 @@ export default function StaffOrderInboxPage() {
                   </Button>
                   <Button
                     variant="outline"
+                    disabled={
+                      saving ||
+                      detail.paidAt !== null ||
+                      detail.preparingAt !== null ||
+                      !["SUBMITTED", "CONFIRMED"].includes(detail.status)
+                    }
                     onClick={() => setAction("CANCELLED")}
                   >
                     Peruuta
