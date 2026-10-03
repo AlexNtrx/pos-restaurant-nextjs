@@ -1,4 +1,8 @@
+"use client";
+
+import { useState } from "react";
 import FoodPhoto from "@/components/catalog/food-photo";
+import { ListPagination } from "@/components/ui/list-pagination";
 import type { Food } from "@/lib/sale-contracts";
 
 export type CatalogStatus = "loading" | "ready" | "error";
@@ -68,6 +72,16 @@ export default function CatalogGrid({
   onRetry,
   onSelect,
 }: CatalogGridProps) {
+  const [page, setPage] = useState(1);
+  const pageSize = 24;
+  const currentPage = Math.min(
+    page,
+    Math.max(1, Math.ceil(foods.length / pageSize)),
+  );
+  const visibleFoods = foods.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  );
   if (status === "loading") {
     return (
       <div className={productGridClassName} aria-label="Ruokalistaa ladataan">
@@ -95,34 +109,43 @@ export default function CatalogGrid({
   }
 
   return (
-    <div className={productGridClassName}>
-      {foods.map((food) => (
-        <button
-          type="button"
-          key={food.id}
-          disabled={disabled}
-          onClick={() => onSelect(food.id)}
-          className="group h-[202px] w-[158px] overflow-hidden rounded-[10px] border border-border bg-surface p-0 text-left transition-[border-color,background-color] hover:border-action focus-visible:border-2 focus-visible:border-action focus-visible:ring-0 focus-visible:outline-none active:bg-[#efece6] disabled:cursor-wait xl:h-[220px] xl:w-[181px]"
-        >
-          <FoodPhoto
-            filename={food.img}
-            alt={food.name}
-            sizes="(min-width: 1280px) 181px, 158px"
-            className="-mx-px h-[118px] w-[calc(100%+2px)] shrink-0 group-active:opacity-[0.86] xl:h-[136px]"
-          />
-          <div className="-mx-px flex h-[84px] w-[calc(100%+2px)] shrink-0 flex-col gap-1 overflow-hidden p-[12px]">
-            <span className="line-clamp-2 h-9 text-sm leading-[18px] font-semibold tracking-[0.1px] text-foreground">
-              {food.name}
-            </span>
-            <span className="h-5 text-base leading-5 font-semibold tracking-[0.1px] text-action">
-              {food.price.toLocaleString("fi-FI", {
-                minimumFractionDigits: 2,
-              })}{" "}
-              €
-            </span>
-          </div>
-        </button>
-      ))}
+    <div>
+      <div className={productGridClassName}>
+        {visibleFoods.map((food) => (
+          <button
+            type="button"
+            key={food.id}
+            disabled={disabled}
+            onClick={() => onSelect(food.id)}
+            className="group h-[202px] w-[158px] overflow-hidden rounded-[10px] border border-border bg-surface p-0 text-left transition-[border-color,background-color] hover:border-action focus-visible:border-2 focus-visible:border-action focus-visible:ring-0 focus-visible:outline-none active:bg-[#efece6] disabled:cursor-wait xl:h-[220px] xl:w-[181px]"
+          >
+            <FoodPhoto
+              filename={food.img}
+              alt={food.name}
+              sizes="(min-width: 1280px) 181px, 158px"
+              className="-mx-px h-[118px] w-[calc(100%+2px)] shrink-0 group-active:opacity-[0.86] xl:h-[136px]"
+            />
+            <div className="-mx-px flex h-[84px] w-[calc(100%+2px)] shrink-0 flex-col gap-1 overflow-hidden p-[12px]">
+              <span className="line-clamp-2 h-9 text-sm leading-[18px] font-semibold tracking-[0.1px] text-foreground">
+                {food.name}
+              </span>
+              <span className="h-5 text-base leading-5 font-semibold tracking-[0.1px] text-action">
+                {food.price.toLocaleString("fi-FI", {
+                  minimumFractionDigits: 2,
+                })}{" "}
+                €
+              </span>
+            </div>
+          </button>
+        ))}
+      </div>
+      <ListPagination
+        label="Kassan ruokalistan sivut"
+        total={foods.length}
+        page={currentPage}
+        pageSize={pageSize}
+        onPageChange={setPage}
+      />
     </div>
   );
 }

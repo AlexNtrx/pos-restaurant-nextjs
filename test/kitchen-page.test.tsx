@@ -103,6 +103,57 @@ afterEach(() => {
 });
 
 describe("KDS-01 Kitchen board", () => {
+  it("keeps all active orders visible and avoids reading item content on clock ticks", async () => {
+    let tick: (() => void) | undefined;
+    vi.spyOn(window, "setInterval").mockImplementation((handler) => {
+      tick = handler as () => void;
+      return 2 as unknown as NodeJS.Timeout;
+    });
+    const readName = vi.fn(() => "Soup");
+    const item = {
+      ...base.items[0],
+      get name() {
+        return readName();
+      },
+    };
+    api.get.mockImplementation(
+      (_path: string, options?: { params?: { status?: string } }) =>
+        Promise.resolve(
+          page(
+            options?.params?.status && options.params.status !== "CONFIRMED"
+              ? []
+              : Array.from({ length: 60 }, (_, index) => ({
+                  ...base,
+                  id: index + 1,
+                  items: [item],
+                })),
+          ),
+        ),
+    );
+    render(<KitchenPage />);
+    await screen.findByRole("heading", { name: "#60" });
+    await waitFor(() => expect(tick).toBeTypeOf("function"));
+    const reads = readName.mock.calls.length;
+    const now = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(now + 1000);
+    act(() => tick!());
+    expect(readName).toHaveBeenCalledTimes(reads);
+    expect(screen.getAllByText("Soup × 1")).toHaveLength(60);
+    expect(screen.getByRole("heading", { name: "Odottaa (60)" })).toBeTruthy();
+    api.get.mockResolvedValue(
+      page([
+        {
+          ...base,
+          id: 60,
+          version: 3,
+          items: [{ ...base.items[0], name: "Changed soup" }],
+        },
+      ]),
+    );
+    await act(async () => poll?.());
+    expect(await screen.findByText("Changed soup × 1")).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Aloita" })).toHaveLength(60);
+  }, 15000);
   it("limits kitchen staff to preparation and supports signing out", async () => {
     currentStatus = "READY";
     localStorage.setItem("mytokenfornextjsproject", "kitchen-token");

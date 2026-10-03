@@ -85,6 +85,103 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("anonymous QR customer", () => {
+  it("bounds a thousand-item menu while keeping custom portions, full search and details across pages", async () => {
+    const user = userEvent.setup();
+    const load = get.getMockImplementation()!;
+    get.mockImplementation(async (path: string) =>
+      path.endsWith("/menu")
+        ? {
+            data: {
+              result: {
+                ...menu,
+                categories: [
+                  {
+                    ...menu.categories[0],
+                    food: Array.from({ length: 1000 }, (_, index) => ({
+                      ...menu.categories[0].food[0],
+                      id: index + 7,
+                      name: `Meal ${index + 1}`,
+                    })),
+                  },
+                ],
+              },
+            },
+          }
+        : load(path),
+    );
+    render(<QrCustomer view="menu" />);
+    await screen.findByText("Meal 1");
+    expect(screen.getAllByRole("article")).toHaveLength(12);
+    expect(
+      document.querySelectorAll('img[src*="/variants/detail/"]'),
+    ).toHaveLength(0);
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Koko: Meal 1" }),
+      "4",
+    );
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Maku: Meal 1" }),
+      "5",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Huomautus keittiölle: Meal 1" }),
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: "Huomautus keittiölle: Meal 1" }),
+      "No onion",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Lisää Meal 1, Iso, Tulinen" }),
+    );
+    screen.getByRole("button", { name: "Seuraava" }).focus();
+    await user.keyboard("{Enter}");
+    expect(screen.getByText("13–24 / 1000")).toBeTruthy();
+    expect(screen.queryByText("Meal 1")).toBeNull();
+    await user.click(
+      screen.getByRole("button", {
+        name: "Lisää Meal 13, Tavallinen, Ei valintaa",
+      }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Ostoskori, 2 tuotetta" }).textContent,
+    ).toContain("45,00");
+    await user.click(screen.getByRole("button", { name: "Pääruoat" }));
+    expect(screen.getByText("1–12 / 1000")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Seuraava" }));
+    await user.click(screen.getByRole("button", { name: "Edellinen" }));
+    expect(
+      (
+        screen.getByRole("combobox", {
+          name: "Koko: Meal 1",
+        }) as HTMLSelectElement
+      ).value,
+    ).toBe("4");
+    await user.click(
+      screen.getByRole("button", { name: "Katso tiedot: Meal 1" }),
+    );
+    const dialog = within(screen.getByRole("dialog"));
+    expect(dialog.getByText("1")).toBeTruthy();
+    await user.click(
+      dialog.getByRole("button", { name: "Vähennä Meal 1, Iso, Tulinen" }),
+    );
+    await user.click(dialog.getByRole("button", { name: "Sulje" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "Hae ruokalistasta" }),
+      "Meal 1000",
+    );
+    expect(screen.getAllByRole("article")).toHaveLength(1);
+    await user.click(
+      screen.getByRole("button", {
+        name: "Lisää Meal 1000, Tavallinen, Ei valintaa",
+      }),
+    );
+    expect(
+      JSON.parse(localStorage.getItem(`qr02:${token}:cart`) || "[]"),
+    ).toEqual([
+      { foodId: 19, foodSizeId: null, tasteId: null, quantity: 1, note: "" },
+      { foodId: 1006, foodSizeId: null, tasteId: null, quantity: 1, note: "" },
+    ]);
+  }, 15000);
   it("restores saved selections and notes when returning to the menu", async () => {
     const user = userEvent.setup();
     const item = {

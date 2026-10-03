@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { isAxiosError } from "axios";
 import { usePolling } from "@/lib/use-polling";
 import FoodPhoto, { originalImageUrl } from "@/components/catalog/food-photo";
@@ -8,6 +8,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ChevronDown } from "lucide-react";
 import ServiceCallCard from "./service-call-card";
 import { Button } from "@/components/ui/button";
+import { ListPagination } from "@/components/ui/list-pagination";
 import {
   Dialog,
   DialogContent,
@@ -244,6 +245,7 @@ function QrMenuView({
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const [cartItems, setCartItems] = useState<QrCartItem[]>(cart);
   const [selectedSizes, setSelectedSizes] = useState<
@@ -261,20 +263,43 @@ function QrMenuView({
   );
   const [detailsFood, setDetailsFood] = useState<QrFood | null>(null);
   const pending = readQrPending(token) !== null;
-  const foods = menu.categories.flatMap((category) => category.food);
-  const shown = foods.filter(
-    (food) =>
-      (categoryId === null || food.foodTypeId === categoryId) &&
-      food.name
-        .toLocaleLowerCase("fi-FI")
-        .includes(query.toLocaleLowerCase("fi-FI")),
+  const foods = useMemo(
+    () => menu.categories.flatMap((category) => category.food),
+    [menu.categories],
   );
+  const categoriesById = useMemo(
+    () => new Map(menu.categories.map((category) => [category.id, category])),
+    [menu.categories],
+  );
+  const foodsById = useMemo(
+    () => new Map(foods.map((food) => [food.id, food])),
+    [foods],
+  );
+  const searchText = query.toLocaleLowerCase("fi-FI");
+  const shown = useMemo(
+    () =>
+      foods.filter(
+        (food) =>
+          (categoryId === null || food.foodTypeId === categoryId) &&
+          food.name.toLocaleLowerCase("fi-FI").includes(searchText),
+      ),
+    [foods, categoryId, searchText],
+  );
+  const pageSize = 12;
+  const currentPage = Math.min(
+    page,
+    Math.max(1, Math.ceil(shown.length / pageSize)),
+  );
+  const visibleFoods = shown.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  );
+  // EN: Paging limits mounted cards only; selections and totals use the complete menu and cart.
+  // FI: Sivutus rajaa vain näkyvät kortit; valinnat ja summat käyttävät koko ruokalistaa ja ostoskoria.
   const count = cartItems.reduce((sum, item) => sum + item.quantity, 0);
   const total = cartItems.reduce((sum, item) => {
-    const category = menu.categories.find((row) =>
-      row.food.some((food) => food.id === item.foodId),
-    );
-    const food = category?.food.find((row) => row.id === item.foodId);
+    const food = foodsById.get(item.foodId);
+    const category = food ? categoriesById.get(food.foodTypeId) : undefined;
     const size = category?.foodSizes.find((row) => row.id === item.foodSizeId);
     return (
       sum +
@@ -286,7 +311,7 @@ function QrMenuView({
   // EN: The menu card and detail dialog share the same selected options, note and cart quantity.
   // FI: Ruokalistakortti ja tietodialogi käyttävät samoja valittuja vaihtoehtoja, huomautusta ja ostoskorimäärää.
   const getSelection = (food: QrFood) => {
-    const category = menu.categories.find((row) => row.id === food.foodTypeId);
+    const category = categoriesById.get(food.foodTypeId);
     const sizeId = selectedSizes[food.id] ?? null;
     const tasteId = selectedTastes[food.id] ?? null;
     const note = (selectedNotes[food.id] ?? "").trim();
@@ -378,7 +403,10 @@ function QrMenuView({
           className="h-11 w-full rounded-lg border border-border bg-surface px-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
           placeholder="Hae ruokalistasta"
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setPage(1);
+          }}
         />
       </label>
       <div className="catalog-navigation mt-5 flex gap-2 overflow-x-auto pb-2">
@@ -387,7 +415,10 @@ function QrMenuView({
             key={category.id ?? "all"}
             type="button"
             aria-pressed={categoryId === category.id}
-            onClick={() => setCategoryId(category.id)}
+            onClick={() => {
+              setCategoryId(category.id);
+              setPage(1);
+            }}
             className={`min-h-12 shrink-0 border-b-[3px] px-3 text-sm ${categoryId === category.id ? "border-olive font-semibold text-olive" : "border-transparent text-muted-foreground"}`}
           >
             {category.name}
@@ -400,7 +431,7 @@ function QrMenuView({
             Tuotteita ei löytynyt.
           </p>
         )}
-        {shown.map((food) => {
+        {visibleFoods.map((food) => {
           const {
             category,
             sizeId,
@@ -530,6 +561,13 @@ function QrMenuView({
           );
         })}
       </div>
+      <ListPagination
+        label="QR-ruokalistan sivut"
+        total={shown.length}
+        page={currentPage}
+        pageSize={pageSize}
+        onPageChange={setPage}
+      />
       <Dialog
         open={detailsFood !== null}
         onOpenChange={(open) => {

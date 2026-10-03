@@ -4,7 +4,15 @@ import { isAxiosError } from "axios";
 import { LogOut, Search, Settings2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useContext, useEffect, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { StaffRoleContext } from "@/lib/staff-role-context";
 import { clearAuthSession } from "@/lib/auth-session";
 
@@ -85,6 +93,36 @@ function elapsed(submittedAt: string, now: number) {
   return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
+// EN: The clock updates every second; unchanged item content does not need to render again.
+// FI: Kello päivittyy joka sekunti; muuttumatonta annossisältöä ei tarvitse piirtää uudelleen.
+const KitchenItems = memo(function KitchenItems({
+  items,
+}: {
+  items: StaffOrder["items"];
+}) {
+  return (
+    <div className="flex-1 space-y-2 px-4 py-4 text-[14px] leading-5 text-[#2c2b27]">
+      {items.map((item, index) => (
+        <div key={index}>
+          <p className="font-medium">
+            {item.name} × {item.quantity}
+          </p>
+          {item.modifiers.length > 0 && (
+            <p className="text-[12px] text-[#767168]">
+              {item.modifiers.map((modifier) => modifier.name).join(", ")}
+            </p>
+          )}
+          {item.note && (
+            <p className="mt-2 border-l-[3px] border-[#a68c62] pl-2 text-[12px] text-[#6b5840]">
+              Huomio: {item.note}
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+});
+
 function KitchenCard({
   order,
   now,
@@ -128,25 +166,7 @@ function KitchenCard({
             : elapsed(order.submittedAt, now)}
         </span>
       </div>
-      <div className="flex-1 space-y-2 px-4 py-4 text-[14px] leading-5 text-[#2c2b27]">
-        {order.items.map((item, index) => (
-          <div key={index}>
-            <p className="font-medium">
-              {item.name} × {item.quantity}
-            </p>
-            {item.modifiers.length > 0 && (
-              <p className="text-[12px] text-[#767168]">
-                {item.modifiers.map((modifier) => modifier.name).join(", ")}
-              </p>
-            )}
-            {item.note && (
-              <p className="mt-2 border-l-[3px] border-[#a68c62] pl-2 text-[12px] text-[#6b5840]">
-                Huomio: {item.note}
-              </p>
-            )}
-          </div>
-        ))}
-      </div>
+      <KitchenItems items={order.items} />
       <div className="px-4 pb-3">
         {order.status === "CONFIRMED" ? (
           <Button
@@ -339,6 +359,18 @@ export default function KitchenPage() {
   }
 
   const query = search.trim().toLocaleLowerCase("fi-FI");
+  const visibleColumns = useMemo(
+    () =>
+      columns.map((column) => ({
+        ...column,
+        visible: orders.filter(
+          (order) =>
+            order.status === column.status && matchesSearch(order, query),
+        ),
+        total: orders.filter((order) => order.status === column.status).length,
+      })),
+    [orders, query],
+  );
   const stale =
     state === "ready" &&
     lastUpdate !== null &&
@@ -449,11 +481,8 @@ export default function KitchenPage() {
           />
         ) : (
           <div className="grid min-w-0 gap-6 md:grid-cols-2 lg:grid-cols-3 lg:gap-[30px]">
-            {columns.map((column) => {
-              const visible = orders.filter(
-                (order) =>
-                  order.status === column.status && matchesSearch(order, query),
-              );
+            {visibleColumns.map((column) => {
+              const visible = column.visible;
               return (
                 <section
                   key={column.status}
@@ -462,7 +491,11 @@ export default function KitchenPage() {
                 >
                   <div className="flex items-center justify-between gap-2">
                     <h2 className="text-[20px] font-semibold">
-                      {column.title}
+                      {column.title}{" "}
+                      <span className="ml-2 text-sm font-normal text-muted-foreground">
+                        ({visible.length}
+                        {query ? ` / ${column.total}` : ""})
+                      </span>
                     </h2>
                     <span
                       className={`rounded-[5px] px-2 py-1 text-[11px] text-[#33473d] ${column.badgeClass}`}

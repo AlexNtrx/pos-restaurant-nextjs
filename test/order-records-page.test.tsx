@@ -66,6 +66,31 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("HIS-01 Order records", () => {
+  it("bounds history rows, opens the last-page order and resets after filtering", async () => {
+    const user = userEvent.setup();
+    orders.fetchOrderPages.mockResolvedValue({
+      results: Array.from({ length: 101 }, (_, index) => ({
+        ...order,
+        id: index + 1,
+      })),
+      serverTime: order.updatedAt,
+    });
+    render(<OrderRecordsPage />);
+    await screen.findByText("1–50 / 101");
+    expect(screen.getAllByRole("button", { name: "Avaa" })).toHaveLength(50);
+    expect(orders.fetchOrderDetail).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Seuraava" }));
+    expect(screen.getByText("51–100 / 101")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Seuraava" }));
+    expect(screen.getAllByRole("button", { name: "Avaa" })).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "Avaa" }));
+    expect(orders.fetchOrderDetail).toHaveBeenLastCalledWith(1);
+    await screen.findByText("Tilauksen summa:", { exact: false });
+    await user.click(screen.getByRole("button", { name: "Sulje" }));
+    await user.selectOptions(screen.getByLabelText("Tilauskanava"), "QR");
+    await screen.findByText("1–50 / 101");
+    expect(screen.getAllByRole("button", { name: "Avaa" })).toHaveLength(50);
+  }, 15000);
   it("keeps rejected Orders separate from receipts and filters by channel/session", async () => {
     const user = userEvent.setup();
     render(<OrderRecordsPage />);

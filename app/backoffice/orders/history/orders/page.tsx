@@ -6,6 +6,7 @@ import utc from "dayjs/plugin/utc";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { ListPagination } from "@/components/ui/list-pagination";
 import { OrderRefund } from "@/components/orders/order-refund";
 import {
   Dialog,
@@ -91,6 +92,16 @@ export default function OrderRecordsPage() {
   );
   const [sessionInput, setSessionInput] = useState("");
   const [orders, setOrders] = useState<StaffOrder[]>([]);
+  const [page, setPage] = useState(1);
+  const pageSize = 50;
+  const currentPage = Math.min(
+    page,
+    Math.max(1, Math.ceil(orders.length / pageSize)),
+  );
+  const visibleOrders = orders.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  );
   const [state, setState] = useState<
     "loading" | "ready" | "error" | "forbidden"
   >("loading");
@@ -145,6 +156,7 @@ export default function OrderRecordsPage() {
         ),
       );
       setState("ready");
+      setPage(1);
     } catch (reason: unknown) {
       if (requestId !== requestSequence.current) return;
       setError(getApiErrorMessage(reason, "Tilauksia ei voitu ladata."));
@@ -257,53 +269,65 @@ export default function OrderRecordsPage() {
           description="Valitulla aikavälillä ei ole Orders-tietueita. Vanhemmat myynnit näkyvät kuittihistoriassa."
         />
       ) : (
-        <div className="overflow-x-auto">
-          <Table className="min-w-[760px] text-[13px]">
-            <TableHeader className="bg-[#efece6]">
-              <TableRow>
-                <TableHead>Tilaus</TableHead>
-                <TableHead>Kanava</TableHead>
-                <TableHead>Pöytä / istunto</TableHead>
-                <TableHead>Summa</TableHead>
-                <TableHead>Tila</TableHead>
-                <TableHead className="text-right">Toiminto</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {orders.map((order) => (
-                <TableRow key={order.id}>
-                  <TableCell className="font-medium">
-                    #{order.id} · {formatTime(order.submittedAt)}
-                  </TableCell>
-                  <TableCell>
-                    {order.channel === "QR"
-                      ? "QR"
-                      : order.channel === "STAFF"
-                        ? "Tarjoilija"
-                        : order.serviceType === "TAKEAWAY"
-                          ? "Mukaan"
-                          : "Kassa"}
-                  </TableCell>
-                  <TableCell>
-                    {order.serviceType === "TAKEAWAY"
-                      ? `Nouto #${order.id}`
-                      : `${order.tableNo}${order.tableSessionId ? ` / #${order.tableSessionId}` : ""}`}
-                  </TableCell>
-                  <TableCell>{currency.format(order.total)}</TableCell>
-                  <TableCell>
-                    <StatusBadge tone={orderStatusTone(order.status)}>
-                      {statusLabels[order.status]}
-                    </StatusBadge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button size="sm" onClick={() => void openDetail(order.id)}>
-                      Avaa
-                    </Button>
-                  </TableCell>
+        <div>
+          <div className="overflow-x-auto">
+            <Table className="min-w-[760px] text-[13px]">
+              <TableHeader className="bg-[#efece6]">
+                <TableRow>
+                  <TableHead>Tilaus</TableHead>
+                  <TableHead>Kanava</TableHead>
+                  <TableHead>Pöytä / istunto</TableHead>
+                  <TableHead>Summa</TableHead>
+                  <TableHead>Tila</TableHead>
+                  <TableHead className="text-right">Toiminto</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {visibleOrders.map((order) => (
+                  <TableRow key={order.id}>
+                    <TableCell className="font-medium">
+                      #{order.id} · {formatTime(order.submittedAt)}
+                    </TableCell>
+                    <TableCell>
+                      {order.channel === "QR"
+                        ? "QR"
+                        : order.channel === "STAFF"
+                          ? "Tarjoilija"
+                          : order.serviceType === "TAKEAWAY"
+                            ? "Mukaan"
+                            : "Kassa"}
+                    </TableCell>
+                    <TableCell>
+                      {order.serviceType === "TAKEAWAY"
+                        ? `Nouto #${order.id}`
+                        : `${order.tableNo}${order.tableSessionId ? ` / #${order.tableSessionId}` : ""}`}
+                    </TableCell>
+                    <TableCell>{currency.format(order.total)}</TableCell>
+                    <TableCell>
+                      <StatusBadge tone={orderStatusTone(order.status)}>
+                        {statusLabels[order.status]}
+                      </StatusBadge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        size="sm"
+                        onClick={() => void openDetail(order.id)}
+                      >
+                        Avaa
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <ListPagination
+            label="Tilaushistorian sivut"
+            total={orders.length}
+            page={currentPage}
+            pageSize={pageSize}
+            onPageChange={setPage}
+          />
         </div>
       )}
       <p className="text-[11px] text-muted-foreground">

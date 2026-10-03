@@ -1066,6 +1066,7 @@ export default function Page() {
         </div>
         <div className="p-7">
           <CatalogGrid
+            key={`${activeFilter}:${searchQuery}`}
             foods={visibleFoods}
             disabled={draftMutationBusy || checkoutBusy}
             status={catalogStatus}
