@@ -1,47 +1,30 @@
-# Restaurant POS & KDS — Frontend
+# Ravintola POS – Frontend
 
-The Next.js frontend for restaurant counter sales, customer QR ordering, kitchen preparation, and waiter service. The interface primarily uses Finnish labels.
+Ravintola POS yhdistää kassamyynnin, pöytäkohtaiset QR-tilaukset ja keittiön tilausten käsittelyn samaan työnkulkuun.
+
+Tämä repository sisältää henkilökunnan kassa-, keittiö- ja tarjoilijanäkymät sekä asiakkaan QR-tilausnäkymän.
 
 - [Backend repository](https://github.com/AlexNtrx/pos-restaurant-backend)
-- [Live frontend](https://pos-restaurant-nextjs.vercel.app)
-- [Frontend v2.0.0 release](https://github.com/AlexNtrx/pos-restaurant-nextjs/releases/tag/v2.0.0)
-- [Backend v2.0.0 release](https://github.com/AlexNtrx/pos-restaurant-backend/releases/tag/v2.0.0)
+- [Julkaistu frontend](https://pos-restaurant-nextjs.vercel.app)
+- [Frontend-julkaisut](https://github.com/AlexNtrx/pos-restaurant-nextjs/releases)
+- [Backend-julkaisut](https://github.com/AlexNtrx/pos-restaurant-backend/releases)
 
-## Release status
+## Toiminnot
 
-`v2.0.0` is a published source release. The frontend is deployed on Vercel and the backend on Render. The sign-in page, backend health endpoint, and frontend-origin CORS preflight have been verified. Neon migration verification, persistent upload storage, real-account sign-in, and pilot acceptance remain outstanding.
+- Kassamyynti paikan päällä ruokailuun ja mukaan otettaville tilauksille, kuitit ja uudelleentulostus.
+- Asiakkaan QR-menu, annoskoot ja lisävalinnat, tilaaminen ja tilausten seuranta.
+- Pöytäistunnot, tilausten vastaanotto, keittiökäsittely ja tarjoilun vahvistaminen.
+- Henkilökunnan, ruokalistan, ravintolan asetusten ja raporttien hallinta.
 
-## Features
+Backend vahvistaa käyttöoikeudet, hinnat ja summat palvelinpuolella.
 
-- Counter dine-in and takeaway checkout, pickup numbers, receipt previews, and receipt reprinting.
-- Browser draft carts scoped to the signed-in staff member and table or takeaway, with server-derived quotes.
-- Customer QR menu, sizes and modifiers, notes, cart, submission, and order tracking.
-- Table sessions, QR modes, staff order inbox, and table-session settlement.
-- Kitchen board for confirmed, preparing, and ready orders.
-- Role-based access for `admin`, `user`, `waiter`, and `kitchen` accounts.
-- Waiter table ordering, serving confirmation, and customer service calls.
-- Catalog and staff management, restaurant settings, operational dashboard, order history, receipt history, and sales reports.
+## Teknologiat ja vaatimukset
 
-### Staff roles
+Next.js 16 (React 19), TypeScript, Tailwind CSS 4, Radix UI, Axios ja Vitest.
 
-| Role      | Sign-in destination     | Access                                                                                                                                                                       |
-| --------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `admin`   | `/backoffice/dashboard` | All staff workflows, staff and catalog management, restaurant settings, dashboard, history, and reports.                                                                     |
-| `user`    | `/backoffice/sale`      | Counter sales and payments, incoming orders, kitchen preparation, waiter operations, service calls, and table-session operations. No admin-only management or reports.       |
-| `waiter`  | `/backoffice/waiter`    | Table ordering, order tracking, serving, permitted unpaid-order cancellation, and service calls. No counter payments or kitchen preparation.                                 |
-| `kitchen` | `/backoffice/kitchen`   | Kitchen board only: view orders, start preparation, mark ready, and sign out. No serving, payments, or management. Displayed as **Keittiöhenkilökunta** in staff management. |
+Tarvitset Node.js 24:n, npm:n, käynnissä olevan backendin ja aktiivisen henkilökuntatunnuksen. Tämä repository ei luo tietokantaa tai käyttäjätilejä.
 
-Admins create and edit staff accounts in **Henkilöstö**. The backend verifies the active account and current database role for every protected operation; frontend route guards control navigation. Customers use session-scoped QR access without a staff account.
-
-The backend verifies prices, totals, and order transitions.
-
-## Stack and requirements
-
-Next.js 16, React 19, TypeScript, Tailwind CSS 4, Radix UI, Axios, and Vitest. Exact dependency versions are recorded in `package-lock.json`.
-
-You need Node.js and npm compatible with the installed dependencies, a running backend, and an existing active staff account. This repository does not provision accounts or a database.
-
-## Local development
+## Käynnistys paikallisesti
 
 ```bash
 git clone https://github.com/AlexNtrx/pos-restaurant-nextjs.git
@@ -49,109 +32,39 @@ cd pos-restaurant-nextjs
 npm ci
 ```
 
-To use the published source, run `git checkout v2.0.0` before installing dependencies.
-
-Create `.env.local` in the repository root:
+Luo `.env.local` projektin juureen:
 
 ```dotenv
 NEXT_PUBLIC_API_SERVER=http://localhost:3001
 ```
 
-Start the backend using its README, then run:
+Arvo on backendin osoite ilman `/api`-polkua. Sovellus lisää polun itse. Älä lisää salaisuuksia `NEXT_PUBLIC_*`-muuttujiin.
+
+Käynnistä backend sen README-ohjeiden mukaan ja suorita frontend:
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000/signin](http://localhost:3000/signin) and sign in with an existing staff account.
+Avaa [http://localhost:3000/signin](http://localhost:3000/signin) ja kirjaudu sisään aktiivisella henkilökuntatunnuksella.
 
-## Configuration
-
-| Variable                          | Purpose                                                                                                     | Default                        |
-| --------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------ |
-| `NEXT_PUBLIC_API_SERVER`          | Backend origin without `/api`; the shared client appends `/api`                                             | `http://localhost:3001`        |
-| `NEXT_PUBLIC_ORD02_DRAFT_ENABLED` | Set to `false` to use legacy SaleTemp carts for dine-in; saved drafts remain and takeaway still uses drafts | Enabled unless exactly `false` |
-
-Public environment values are embedded in browser assets at build time. Rebuild after changing them and never put secrets in `NEXT_PUBLIC_*` variables.
-
-## Main routes
-
-| Route                               | Purpose                                                          | Access                              |
-| ----------------------------------- | ---------------------------------------------------------------- | ----------------------------------- |
-| `/signin`                           | Staff sign-in                                                    | Public                              |
-| `/backoffice/dashboard`             | Operational overview                                             | Admin                               |
-| `/backoffice/orders/new`            | Counter checkout                                                 | Admin, user                         |
-| `/backoffice/orders/inbox`          | Incoming orders                                                  | Admin, user                         |
-| `/backoffice/kitchen`               | Kitchen board                                                    | Admin, user, kitchen                |
-| `/backoffice/waiter`                | Table orders, serving, service calls                             | Admin, user, waiter                 |
-| `/backoffice/orders/history/orders` | Order lifecycle history                                          | Admin                               |
-| `/backoffice/orders/history`        | Receipt history                                                  | Admin                               |
-| `/backoffice/catalog/menu-items`    | Menu management                                                  | Admin                               |
-| `/backoffice/staff`                 | Staff accounts, including kitchen staff                          | Admin                               |
-| `/backoffice/settings/tables`       | Tables and sessions                                              | Admin, user; actions depend on role |
-| `/backoffice/reports/daily-sales`   | Daily report                                                     | Admin                               |
-| `/backoffice/reports/monthly-sales` | Monthly report                                                   | Admin                               |
-| `/order/[tableToken]`               | Customer menu, with nested cart, confirmation, and status routes | Valid table QR token                |
-
-QR links come from staff table-session operations. Backend authorization also applies to each protected action.
-
-## Development checks
-
-Run from the repository root:
+## Tarkistukset
 
 ```bash
-npx vitest run
-npm run test:report-contracts
-npm run test:release-config
-npx tsc --noEmit --incremental false
+npm test
+npm run typecheck
 npm run lint
 npm run build
 npm run format:check
 ```
 
-Focused scripts include `test:pos`, `test:ui`, and `test:shell`. Component and contract tests do not replace browser verification against a running backend.
+## Rajaukset
 
-## Release build
+- Ostoskoriluonnokset tallennetaan selaimeen, eivätkä ne synkronoidu laitteiden välillä.
+- Tilauspäivitykset käyttävät kyselyitä; reaaliaikaisia päivityksiä ei ole toteutettu.
+- Pöytäistunnolla on yksi lasku; laskun jakamista ei ole toteutettu.
+- Asiakastilejä, verkkomaksuja, toimituksia, varastonhallintaa, pöytävarauksia ja kanta-asiakasohjelmaa ei ole toteutettu.
 
-### Vercel deployment
+## Julkaisun tila
 
-Use the repository root (`./`), the Next.js framework preset, and Node.js 24.x. `vercel.json` sets the install command to `npm ci` and the build command to `npm run build:release`; leave the output directory at the framework default.
-
-Set `NEXT_PUBLIC_API_SERVER=https://next-pos-api.onrender.com` in Vercel before building. The backend must allow `https://pos-restaurant-nextjs.vercel.app` in `CORS_ORIGINS`. Keep database URLs and authentication secrets in the backend environment only. Pushes to `main` trigger production deployments.
-
-### Build locally
-
-Set `NEXT_PUBLIC_API_SERVER` in the build environment to the real HTTPS backend origin, then run:
-
-```bash
-npm run release:check
-npm run build:release
-npm run start
-```
-
-The guard rejects missing, non-HTTPS, loopback, or malformed origins and URLs containing credentials, paths, queries, or fragments. It does not verify DNS, TLS, CORS, or API reachability. `npm run build` remains available for local production-style testing with a local API.
-
-Deploy a compatible backend with required migrations applied before enabling customer ordering. Begin with QR disabled, verify menu-only access, and enable ordering for a limited pilot after deployment checks pass.
-
-## Project structure
-
-| Directory     | Responsibility                                              |
-| ------------- | ----------------------------------------------------------- |
-| `app/`        | App Router pages, layouts, and route-local components/hooks |
-| `components/` | Shared UI and order components                              |
-| `lib/`        | API clients, session policy, access rules, and contracts    |
-| `scripts/`    | Release API-origin validation and build wrapper             |
-| `test/`       | Component, behavioral, and contract tests                   |
-
-## Limits and troubleshooting
-
-- Draft carts stay in the browser and do not sync between devices.
-- Order and kitchen updates use polling; realtime delivery is not implemented.
-- Table-session payment is one bill per session; split or partial payment is not supported.
-- Customer accounts, online payment, delivery, inventory, reservations, and loyalty are outside the implemented scope.
-- If sign-in or requests fail, check the backend, configured origin, browser network response, and active account. A `401` clears the session and redirects to sign-in.
-- If QR access fails, check the session, QR mode, token expiry, and backend QR secret configuration.
-
-## Workspace documentation
-
-The combined development workspace maintains `docs/workflow-roadmap.md` for status, `docs/backend-handoff.md` for API contracts, `docs/plan-0.md` for product/design decisions, and `docs/implementation-log.md` for verified history. Those files are outside this standalone repository and are not included by cloning it alone. The linked release notes provide the public version summary.
+`v2.0.0` on julkaistu lähdekoodiversio. Tuotantotarkistukset ja pilotin hyväksyntä ovat vielä kesken.
