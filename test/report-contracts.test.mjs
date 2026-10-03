@@ -7,6 +7,8 @@ import {
 import {
   isBillHistoryResponse,
   parseBillHistoryResponse,
+  parsePagedBillHistory,
+  parseBillDetail,
 } from "../app/backoffice/salereport/_lib/bill-history-contract.ts";
 import {
   isFood,
@@ -176,6 +178,75 @@ test("bill-history parser rejects malformed summary data", () => {
 });
 
 const category = { id: 1, name: "Main", remark: "" };
+
+const { BillSaleDetails: _items, ...validHeader } = validBillHistory.results[0];
+const validPage = {
+  results: [{ ...validHeader, refundSummary: [] }],
+  summary: validBillHistory.summary,
+  pagination: {
+    page: 1,
+    pageSize: 50,
+    totalCount: 1,
+    totalPages: 1,
+    snapshotId: 1,
+  },
+};
+test("paged history validates bounded headers and separate immutable detail", () => {
+  assert.equal(parsePagedBillHistory(validPage), validPage);
+  assert.equal(
+    parseBillDetail({ result: validBillHistory.results[0] }),
+    validBillHistory.results[0],
+  );
+  assert.equal(parseBillDetail({ result: validPage.results[0] }), null);
+});
+test("paged history rejects oversized pages, inconsistent totals and invalid money", () => {
+  for (const pagination of [
+    { ...validPage.pagination, pageSize: 101 },
+    { ...validPage.pagination, page: 0 },
+    { ...validPage.pagination, snapshotId: 0 },
+    { ...validPage.pagination, totalCount: 2 },
+    { ...validPage.pagination, totalPages: 99 },
+  ])
+    assert.equal(parsePagedBillHistory({ ...validPage, pagination }), null);
+  assert.equal(
+    parsePagedBillHistory({
+      ...validPage,
+      summary: { ...validPage.summary, activeAmount: NaN },
+    }),
+    null,
+  );
+  assert.equal(
+    parsePagedBillHistory({
+      ...validPage,
+      results: [{ ...validPage.results[0], amount: Infinity }],
+    }),
+    null,
+  );
+});
+test("paged history rejects duplicate bills and refund statuses or eager item collections", () => {
+  assert.equal(
+    parsePagedBillHistory({
+      ...validPage,
+      results: [validPage.results[0], validPage.results[0]],
+    }),
+    null,
+  );
+  const refund = { status: "COMPLETED", amount: 25, count: 1 };
+  assert.equal(
+    parsePagedBillHistory({
+      ...validPage,
+      results: [{ ...validPage.results[0], refundSummary: [refund, refund] }],
+    }),
+    null,
+  );
+  assert.equal(
+    parsePagedBillHistory({
+      ...validPage,
+      results: [{ ...validPage.results[0], BillSaleDetails: [] }],
+    }),
+    null,
+  );
+});
 
 test("catalog validators accept the existing read-only API contracts", () => {
   assert.equal(isFoodCategory(category), true);

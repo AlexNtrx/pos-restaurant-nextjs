@@ -130,3 +130,96 @@ export const isBillHistoryResponse = (
 export const parseBillHistoryResponse = (
   value: unknown,
 ): BillHistoryResponse | null => (isBillHistoryResponse(value) ? value : null);
+
+export type BillHeader = Omit<Bill, "BillSaleDetails" | "Refunds"> & {
+  refundSummary: {
+    status: "PENDING" | "FAILED" | "COMPLETED";
+    amount: number;
+    count: number;
+  }[];
+};
+export type BillPagination = {
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  snapshotId: number;
+};
+export type PagedBillHistory = {
+  results: BillHeader[];
+  summary: BillSummary;
+  pagination: BillPagination;
+};
+const integerInRange = (value: unknown, min: number, max: number) =>
+  typeof value === "number" &&
+  Number.isSafeInteger(value) &&
+  value >= min &&
+  value <= max;
+
+// EN: Validate paged headers separately from legacy item snapshots; reject unbounded or inconsistent pagination before rendering.
+// FI: Tarkista sivutetut otsikkotiedot erillään vanhoista tuoteriveistä; hylkää rajaton tai ristiriitainen sivutus ennen näyttämistä.
+export const parsePagedBillHistory = (
+  value: unknown,
+): PagedBillHistory | null => {
+  if (
+    !isRecord(value) ||
+    !isRecord(value.pagination) ||
+    !isBillSummary(value.summary) ||
+    !Array.isArray(value.results)
+  )
+    return null;
+  const { page, pageSize, totalCount, totalPages, snapshotId } =
+    value.pagination;
+  if (
+    !integerInRange(page, 1, 1_000_000) ||
+    !integerInRange(pageSize, 1, 100) ||
+    !integerInRange(totalCount, 0, Number.MAX_SAFE_INTEGER) ||
+    !integerInRange(snapshotId, 0, 2_147_483_647) ||
+    totalPages !== Math.ceil((totalCount as number) / (pageSize as number)) ||
+    value.results.length > (pageSize as number)
+  )
+    return null;
+  const summary = value.summary;
+  if (
+    !integerInRange(summary.activeCount, 0, Number.MAX_SAFE_INTEGER) ||
+    !integerInRange(summary.cancelledCount, 0, Number.MAX_SAFE_INTEGER) ||
+    !Number.isFinite(summary.activeAmount) ||
+    !Number.isFinite(summary.cancelledAmount) ||
+    summary.activeCount + summary.cancelledCount !== totalCount
+  )
+    return null;
+  const ids = new Set<number>();
+  for (const bill of value.results) {
+    if (
+      !isRecord(bill) ||
+      !isBill({ ...bill, BillSaleDetails: [] }) ||
+      bill.BillSaleDetails !== undefined ||
+      bill.Refunds !== undefined ||
+      !integerInRange(bill.id, 1, snapshotId as number) ||
+      !Number.isFinite(bill.amount) ||
+      !Number.isFinite(Date.parse(String(bill.payDate))) ||
+      !Array.isArray(bill.refundSummary) ||
+      bill.refundSummary.length > 3 ||
+      ids.has(bill.id as number)
+    )
+      return null;
+    ids.add(bill.id as number);
+    const statuses = new Set<string>();
+    for (const refund of bill.refundSummary) {
+      if (
+        !isRecord(refund) ||
+        !["PENDING", "FAILED", "COMPLETED"].includes(String(refund.status)) ||
+        typeof refund.amount !== "number" ||
+        !Number.isFinite(refund.amount) ||
+        !integerInRange(refund.count, 1, Number.MAX_SAFE_INTEGER) ||
+        statuses.has(String(refund.status))
+      )
+        return null;
+      statuses.add(String(refund.status));
+    }
+  }
+  return value as PagedBillHistory;
+};
+
+export const parseBillDetail = (value: unknown): Bill | null =>
+  isRecord(value) && isBill(value.result) ? value.result : null;

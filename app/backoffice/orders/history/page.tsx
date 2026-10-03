@@ -29,8 +29,11 @@ import {
 import api from "@/lib/api";
 import { getApiErrorMessage, isPermissionDeniedError } from "@/lib/api-error";
 import {
-  parseBillHistoryResponse,
+  parsePagedBillHistory,
+  parseBillDetail,
   type Bill,
+  type BillHeader,
+  type BillPagination,
   type BillSummary,
 } from "../../salereport/_lib/bill-history-contract";
 import ReceiptPreview from "../../sale/_components/receipt-preview";
@@ -54,9 +57,17 @@ export default function ReceiptHistoryPage() {
   const today = dayjs().tz(businessTimeZone).format("YYYY-MM-DD");
   const [fromDate, setFromDate] = useState(today);
   const [toDate, setToDate] = useState(today);
-  const [bills, setBills] = useState<Bill[]>([]);
+  const [bills, setBills] = useState<BillHeader[]>([]);
   const [summary, setSummary] = useState(emptySummary);
-  const [selectedBill, setSelectedBill] = useState<Bill | null>(null);
+  const [selectedBill, setSelectedBill] = useState<BillHeader | null>(null);
+  const [billDetail, setBillDetail] = useState<Bill | null>(null);
+  const [detailStatus, setDetailStatus] = useState<
+    "loading" | "ready" | "error"
+  >("loading");
+  const [detailError, setDetailError] = useState("");
+  const [pagination, setPagination] = useState<BillPagination | null>(null);
+  const listRequest = useRef<AbortController | null>(null);
+  const detailRequest = useRef<AbortController | null>(null);
   const [receiptUrl, setReceiptUrl] = useState("");
   const [printing, setPrinting] = useState(false);
   const [printError, setPrintError] = useState("");
@@ -66,42 +77,105 @@ export default function ReceiptHistoryPage() {
   >("loading");
   const [error, setError] = useState("");
 
-  const load = useCallback(async () => {
-    if (fromDate > toDate) {
-      setError("Alkupäivä ei voi olla päättymispäivän jälkeen.");
-      setStatus("error");
-      return;
-    }
-    setStatus("loading");
-    setError("");
-    try {
-      const response = await api.post("/billSale/list", {
-        startDate: fromDate,
-        endDate: toDate,
-      });
-      const parsed = parseBillHistoryResponse(response.data);
-      if (!parsed)
-        throw new Error("Palvelin palautti virheellisen kuittihistorian.");
-      setBills(parsed.results);
-      setSummary(parsed.summary);
-      setStatus("ready");
-    } catch (reason: unknown) {
-      setError(getApiErrorMessage(reason, "Kuittihistoriaa ei voitu ladata."));
-      setStatus(isPermissionDeniedError(reason) ? "forbidden" : "error");
-    }
-  }, [fromDate, toDate]);
+  // EN: Abort replaced interval/page requests and ignore their late results; refresh starts a new ID ceiling at page one.
+  // FI: Keskeytä korvatut aikaväli- ja sivupyynnöt sekä ohita myöhäiset tulokset; päivitys aloittaa uuden ID-rajan ensimmäiseltä sivulta.
+  const load = useCallback(
+    async (page = 1, snapshotId?: number) => {
+      listRequest.current?.abort();
+      const controller = new AbortController();
+      listRequest.current = controller;
+      if (fromDate > toDate) {
+        setError("Alkupäivä ei voi olla päättymispäivän jälkeen.");
+        setStatus("error");
+        return;
+      }
+      setStatus("loading");
+      setError("");
+      try {
+        const response = await api.post(
+          "/billSale/history",
+          {
+            startDate: fromDate,
+            endDate: toDate,
+            page,
+            pageSize: 50,
+            ...(snapshotId !== undefined ? { snapshotId } : {}),
+          },
+          { signal: controller.signal },
+        );
+        if (controller.signal.aborted) return;
+        const parsed = parsePagedBillHistory(response.data);
+        if (!parsed)
+          throw new Error("Palvelin palautti virheellisen kuittihistorian.");
+        if (
+          parsed.pagination.page !== page ||
+          parsed.pagination.pageSize !== 50 ||
+          (snapshotId !== undefined &&
+            parsed.pagination.snapshotId !== snapshotId)
+        )
+          throw new Error("Palvelin palautti väärän kuittisivun.");
+        setBills(parsed.results);
+        setSummary(parsed.summary);
+        setPagination(parsed.pagination);
+        setStatus("ready");
+      } catch (reason: unknown) {
+        if (controller.signal.aborted) return;
+        setError(
+          getApiErrorMessage(reason, "Kuittihistoriaa ei voitu ladata."),
+        );
+        setStatus(isPermissionDeniedError(reason) ? "forbidden" : "error");
+      }
+    },
+    [fromDate, toDate],
+  );
 
   useEffect(() => {
     const requestId = window.setTimeout(() => void load(), 0);
-    return () => window.clearTimeout(requestId);
+    return () => {
+      window.clearTimeout(requestId);
+      listRequest.current?.abort();
+    };
   }, [load]);
 
   useEffect(
     () => () => {
       if (receiptUrlRef.current) URL.revokeObjectURL(receiptUrlRef.current);
+      listRequest.current?.abort();
+      detailRequest.current?.abort();
     },
     [],
   );
+
+  // EN: Late responses from another bill or a closed dialog must never replace the currently selected snapshot.
+  // FI: Toisen kuitin tai suljetun ikkunan myöhäinen vastaus ei saa korvata valittua kuittitilannetta.
+  const openBill = async (bill: BillHeader) => {
+    detailRequest.current?.abort();
+    const controller = new AbortController();
+    detailRequest.current = controller;
+    setSelectedBill(bill);
+    setBillDetail(null);
+    setDetailStatus("loading");
+    setDetailError("");
+    setPrintError("");
+    try {
+      const response = await api.get(`/billSale/detail/${bill.id}`, {
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted) return;
+      const parsed = parseBillDetail(response.data);
+      if (!parsed || parsed.id !== bill.id)
+        throw new Error("Palvelin palautti virheellisen kuitin.");
+      setBillDetail(parsed);
+      setDetailStatus("ready");
+    } catch (reason) {
+      if (controller.signal.aborted) return;
+      setDetailError(
+        getApiErrorMessage(reason, "Kuitin tietoja ei voitu ladata."),
+      );
+      setDetailStatus("error");
+    }
+  };
+  const shownBill = billDetail ?? selectedBill;
 
   const closeReceipt = () => {
     if (receiptUrlRef.current) URL.revokeObjectURL(receiptUrlRef.current);
@@ -194,19 +268,23 @@ export default function ReceiptHistoryPage() {
             Voimassa olevat kuitit
           </p>
           <p className="mt-1 text-2xl font-medium">
-            {currencyFormatter.format(summary.activeAmount)}
+            {status === "ready"
+              ? currencyFormatter.format(summary.activeAmount)
+              : "—"}
           </p>
           <p className="text-xs text-muted-foreground">
-            {summary.activeCount} kuittia
+            {status === "ready" ? summary.activeCount : "—"} kuittia
           </p>
         </div>
         <div className="rounded-[10px] border border-border bg-surface p-4">
           <p className="text-xs text-muted-foreground">Perutut kuitit</p>
           <p className="mt-1 text-2xl font-medium text-destructive">
-            {currencyFormatter.format(summary.cancelledAmount)}
+            {status === "ready"
+              ? currencyFormatter.format(summary.cancelledAmount)
+              : "—"}
           </p>
           <p className="text-xs text-muted-foreground">
-            {summary.cancelledCount} kuittia
+            {status === "ready" ? summary.cancelledCount : "—"} kuittia
           </p>
         </div>
       </div>
@@ -277,20 +355,19 @@ export default function ReceiptHistoryPage() {
                   >
                     {bill.status === "use" ? "Voimassa" : "Peruttu"}
                   </StatusBadge>
-                  {bill.Refunds?.map((refund, index) => (
-                    <p key={index} className="mt-1 text-xs">
+                  {bill.refundSummary.map((refund) => (
+                    <p key={refund.status} className="mt-1 text-xs">
                       {refund.status === "COMPLETED"
                         ? "Palautettu"
                         : refund.status === "FAILED"
                           ? "Palautus epäonnistui"
                           : "Palautus kesken"}
                       : {currencyFormatter.format(refund.amount)}
-                      {refund.reference ? ` · ${refund.reference}` : ""}
                     </p>
                   ))}
                 </TableCell>
                 <TableCell className="text-right">
-                  <Button size="sm" onClick={() => setSelectedBill(bill)}>
+                  <Button size="sm" onClick={() => void openBill(bill)}>
                     Avaa
                   </Button>
                 </TableCell>
@@ -298,6 +375,38 @@ export default function ReceiptHistoryPage() {
             ))}
           </TableBody>
         </Table>
+      )}
+
+      {status === "ready" && pagination && (
+        <nav
+          aria-label="Kuittihistorian sivutus"
+          className="flex flex-wrap items-center justify-between gap-3"
+        >
+          <p className="text-sm text-muted-foreground">
+            Sivu {pagination.page} / {Math.max(1, pagination.totalPages)} ·{" "}
+            {pagination.totalCount} kuittia
+          </p>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              disabled={pagination.page <= 1}
+              onClick={() =>
+                void load(pagination.page - 1, pagination.snapshotId)
+              }
+            >
+              Edellinen
+            </Button>
+            <Button
+              size="sm"
+              disabled={pagination.page >= pagination.totalPages}
+              onClick={() =>
+                void load(pagination.page + 1, pagination.snapshotId)
+              }
+            >
+              Seuraava
+            </Button>
+          </div>
+        </nav>
       )}
 
       <p className="text-[11px] text-muted-foreground">
@@ -310,7 +419,9 @@ export default function ReceiptHistoryPage() {
         open={selectedBill !== null}
         onOpenChange={(open) => {
           if (!open && !printing) {
+            detailRequest.current?.abort();
             setSelectedBill(null);
+            setBillDetail(null);
             setPrintError("");
           }
         }}
@@ -324,20 +435,16 @@ export default function ReceiptHistoryPage() {
                 : ""}
             </DialogDescription>
           </DialogHeader>
-          {selectedBill?.status === "cancelled" && (
+          {shownBill?.status === "cancelled" && (
             <p className="text-sm text-destructive">
               Peruttu{" "}
-              {selectedBill.cancelledAt
-                ? dayjs(selectedBill.cancelledAt)
+              {shownBill.cancelledAt
+                ? dayjs(shownBill.cancelledAt)
                     .tz(businessTimeZone)
                     .format("DD.MM.YYYY HH:mm")
                 : ""}
-              {selectedBill.CancelledBy
-                ? ` · ${selectedBill.CancelledBy.name}`
-                : ""}
-              {selectedBill.cancelReason
-                ? ` · ${selectedBill.cancelReason}`
-                : ""}
+              {shownBill.CancelledBy ? ` · ${shownBill.CancelledBy.name}` : ""}
+              {shownBill.cancelReason ? ` · ${shownBill.cancelReason}` : ""}
             </p>
           )}
           {printError && (
@@ -345,38 +452,70 @@ export default function ReceiptHistoryPage() {
               {printError}
             </p>
           )}
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Tuote</TableHead>
-                <TableHead>Koko</TableHead>
-                <TableHead>Lisävalinta</TableHead>
-                <TableHead className="text-right">Hinta</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {selectedBill?.BillSaleDetails.map((detail) => (
-                <TableRow key={detail.id}>
-                  <TableCell>{detail.foodName}</TableCell>
-                  <TableCell>{detail.foodSizeName || "—"}</TableCell>
-                  <TableCell>{detail.tasteName || "—"}</TableCell>
-                  <TableCell className="text-right">
-                    {currencyFormatter.format(detail.price + detail.moneyAdded)}
-                  </TableCell>
-                </TableRow>
+          {detailStatus === "loading" ? (
+            <LoadingState title="Kuitin tietoja ladataan" />
+          ) : detailStatus === "error" ? (
+            <ErrorState
+              title="Kuitin tietoja ei voitu ladata"
+              description={detailError}
+              action={
+                <Button
+                  onClick={() => selectedBill && void openBill(selectedBill)}
+                >
+                  Yritä uudelleen
+                </Button>
+              }
+            />
+          ) : (
+            <>
+              {billDetail?.Refunds?.map((refund, index) => (
+                <p key={index} className="text-sm">
+                  {refund.status === "COMPLETED"
+                    ? "Palautettu"
+                    : refund.status === "FAILED"
+                      ? "Palautus epäonnistui"
+                      : "Palautus kesken"}
+                  : {currencyFormatter.format(refund.amount)} · {refund.method}
+                  {refund.reference ? ` · ${refund.reference}` : ""} ·{" "}
+                  {refund.reason}
+                </p>
               ))}
-            </TableBody>
-          </Table>
-          {selectedBill?.status === "use" && (
-            <Button
-              type="button"
-              className="w-fit"
-              disabled={printing}
-              onClick={() => void reprintBill(selectedBill)}
-            >
-              <Printer aria-hidden="true" />
-              {printing ? "Kuittia ladataan…" : "Tulosta kuitti"}
-            </Button>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Tuote</TableHead>
+                    <TableHead>Koko</TableHead>
+                    <TableHead>Lisävalinta</TableHead>
+                    <TableHead className="text-right">Hinta</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {billDetail?.BillSaleDetails.map((detail) => (
+                    <TableRow key={detail.id}>
+                      <TableCell>{detail.foodName}</TableCell>
+                      <TableCell>{detail.foodSizeName || "—"}</TableCell>
+                      <TableCell>{detail.tasteName || "—"}</TableCell>
+                      <TableCell className="text-right">
+                        {currencyFormatter.format(
+                          detail.price + detail.moneyAdded,
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {billDetail?.status === "use" && (
+                <Button
+                  type="button"
+                  className="w-fit"
+                  disabled={printing}
+                  onClick={() => void reprintBill(billDetail)}
+                >
+                  <Printer aria-hidden="true" />
+                  {printing ? "Kuittia ladataan…" : "Tulosta kuitti"}
+                </Button>
+              )}
+            </>
           )}
         </DialogContent>
       </Dialog>
