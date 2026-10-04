@@ -53,8 +53,36 @@ async function contextFor(profile) {
     unavailableBodyReads: 0,
   };
   const pending = new Set();
+  // EN: Report static categories and delivery timings only; URLs, access tokens and response bodies stay out of diagnostics.
+  // FI: Raportoi vain kiinteät luokat ja toimitusajat; URL-osoitteet, käyttöoikeustokenit ja vastaussisällöt eivät kuulu diagnostiikkaan.
+  const starts = new WeakMap();
+  const timings = new Map();
+  const apiDelivery = [];
+  const timingSummary = () =>
+    [...timings].map(([name, samples]) => ({
+      name,
+      samples: samples.length,
+      maxMs: +Math.max(...samples).toFixed(1),
+      averageMs: +(
+        samples.reduce((sum, value) => sum + value, 0) / samples.length
+      ).toFixed(1),
+    }));
+  const recordTiming = (name, request) => {
+    const started = starts.get(request);
+    if (started === undefined) return;
+    const samples = timings.get(name) ?? [];
+    samples.push(performance.now() - started);
+    timings.set(name, samples);
+  };
+  const apiLabel = (pathname) =>
+    pathname.endsWith("/menu")
+      ? "qr-menu"
+      : pathname.endsWith("/context")
+        ? "qr-context"
+        : "api-other";
   const imageKinds = { card: 0, detail: 0, original: 0 };
   context.on("request", (request) => {
+    starts.set(request, performance.now());
     if (request.url() !== "about:blank") requests.total++;
   });
   context.on("response", (response) => {
@@ -63,9 +91,19 @@ async function contextFor(profile) {
       if (response.status() >= 400) requests.errors++;
       if (url.origin === fixture.frontendOrigin) {
         requests.frontendDecodedBodyBytes += (await response.body()).length;
+        recordTiming(
+          "frontend-" + response.request().resourceType(),
+          response.request(),
+        );
       }
       if (url.origin === "https://api.example.invalid") {
         const data = await response.body();
+        recordTiming(
+          url.pathname.startsWith("/uploads/")
+            ? "api-image"
+            : apiLabel(url.pathname),
+          response.request(),
+        );
         requests.decodedBodyBytes += data.length;
         if (url.pathname.startsWith("/uploads/")) {
           requests.images++;
@@ -93,17 +131,27 @@ async function contextFor(profile) {
       requests.externalBlocked++;
       return route.abort();
     }
+    const backendStarted = performance.now();
     const response = await route.fetch({
       url: fixture.apiOrigin + url.pathname + url.search,
       timeout: 20000,
     });
     const body = await response.body();
+    const backendMs = performance.now() - backendStarted;
+    const injectedDelayMs = profile.slow
+      ? 150 + (body.length / 200000) * 1000
+      : 0;
+    if (!url.pathname.startsWith("/uploads/"))
+      apiDelivery.push({
+        name: apiLabel(url.pathname),
+        decodedBodyBytes: body.length,
+        backendMs: +backendMs.toFixed(1),
+        injectedDelayMs: +injectedDelayMs.toFixed(1),
+      });
     // EN: Fulfilled API traffic uses explicit latency/bandwidth injection; it is a lab approximation, not a real mobile network.
     // FI: Täytetty API-liikenne käyttää erikseen lisättyä viivettä ja kaistarajaa; kyse on laboratorioarviosta, ei aidosta mobiiliverkosta.
     if (profile.slow)
-      await new Promise((resolve) =>
-        setTimeout(resolve, 150 + (body.length / 200000) * 1000),
-      );
+      await new Promise((resolve) => setTimeout(resolve, injectedDelayMs));
     await route.fulfill({ response, body });
   });
   const vitals = {};
@@ -145,6 +193,8 @@ async function contextFor(profile) {
     imageKinds,
     vitals,
     pending,
+    timingSummary,
+    apiDelivery,
     pageErrors: () => pageErrors,
     rendererSnapshot: async () => {
       const counters = await session.send("Memory.getDOMCounters");
@@ -221,6 +271,8 @@ async function qrCase(profile) {
       initialImages,
       imageKinds: { ...imageKinds },
       requests: { ...requests },
+      requestTimings: state.timingSummary(),
+      apiDelivery: state.apiDelivery,
       webVitals: {
         LCP: null,
         CLS: null,
@@ -269,6 +321,8 @@ async function loginCase() {
       domElements,
       renderer,
       requests: state.requests,
+      requestTimings: state.timingSummary(),
+      apiDelivery: state.apiDelivery,
       webVitals: state.vitals,
       pageErrors: state.pageErrors(),
     });
