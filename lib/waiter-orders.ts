@@ -1,4 +1,5 @@
 import api from "@/lib/api";
+import { readStaffCatalog } from "@/lib/catalog-reads";
 import {
   changeOrderStatus,
   fetchOrderPages,
@@ -40,15 +41,19 @@ export async function loadWaiterTables(signal?: AbortSignal) {
 export async function loadWaiterSetup(signal?: AbortSignal) {
   const [tables, menu] = await Promise.all([
     loadWaiterTables(signal),
-    api.get<{ result: { categories: WaiterCategory[] } }>("/waiter/menu", {
+    readStaffCatalog(
+      "/waiter/menu",
+      (data) => {
+        const result = (data as { result?: { categories?: WaiterCategory[] } })
+          ?.result;
+        return Array.isArray(result?.categories) ? result.categories : null;
+      },
       signal,
-    }),
+    ),
   ]);
-  if (!Array.isArray(menu.data?.result?.categories))
-    throw new Error("Palvelin palautti virheelliset tarjoilijan tiedot.");
   return {
     tables,
-    categories: menu.data.result.categories,
+    categories: menu,
   };
 }
 

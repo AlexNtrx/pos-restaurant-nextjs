@@ -2,6 +2,7 @@ import "client-only";
 
 import { isAxiosError } from "axios";
 import { publicApi } from "@/lib/api";
+import { readQrCatalog } from "@/lib/catalog-reads";
 
 export type QrMode = "CLOSED" | "MENU_ONLY" | "ORDERING";
 export type QrContext = {
@@ -108,12 +109,10 @@ export const loadQrContext = async (token: string) => {
 };
 
 export const loadQrMenu = async (token: string) => {
-  const response = await publicApi.get<{ result: QrMenu }>(
-    `/qr/${encoded(token)}/menu`,
-  );
-  if (!Array.isArray(response.data?.result?.categories))
-    throw new Error("Invalid QR menu");
-  return response.data.result;
+  return readQrCatalog(token, (data) => {
+    const result = (data as { result?: QrMenu })?.result;
+    return Array.isArray(result?.categories) ? result! : null;
+  });
 };
 
 export const submitQrOrder = async (token: string, pending: QrPending) => {

@@ -1,6 +1,7 @@
 import "client-only";
 
 import config from "@/app/config";
+import { invalidateCatalogCache } from "@/lib/revalidated-cache";
 
 const sessionKeys = {
   token: config.token,
@@ -31,6 +32,7 @@ export function readAuthSession(): AuthSession | null {
 
 // Enforces the existing authentication and session behavior.
 export function writeAuthSession(session: AuthSession) {
+  invalidateCatalogCache();
   try {
     localStorage.setItem(sessionKeys.token, session.token);
     localStorage.setItem(sessionKeys.name, session.name);
@@ -44,6 +46,7 @@ export function writeAuthSession(session: AuthSession) {
 
 // Enforces the existing authentication and session behavior.
 export function clearAuthSession() {
+  invalidateCatalogCache();
   localStorage.removeItem(sessionKeys.token);
   localStorage.removeItem(sessionKeys.name);
   localStorage.removeItem(sessionKeys.userId);

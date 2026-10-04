@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import api from "@/lib/api";
+import { readStaffCatalog } from "@/lib/catalog-reads";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { usePolling } from "@/lib/use-polling";
 import type { StaffOrderDetail } from "@/app/backoffice/orders/inbox/_lib/staff-orders";
@@ -171,6 +172,9 @@ export default function Page() {
   const checkoutAttemptRef = useRef<CheckoutAttempt | null>(null);
   const pendingRequestId = useRef(0);
   const sentDetailRequestId = useRef(0);
+  // EN: Only the latest selected filter may publish its result, even when reads are shared.
+  // FI: Vain viimeksi valittu suodatin saa näyttää tuloksensa myös jaetuissa hauissa.
+  const catalogRequestId = useRef(0);
   const billUrlRef = useRef("");
   const confirmationResolverRef = useRef<((confirmed: boolean) => void) | null>(
     null,
@@ -389,14 +393,17 @@ export default function Page() {
   // FI: Osio — Ruokalistan lataus ja suodatus.
   // Loads foods for the current workflow.
   async function getFoods() {
+    const requestId = ++catalogRequestId.current;
     setCatalogStatus("loading");
     try {
-      const res = await api.get("/food/filter/all");
-      const parsed = parseFoods(res.data?.results);
-      if (!parsed) throw new Error("Invalid food-list response");
+      const parsed = await readStaffCatalog("/food/filter/all", (data) =>
+        parseFoods((data as { results?: unknown })?.results),
+      );
+      if (requestId !== catalogRequestId.current) return;
       setFoods(parsed);
       setCatalogStatus("ready");
     } catch (e: unknown) {
+      if (requestId !== catalogRequestId.current) return;
       setCatalogStatus("error");
       toast.error("Something went wrong", {
         description: errorMessage(e),
@@ -416,15 +423,19 @@ export default function Page() {
   }, []);
   // Coordinates filter food behavior for this module.
   const filterFood = async (foodType: "all" | "food" | "drink") => {
+    const requestId = ++catalogRequestId.current;
     try {
       setActiveFilter(foodType);
       setCatalogStatus("loading");
-      const res = await api.get(`/food/filter/${foodType}`);
-      const parsed = parseFoods(res.data?.results);
-      if (!parsed) throw new Error("Invalid filtered-food response");
+      const parsed = await readStaffCatalog(
+        `/food/filter/${foodType}`,
+        (data) => parseFoods((data as { results?: unknown })?.results),
+      );
+      if (requestId !== catalogRequestId.current) return;
       setFoods(parsed);
       setCatalogStatus("ready");
     } catch (e: unknown) {
+      if (requestId !== catalogRequestId.current) return;
       setCatalogStatus("error");
       toast.error("Error", {
         description: errorMessage(e),

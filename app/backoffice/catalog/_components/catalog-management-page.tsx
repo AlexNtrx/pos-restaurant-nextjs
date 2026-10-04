@@ -1,7 +1,14 @@
 "use client";
 
 import { Pencil, Plus, Trash2 } from "lucide-react";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 
 import {
@@ -35,6 +42,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import api from "@/lib/api";
+import { readStaffCatalog, invalidateCatalogCache } from "@/lib/catalog-reads";
 import { getApiErrorMessage, isPermissionDeniedError } from "@/lib/api-error";
 import {
   isFoodCategory,
@@ -113,31 +121,37 @@ export function CatalogManagementPage({ kind }: { kind: ManagementKind }) {
   const [formError, setFormError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  // EN: A previous load must not overwrite a reload after a catalog mutation.
+  // FI: Aiempi haku ei saa korvata luettelomuutoksen jälkeistä uudelleenlatausta.
+  const loadSequence = useRef(0);
 
   const load = useCallback(async () => {
+    const requestId = ++loadSequence.current;
     setStatus("loading");
     setError("");
     try {
-      const requests = [api.get(config.endpoint)];
-      if (kind !== "categories") requests.push(api.get("/foodType/list"));
-      const [rowResponse, categoryResponse] = await Promise.all(requests);
-      const parsedRows = parseResults(rowResponse.data, config.validator);
+      const [parsedRows, parsedCategories] = await Promise.all([
+        readStaffCatalog(config.endpoint, (data) =>
+          parseResults(data, config.validator),
+        ),
+        kind === "categories"
+          ? Promise.resolve(null)
+          : readStaffCatalog("/foodType/list", (data) =>
+              parseResults(data, isFoodCategory),
+            ),
+      ]);
+      if (requestId !== loadSequence.current) return;
       if (!parsedRows)
         throw new Error("Palvelin palautti virheellisiä luettelotietoja.");
       setRows(parsedRows);
 
-      if (categoryResponse) {
-        const parsedCategories = parseResults(
-          categoryResponse.data,
-          isFoodCategory,
-        );
-        if (!parsedCategories)
-          throw new Error("Palvelin palautti virheellisiä kategoriatietoja.");
+      if (parsedCategories) {
         setCategories(parsedCategories);
         setFoodTypeId((current) => current ?? parsedCategories[0]?.id ?? null);
       }
       setStatus("ready");
     } catch (reason: unknown) {
+      if (requestId !== loadSequence.current) return;
       setError(getApiErrorMessage(reason, "Luetteloa ei voitu ladata."));
       setStatus(isPermissionDeniedError(reason) ? "forbidden" : "error");
     }
@@ -210,6 +224,7 @@ export function CatalogManagementPage({ kind }: { kind: ManagementKind }) {
       if (editing)
         await api.put(config.updateEndpoint, { ...payload, id: editing.id });
       else await api.post(config.createEndpoint, payload);
+      invalidateCatalogCache();
       await load();
       setEditorOpen(false);
       toast.success(`${config.title}: tallennus onnistui.`);
@@ -225,6 +240,7 @@ export function CatalogManagementPage({ kind }: { kind: ManagementKind }) {
     setIsDeleting(true);
     try {
       await api.delete(`${config.removeEndpoint}/${pendingDelete.id}`);
+      invalidateCatalogCache();
       await load();
       setPendingDelete(null);
       toast.success(`${config.title}: poisto onnistui.`);

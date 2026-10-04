@@ -50,6 +50,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import api from "@/lib/api";
+import { readStaffCatalog, invalidateCatalogCache } from "@/lib/catalog-reads";
 import { getApiErrorMessage, isPermissionDeniedError } from "@/lib/api-error";
 import {
   isFood,
@@ -293,21 +294,23 @@ export default function MenuItemsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const detailFileInputRef = useRef<HTMLInputElement>(null);
   const pageSize = useResponsivePageSize();
+  // EN: A previous load must not overwrite a reload after a catalog mutation.
+  // FI: Aiempi haku ei saa korvata luettelomuutoksen jälkeistä uudelleenlatausta.
+  const loadSequence = useRef(0);
 
   const load = useCallback(async () => {
+    const requestId = ++loadSequence.current;
     setStatus("loading");
     setError("");
 
     try {
-      const [foodResponse, categoryResponse] = await Promise.all([
-        api.get("/food/list"),
-        api.get("/foodType/list"),
+      const [parsedFoods, parsedCategories] = await Promise.all([
+        readStaffCatalog("/food/list", (data) => parseResults(data, isFood)),
+        readStaffCatalog("/foodType/list", (data) =>
+          parseResults(data, isFoodCategory),
+        ),
       ]);
-      const parsedFoods = parseResults(foodResponse.data, isFood);
-      const parsedCategories = parseResults(
-        categoryResponse.data,
-        isFoodCategory,
-      );
+      if (requestId !== loadSequence.current) return;
 
       if (!parsedFoods || !parsedCategories) {
         throw new Error("Palvelin palautti virheellisiä ruokalistatietoja.");
@@ -317,6 +320,7 @@ export default function MenuItemsPage() {
       setCategories(parsedCategories);
       setStatus("ready");
     } catch (reason: unknown) {
+      if (requestId !== loadSequence.current) return;
       setError(getApiErrorMessage(reason, "Ruokalistaa ei voitu ladata."));
       setStatus(isPermissionDeniedError(reason) ? "forbidden" : "error");
     }
@@ -433,6 +437,7 @@ export default function MenuItemsPage() {
       if (editingFood)
         await api.put("/food/update", { ...payload, id: editingFood.id });
       else await api.post("/food/create", payload);
+      invalidateCatalogCache();
       await load();
       setEditorOpen(false);
       toast.success("Ruokalaji tallennettiin.");
@@ -451,6 +456,7 @@ export default function MenuItemsPage() {
     setIsDeleting(true);
     try {
       await api.delete(`/food/remove/${pendingDelete.id}`);
+      invalidateCatalogCache();
       setFoods((current) =>
         current.filter((food) => food.id !== pendingDelete.id),
       );
