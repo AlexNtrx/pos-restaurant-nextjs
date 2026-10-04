@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { isMutationRejected } from "@/lib/mutation-outcome";
 import { isAxiosError } from "axios";
 import { usePolling } from "@/lib/use-polling";
 import FoodPhoto, { originalImageUrl } from "@/components/catalog/food-photo";
@@ -671,6 +672,7 @@ function QrCartView({ token, menu }: { token: string; menu: QrMenu }) {
     readQrPending(token),
   );
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
   const [error, setError] = useState("");
   const rows = cart.map((item, index) => {
     const category = menu.categories.find((row) =>
@@ -710,38 +712,39 @@ function QrCartView({ token, menu }: { token: string; menu: QrMenu }) {
     writeQrCart(token, next);
   };
   const submit = async () => {
-    if (busy || (!pending && (missing || menu.state !== "ORDERING"))) return;
+    if (
+      inFlight.current ||
+      (!pending && (missing || menu.state !== "ORDERING"))
+    )
+      return;
+    inFlight.current = true;
     const attempt = pending || {
       idempotencyKey: crypto.randomUUID(),
       expectedTotal: total,
       items: cart,
     };
-    if (!pending) {
-      setPending(attempt);
-      writeQrPending(token, attempt);
-    }
     setBusy(true);
     setError("");
     try {
+      if (!pending) {
+        writeQrPending(token, attempt);
+        setPending(attempt);
+      }
       const result = await submitQrOrder(token, attempt);
-      writeQrPending(token, null);
-      writeQrCart(token, []);
       writeLastQrOrder(token, result.orderId);
+      writeQrCart(token, []);
+      writeQrPending(token, null);
       router.replace(pathFor(token, `/confirmation?orderId=${result.orderId}`));
     } catch (failure) {
       setError(qrErrorText(failure));
       // EN: A definitive HTTP rejection can be corrected; an unknown network outcome must retry unchanged.
       // FI: Varma HTTP-hylkäys voidaan korjata; epäselvä verkkotulos on yritettävä uudelleen muuttumattomana.
-      if (
-        typeof failure === "object" &&
-        failure &&
-        "response" in failure &&
-        failure.response
-      ) {
-        setPending(null);
+      if (isMutationRejected(failure)) {
         writeQrPending(token, null);
+        setPending(null);
       }
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };
@@ -905,6 +908,7 @@ function QrPendingRecovery({ token }: { token: string }) {
   const router = useRouter();
   const [pending, setPending] = useState(() => readQrPending(token));
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
   const [error, setError] = useState("");
   if (!pending)
     return error ? (
@@ -913,26 +917,24 @@ function QrPendingRecovery({ token }: { token: string }) {
       </p>
     ) : null;
   const retry = async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setError("");
     try {
       const result = await submitQrOrder(token, pending);
-      writeQrPending(token, null);
-      writeQrCart(token, []);
       writeLastQrOrder(token, result.orderId);
+      writeQrCart(token, []);
+      writeQrPending(token, null);
       router.replace(pathFor(token, `/confirmation?orderId=${result.orderId}`));
     } catch (failure) {
       setError(qrErrorText(failure));
-      if (
-        typeof failure === "object" &&
-        failure &&
-        "response" in failure &&
-        failure.response
-      ) {
-        setPending(null);
+      if (isMutationRejected(failure)) {
         writeQrPending(token, null);
+        setPending(null);
       }
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };
@@ -1162,6 +1164,7 @@ export default function QrCustomer({ view }: { view: View }) {
       setLoading(true);
       setError("");
       try {
+        if (["menu", "cart"].includes(view)) readQrPending(token);
         const nextContext = await loadQrContext(token);
         if (!live) return;
         setContext(nextContext);

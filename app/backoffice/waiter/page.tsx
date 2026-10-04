@@ -19,6 +19,15 @@ import ServiceCallQueue from "@/app/backoffice/service-calls/_components/service
 import type { StaffOrder } from "@/app/backoffice/orders/inbox/_lib/staff-orders";
 import { fetchOrderPages } from "@/app/backoffice/orders/inbox/_lib/staff-orders";
 import { usePolling } from "@/lib/use-polling";
+import { isMutationRejected } from "@/lib/mutation-outcome";
+import {
+  readPendingRequest,
+  savePendingRequest,
+  clearPendingRequest,
+  pendingRequestKey,
+  assertPendingOwner,
+} from "@/lib/pending-request";
+import { parseWaiterPending, type WaiterPending } from "@/lib/waiter-pending";
 import {
   cancelWaiterOrder,
   loadWaiterSnapshot,
@@ -60,6 +69,10 @@ export default function WaiterPage() {
   const [workingId, setWorkingId] = useState<number | null>(null);
   const [success, setSuccess] = useState("");
   const pendingKey = useRef<string | null>(null);
+  const [pending, setPending] = useState<WaiterPending | null>(null);
+  const [invalidPending, setInvalidPending] = useState(false);
+  const inFlight = useRef(false);
+  const ownerKeyRef = useRef(pendingRequestKey("waiter-order"));
   const mounted = useRef(false);
   const accessRevoked = useRef(false);
   const servedVersions = useRef(new Map<number, number>());
@@ -159,6 +172,19 @@ export default function WaiterPage() {
   useEffect(() => {
     mounted.current = true;
     const initial = window.setTimeout(() => {
+      try {
+        if (ownerKeyRef.current)
+          assertPendingOwner("waiter-order", ownerKeyRef.current);
+        const saved = readPendingRequest("waiter-order", parseWaiterPending);
+        if (saved) {
+          setPending(saved);
+          setItems(saved.items);
+          setTableId(saved.tableId);
+          pendingKey.current = saved.idempotencyKey;
+        }
+      } catch {
+        setInvalidPending(true);
+      }
       void refreshSetup();
     }, 0);
     return () => {
@@ -193,6 +219,9 @@ export default function WaiterPage() {
 
   function addItem() {
     if (
+      pending ||
+      invalidPending ||
+      inFlight.current ||
       !selectedFood ||
       !Number.isSafeInteger(quantity) ||
       quantity < 1 ||
@@ -221,30 +250,68 @@ export default function WaiterPage() {
   }
 
   async function submit() {
-    if (!selectedTable || !items.length || saving) return;
+    if (
+      inFlight.current ||
+      invalidPending ||
+      (!pending && (!selectedTable || !items.length))
+    )
+      return;
+    inFlight.current = true;
     setSaving(true);
     setError("");
     setSuccess("");
-    const key = pendingKey.current ?? crypto.randomUUID();
-    pendingKey.current = key;
+    const ownerKey = ownerKeyRef.current;
     try {
-      let sessionId = selectedTable.openSession?.id;
-      if (!sessionId) {
-        sessionId = await openWaiterTable(selectedTable.id);
-        await refreshSetup();
+      let attempt = pending;
+      if (!attempt) {
+        let sessionId = selectedTable!.openSession?.id;
+        if (!sessionId) {
+          sessionId = await openWaiterTable(selectedTable!.id);
+          await refreshSetup();
+        }
+        attempt = {
+          tableId: selectedTable!.id,
+          tableNo: selectedTable!.tableNo,
+          tableSessionId: sessionId,
+          items: structuredClone(items),
+          expectedTotal: total,
+          idempotencyKey: pendingKey.current ?? crypto.randomUUID(),
+        };
+        // EN: Save the exact order before sending; a timeout or reload must not change its session, items or key.
+        // FI: Tallenna täsmällinen tilaus ennen lähetystä; aikakatkaisu tai uudelleenlataus ei saa vaihtaa istuntoa, tuotteita tai avainta.
+        savePendingRequest("waiter-order", attempt, ownerKey);
+        pendingKey.current = attempt.idempotencyKey;
+        setPending(attempt);
       }
-      const order = await sendWaiterOrder(sessionId, items, key, total);
+      assertPendingOwner("waiter-order", ownerKey);
+      const order = await sendWaiterOrder(
+        attempt.tableSessionId,
+        attempt.items,
+        attempt.idempotencyKey,
+        attempt.expectedTotal,
+      );
+      clearPendingRequest("waiter-order", ownerKey);
+      setPending(null);
       setItems([]);
       pendingKey.current = null;
       setSuccess(`Tilaus #${order.id} lähetettiin keittiöön.`);
       await refreshQueues();
     } catch (cause) {
+      if (
+        isMutationRejected(cause) &&
+        pendingRequestKey("waiter-order") === ownerKey
+      ) {
+        clearPendingRequest("waiter-order", ownerKey);
+        setPending(null);
+        pendingKey.current = null;
+      }
+      await refreshSetup();
       showError(
         cause,
         "Tilausta ei voitu lähettää. Tarkista pöytä ja tuotteet.",
       );
-      await refreshSetup();
     } finally {
+      inFlight.current = false;
       setSaving(false);
     }
   }
@@ -345,6 +412,13 @@ export default function WaiterPage() {
           {error || queueError}
         </p>
       )}
+      {(pending || invalidPending) && (
+        <p role="alert" className="rounded-md border border-border p-3 text-sm">
+          {invalidPending
+            ? "Tallennettu tilaus on virheellinen. Tarkista tilanne ennen uuden tilauksen lähettämistä."
+            : `Pöydän ${pending!.tableNo} lähetyksen tulos on epävarma. Tarkista sama tilaus ilman muutoksia.`}
+        </p>
+      )}
       {success && (
         <p
           role="status"
@@ -368,6 +442,7 @@ export default function WaiterPage() {
             <select
               className="h-10 w-full rounded-md border border-border bg-background px-3"
               value={tableId ?? ""}
+              disabled={saving || !!pending || invalidPending}
               onChange={(event) => {
                 setTableId(Number(event.target.value));
                 setItems([]);
@@ -479,7 +554,7 @@ export default function WaiterPage() {
           <Button
             type="button"
             variant="outline"
-            disabled={!selectedFood || saving}
+            disabled={!selectedFood || saving || !!pending || invalidPending}
             onClick={addItem}
           >
             Lisää tilaukseen
@@ -516,7 +591,7 @@ export default function WaiterPage() {
                         type="button"
                         size="sm"
                         variant="outline"
-                        disabled={saving}
+                        disabled={saving || !!pending || invalidPending}
                         onClick={() => {
                           setItems((current) =>
                             current.filter((_, at) => at !== index),
@@ -532,13 +607,23 @@ export default function WaiterPage() {
               </ul>
             )}
             <div className="flex items-center justify-between gap-3">
-              <span className="font-semibold">Arvio {money.format(total)}</span>
+              <span className="font-semibold">
+                Arvio {money.format(pending?.expectedTotal ?? total)}
+              </span>
               <Button
                 type="button"
-                disabled={!selectedTable || !items.length || saving}
+                disabled={
+                  saving ||
+                  invalidPending ||
+                  (!pending && (!selectedTable || !items.length))
+                }
                 onClick={() => void submit()}
               >
-                {saving ? "Lähetetään…" : "Lähetä keittiöön"}
+                {saving
+                  ? "Lähetetään…"
+                  : pending
+                    ? "Tarkista aiempi lähetys"
+                    : "Lähetä keittiöön"}
               </Button>
             </div>
           </div>

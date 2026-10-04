@@ -27,6 +27,9 @@ export default function usePosCart({
   const [cartBusy, setCartBusy] = useState(false);
   const [loadedTable, setLoadedTable] = useState<number | null>(null);
   const cartRequestId = useRef(0);
+  // EN: React state alone cannot guard two actions fired before the next render.
+  // FI: React-tila yksin ei estä kahta toimintoa ennen seuraavaa renderöintiä.
+  const mutationBusy = useRef(false);
   const currentTableRef = useRef(table);
 
   // Validates is current table before it is used.
@@ -89,6 +92,7 @@ export default function usePosCart({
   const addItem = async (foodId: number) => {
     const operationTable = currentTableRef.current;
     if (
+      mutationBusy.current ||
       cartBusy ||
       checkoutBusy ||
       !Number.isInteger(operationTable) ||
@@ -96,12 +100,14 @@ export default function usePosCart({
     )
       return;
     try {
+      mutationBusy.current = true;
       setCartBusy(true);
       await api.post("/saleTemp/create", { tableNo: operationTable, foodId });
       if (isCurrentTable(operationTable)) await refreshCart(operationTable);
     } catch (error: unknown) {
       onError(error, "mutation");
     } finally {
+      mutationBusy.current = false;
       setCartBusy(false);
     }
   };
@@ -109,14 +115,16 @@ export default function usePosCart({
   // Updates quantity without changing user-visible behavior.
   const updateQuantity = async (id: number, qty: number) => {
     const operationTable = currentTableRef.current;
-    if (cartBusy || checkoutBusy) return;
+    if (mutationBusy.current || cartBusy || checkoutBusy) return;
     try {
+      mutationBusy.current = true;
       setCartBusy(true);
       await api.put("/saleTemp/updateQty", { qty, id });
       if (isCurrentTable(operationTable)) await refreshCart(operationTable);
     } catch (error: unknown) {
       onError(error, "mutation");
     } finally {
+      mutationBusy.current = false;
       setCartBusy(false);
     }
   };
@@ -124,14 +132,16 @@ export default function usePosCart({
   // Removes or clears item using the existing workflow.
   const removeItem = async (id: number) => {
     const operationTable = currentTableRef.current;
-    if (cartBusy || checkoutBusy) return;
+    if (mutationBusy.current || cartBusy || checkoutBusy) return;
     try {
+      mutationBusy.current = true;
       setCartBusy(true);
       await api.delete("/saleTemp/remove/" + id);
       if (isCurrentTable(operationTable)) await refreshCart(operationTable);
     } catch (error: unknown) {
       onError(error, "mutation");
     } finally {
+      mutationBusy.current = false;
       setCartBusy(false);
     }
   };
@@ -139,8 +149,9 @@ export default function usePosCart({
   // Removes or clears cart using the existing workflow.
   const clearCart = async () => {
     const operationTable = currentTableRef.current;
-    if (cartBusy || checkoutBusy) return;
+    if (mutationBusy.current || cartBusy || checkoutBusy) return;
     try {
+      mutationBusy.current = true;
       setCartBusy(true);
       await api.delete("/saleTemp/removeAll", {
         data: { tableNo: Number(operationTable) },
@@ -149,6 +160,7 @@ export default function usePosCart({
     } catch (error: unknown) {
       onError(error, "mutation");
     } finally {
+      mutationBusy.current = false;
       setCartBusy(false);
     }
   };

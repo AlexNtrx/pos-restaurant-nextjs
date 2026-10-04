@@ -4,6 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { isMutationRejected } from "@/lib/mutation-outcome";
+import {
+  readPendingRequest,
+  savePendingRequest,
+  clearPendingRequest,
+  pendingRequestKey,
+  assertPendingOwner,
+} from "@/lib/pending-request";
 import type { StaffOrderDetail } from "@/app/backoffice/orders/inbox/_lib/staff-orders";
 
 type Refund = {
@@ -14,6 +22,26 @@ type Refund = {
   idempotencyKey: string;
   reference: string | null;
   failureReason: string | null;
+};
+type Reservation = {
+  expectedVersion: number;
+  idempotencyKey: string;
+  reason: string;
+  method: "cash" | "bank";
+};
+const parseReservation = (value: unknown): Reservation | null => {
+  if (!value || typeof value !== "object") return null;
+  const saved = value as Reservation;
+  return Number.isSafeInteger(saved.expectedVersion) &&
+    saved.expectedVersion > 0 &&
+    typeof saved.idempotencyKey === "string" &&
+    !!saved.idempotencyKey &&
+    typeof saved.reason === "string" &&
+    saved.reason.length >= 3 &&
+    saved.reason.length <= 500 &&
+    ["cash", "bank"].includes(saved.method)
+    ? saved
+    : null;
 };
 const currency = new Intl.NumberFormat("fi-FI", {
   style: "currency",
@@ -56,12 +84,10 @@ export function OrderRefund({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [reservationRequested, setReservationRequested] = useState(false);
-  const request = useRef<{
-    expectedVersion: number;
-    idempotencyKey: string;
-    reason: string;
-    method: string;
-  } | null>(null);
+  const request = useRef<Reservation | null>(null);
+  const inFlight = useRef(false);
+  const resource = `refund:${order.id}`;
+  const ownerKeyRef = useRef(pendingRequestKey(resource));
   useEffect(() => {
     if (
       !order.paidAt ||
@@ -73,11 +99,23 @@ export function OrderRefund({
       .get<{ result: Refund | null }>(`/orders/${order.id}/refund`)
       .then((response) => {
         if (active) {
+          assertPendingOwner(resource, ownerKeyRef.current);
           setRefund(
             response.data.result === null
               ? null
               : parseRefund(response.data.result),
           );
+          const saved = readPendingRequest(resource, parseReservation);
+          if (saved && response.data.result === null) {
+            request.current = saved;
+            setReason(saved.reason);
+            setMethod(saved.method);
+            setReservationRequested(true);
+          } else if (
+            saved &&
+            response.data.result?.idempotencyKey === saved.idempotencyKey
+          )
+            clearPendingRequest(resource);
           setLoaded(true);
         }
       })
@@ -88,23 +126,28 @@ export function OrderRefund({
     return () => {
       active = false;
     };
-  }, [order.id, order.paidAt, order.status]);
+  }, [order.id, order.paidAt, order.status, resource]);
   async function act(action: "reserve" | "complete" | "fail") {
-    if (busy) return;
+    if (inFlight.current || !loaded) return;
+    inFlight.current = true;
     setBusy(true);
     setError("");
+    const ownerKey = ownerKeyRef.current;
     try {
       // EN: Keep the exact reservation request after an uncertain response; a retry cannot create a second refund.
       // FI: Säilytä täsmällinen varauspyyntö epävarman vastauksen jälkeen; uusinta ei voi luoda toista palautusta.
       if (action === "reserve") {
-        setReservationRequested(true);
-        request.current ??= {
+        const payload = request.current ?? {
           expectedVersion: order.version,
           idempotencyKey: crypto.randomUUID(),
           reason: reason.trim(),
           method,
         };
+        savePendingRequest(resource, payload, ownerKey);
+        request.current = payload;
+        setReservationRequested(true);
       }
+      assertPendingOwner(resource, ownerKey);
       const response = await api.post<{ result: Refund }>(
         `/orders/${order.id}/refund${action === "reserve" ? "" : `/${action}`}`,
         action === "reserve"
@@ -116,9 +159,21 @@ export function OrderRefund({
                 : { reason: reference.trim() }),
             },
       );
-      setRefund(parseRefund(response.data.result));
+      const result = parseRefund(response.data.result);
+      assertPendingOwner(resource, ownerKey);
+      if (action === "reserve") clearPendingRequest(resource, ownerKey);
+      setRefund(result);
       await onChanged();
     } catch (cause) {
+      if (
+        action === "reserve" &&
+        isMutationRejected(cause) &&
+        pendingRequestKey(resource) === ownerKey
+      ) {
+        clearPendingRequest(resource, ownerKey);
+        request.current = null;
+        setReservationRequested(false);
+      }
       setError(
         getApiErrorMessage(
           cause,
@@ -126,6 +181,7 @@ export function OrderRefund({
         ),
       );
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }

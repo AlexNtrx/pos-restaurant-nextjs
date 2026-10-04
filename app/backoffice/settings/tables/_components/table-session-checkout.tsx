@@ -1,6 +1,6 @@
 "use client";
 
-import { isAxiosError } from "axios";
+import { isMutationRejected } from "@/lib/mutation-outcome";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -44,6 +44,7 @@ const payable = (order: StaffOrder) =>
 const euros = (amount: number) =>
   `${amount.toLocaleString("fi-FI", { minimumFractionDigits: 2 })} €`;
 const attemptKey = (sessionId: number) => {
+  if (typeof window === "undefined") return null;
   const userId = readAuthSession()?.userId;
   return userId && /^[1-9]\d*$/.test(userId)
     ? `table-payment:v1:${userId}:${sessionId}`
@@ -126,6 +127,7 @@ export default function TableSessionCheckout({
   const [receiptUrl, setReceiptUrl] = useState("");
   const attempt = useRef<Attempt | null>(null);
   const inFlight = useRef(false);
+  const ownerKeyRef = useRef(attemptKey(sessionId));
 
   const load = useCallback(async () => {
     setLoadState("loading");
@@ -208,6 +210,13 @@ export default function TableSessionCheckout({
     inFlight.current = true;
     setBusy(true);
     setError("");
+    const ownerKey = ownerKeyRef.current;
+    const assertOwner = () => {
+      if (!ownerKey || attemptKey(sessionId) !== ownerKey)
+        throw new Error(
+          "Käyttäjä vaihtui. Tarkista maksu alkuperäisellä käyttäjällä.",
+        );
+    };
     try {
       if (!attempt.current) {
         const key = attemptKey(sessionId);
@@ -239,6 +248,7 @@ export default function TableSessionCheckout({
         };
         // EN: Persist the exact payment intent before sending; an interrupted response must not create a new key.
         // FI: Tallenna täsmällinen maksupyyntö ennen lähetystä; katkennut vastaus ei saa luoda uutta avainta.
+        assertOwner();
         localStorage.setItem(key, JSON.stringify(next));
         attempt.current = next;
         setPendingTotal(next.total);
@@ -253,6 +263,7 @@ export default function TableSessionCheckout({
           ? {}
           : { inputMoney: pending.inputMoney }),
       };
+      assertOwner();
       const response = await api.post(
         `/table-sessions/${sessionId}/settle`,
         payload,
@@ -260,8 +271,8 @@ export default function TableSessionCheckout({
       const result = parseCheckoutResult(response.data);
       if (!result)
         throw new Error("Palvelin palautti virheellisen maksuvastauksen.");
-      const key = attemptKey(sessionId);
-      if (key) localStorage.removeItem(key);
+      assertOwner();
+      localStorage.removeItem(ownerKey!);
       attempt.current = null;
       setPendingTotal(null);
       setUncertain(false);
@@ -280,9 +291,8 @@ export default function TableSessionCheckout({
         );
       }
     } catch (reason: unknown) {
-      const status = isAxiosError(reason) ? reason.response?.status : undefined;
       const definite =
-        status != null && [400, 401, 403, 404, 409].includes(status);
+        isMutationRejected(reason) && attemptKey(sessionId) === ownerKey;
       if (definite) {
         const key = attemptKey(sessionId);
         if (key) localStorage.removeItem(key);

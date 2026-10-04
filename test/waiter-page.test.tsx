@@ -79,6 +79,10 @@ const ready: StaffOrder = {
 };
 
 beforeEach(() => {
+  localStorage.clear();
+  localStorage.setItem("mytokenfornextjsproject", "test-token");
+  localStorage.setItem("next_name", "Waiter");
+  localStorage.setItem("next_user_id", "7");
   vi.clearAllMocks();
   mocks.loadSetup.mockResolvedValue({
     tables: [{ id: 7, tableNo: 4, name: null, openSession: null }],
@@ -176,6 +180,53 @@ it("refreshes stale cancellation without showing success or keeping a retry dial
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+});
+
+it("recovers an unknown order after reload with the original session, price, items and key", async () => {
+  mocks.sendOrder
+    .mockRejectedValueOnce({ response: { status: 500 } })
+    .mockResolvedValueOnce({ id: 33 });
+  const user = userEvent.setup();
+  const view = render(<WaiterPage />);
+  await screen.findByText("Pöytä 4 · Tilaus #31");
+  await user.selectOptions(screen.getByLabelText("Tuote"), "5");
+  await user.click(screen.getByRole("button", { name: "Lisää tilaukseen" }));
+  await user.click(screen.getByRole("button", { name: "Lähetä keittiöön" }));
+  await screen.findAllByRole("alert");
+  const original = mocks.sendOrder.mock.calls[0];
+  expect(screen.queryByText("Tilaus #33 lähetettiin keittiöön.")).toBeNull();
+  view.unmount();
+  mocks.loadSetup.mockResolvedValue({
+    tables: [{ id: 7, tableNo: 4, openSession: { id: 99 } }],
+    categories: [
+      {
+        id: 2,
+        name: "Food",
+        food: [{ id: 5, name: "Soup", price: 99, foodTypeId: 2 }],
+        foodSizes: [],
+        tastes: [],
+      },
+    ],
+  });
+  render(<WaiterPage />);
+  const retry = await screen.findByRole("button", {
+    name: "Tarkista aiempi lähetys",
+  });
+  await waitFor(() =>
+    expect((retry as HTMLButtonElement).disabled).toBe(false),
+  );
+  expect(
+    (
+      screen.getByRole("button", {
+        name: "Lisää tilaukseen",
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+  await user.click(retry);
+  await screen.findByText("Tilaus #33 lähetettiin keittiöön.");
+  expect(mocks.sendOrder.mock.calls[1]).toEqual(original);
+  expect(mocks.openTable).toHaveBeenCalledTimes(1);
+  expect(localStorage.getItem("pending-request:v1:7:waiter-order")).toBeNull();
 });
 
 it("handles service calls in a dialog without navigation or losing the order draft", async () => {

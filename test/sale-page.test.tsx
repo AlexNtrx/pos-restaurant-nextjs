@@ -82,6 +82,9 @@ describe("POS safety net", () => {
   beforeEach(() => {
     process.env.NEXT_PUBLIC_ORD02_DRAFT_ENABLED = "false";
     localStorage.clear();
+    localStorage.setItem("test-token", "token");
+    localStorage.setItem("next_name", "Cashier");
+    localStorage.setItem("next_user_id", "7");
     vi.clearAllMocks();
     api.get.mockImplementation((path: string) => {
       if (path === "/food/filter/all")
@@ -92,6 +95,93 @@ describe("POS safety net", () => {
       return Promise.resolve({ data: { results: [] } });
     });
     api.post.mockResolvedValue({ data: {} });
+  });
+
+  it("recovers a legacy payment after its cart is empty without changing endpoint, key or confirmed amount", async () => {
+    process.env.NEXT_PUBLIC_ORD02_DRAFT_ENABLED = "true";
+    const payload = {
+      tableNo: 1,
+      payType: "bank",
+      idempotencyKey: "legacy-committed-key",
+    };
+    localStorage.setItem(
+      "counter-draft:v1:7:1:attempt",
+      JSON.stringify({ kind: "legacy", payload, quotedTotal: 25 }),
+    );
+    api.post.mockImplementation(async (path: string) => {
+      if (path === "/saleTemp/endSale")
+        return {
+          data: {
+            billId: 401,
+            amount: 25,
+            inputMoney: 25,
+            returnMoney: 0,
+            replayed: true,
+          },
+        };
+      throw new Error("Receipt unavailable");
+    });
+    render(<SalePage />);
+    const pay = await screen.findByRole("button", { name: /^pay$/i });
+    await waitFor(() =>
+      expect((pay as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(pay);
+    expect(
+      (
+        screen.getByRole("button", {
+          name: /bank transfer/i,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    const complete = screen.getByRole("button", { name: /complete payment/i });
+    expect((complete as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(complete);
+    fireEvent.click(complete);
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/saleTemp/endSale", payload),
+    );
+    expect(
+      api.post.mock.calls.filter(([path]) => path === "/saleTemp/endSale"),
+    ).toHaveLength(1);
+    expect(
+      api.post.mock.calls.some(([path]) => path === "/counterOrder/checkout"),
+    ).toBe(false);
+    await waitFor(() =>
+      expect(localStorage.getItem("counter-draft:v1:7:1:attempt")).toBeNull(),
+    );
+  });
+
+  it("shows an uncertain Counter Order payment even after that Order disappears from the active queue", async () => {
+    const payload = {
+      expectedVersion: 5,
+      payType: "bank",
+      idempotencyKey: "committed-order-payment",
+    };
+    localStorage.setItem(
+      "pending-request:v1:7:counter-order:81",
+      JSON.stringify({ order: servedCounterOrder, payload }),
+    );
+    api.post.mockResolvedValueOnce({
+      data: { billId: 401, amount: 80, inputMoney: 80, returnMoney: 0 },
+    });
+    render(<SalePage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Tarkista maksu #81" }),
+    );
+    const complete = screen.getByRole("button", { name: /complete payment/i });
+    await waitFor(() =>
+      expect((complete as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(complete);
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/counterOrder/81/settle", payload),
+    );
+    expect(
+      api.post.mock.calls.filter(
+        ([path]) => path === "/counterOrder/81/settle",
+      ),
+    ).toHaveLength(1);
   });
 
   it("waits for the legacy cart before editing dine-in but allows takeaway independently", async () => {
@@ -193,6 +283,15 @@ describe("POS safety net", () => {
       expect((pay as HTMLButtonElement).disabled).toBe(false),
     );
     fireEvent.click(pay);
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("button", {
+            name: /bank transfer/i,
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
+    );
     fireEvent.click(screen.getByRole("button", { name: /bank transfer/i }));
     fireEvent.click(screen.getByRole("button", { name: /complete payment/i }));
     await waitFor(() => expect(toast.warning).toHaveBeenCalled());
@@ -224,7 +323,10 @@ describe("POS safety net", () => {
   it("loads the staff catalog and current table cart on mount", async () => {
     render(<SalePage />);
     await screen.findByText("Test meal");
-    expect(api.get).toHaveBeenCalledWith("/food/filter/all");
+    expect(api.get).toHaveBeenCalledWith(
+      "/food/filter/all",
+      expect.any(Object),
+    );
     expect(api.get).toHaveBeenCalledWith("/saleTemp/list/", {
       params: { tableNo: 1 },
     });
@@ -912,6 +1014,15 @@ describe("POS safety net", () => {
       await screen.findByRole("button", { name: "Pay Order #81" }),
     );
     expect(screen.getByText("Maksu · #81")).toBeTruthy();
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("button", {
+            name: /bank transfer/i,
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
+    );
     fireEvent.click(screen.getByRole("button", { name: /bank transfer/i }));
     fireEvent.click(screen.getByRole("button", { name: /complete payment/i }));
     await waitFor(() =>
@@ -963,7 +1074,7 @@ describe("POS safety net", () => {
     const onClose = vi.fn();
     const newKey = vi.fn(() => "cash-order-key");
     vi.stubGlobal("crypto", { randomUUID: newKey });
-    render(
+    const view = render(
       <CounterOrderCheckout
         order={servedCounterOrder}
         onClose={onClose}
@@ -976,6 +1087,9 @@ describe("POS safety net", () => {
       target: { value: "100" },
     });
     const complete = screen.getByRole("button", { name: /complete payment/i });
+    await waitFor(() =>
+      expect((complete as HTMLButtonElement).disabled).toBe(false),
+    );
     fireEvent.click(complete);
     fireEvent.click(complete);
     expect(api.post).toHaveBeenCalledTimes(1);
@@ -998,7 +1112,21 @@ describe("POS safety net", () => {
     api.post.mockResolvedValueOnce({
       data: { billId: 202, amount: 80, inputMoney: 100, returnMoney: 20 },
     });
-    fireEvent.click(complete);
+    view.unmount();
+    render(
+      <CounterOrderCheckout
+        order={servedCounterOrder}
+        onClose={onClose}
+        onPaid={onPaid}
+        onBusyChange={vi.fn()}
+        onRefresh={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    const retry = screen.getByRole("button", { name: /complete payment/i });
+    await waitFor(() =>
+      expect((retry as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(retry);
     await waitFor(() => expect(onPaid).toHaveBeenCalledWith(202));
     expect(api.post.mock.calls[0]).toEqual(api.post.mock.calls[1]);
     expect(api.post.mock.calls[1][1]).toEqual({
@@ -1026,6 +1154,15 @@ describe("POS safety net", () => {
         onBusyChange={vi.fn()}
         onRefresh={onRefresh}
       />,
+    );
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("button", {
+            name: /bank transfer/i,
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
     );
     fireEvent.click(screen.getByRole("button", { name: /bank transfer/i }));
     fireEvent.click(screen.getByRole("button", { name: /complete payment/i }));
@@ -1108,7 +1245,10 @@ describe("POS safety net", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /drinks/i }));
     await waitFor(() =>
-      expect(api.get).toHaveBeenCalledWith("/food/filter/drink"),
+      expect(api.get).toHaveBeenCalledWith(
+        "/food/filter/drink",
+        expect.any(Object),
+      ),
     );
   });
 
@@ -1136,6 +1276,9 @@ describe("POS safety net", () => {
     const image = await screen.findByAltText("Test meal");
     const productCard = image.closest("button")!;
     expect(productCard.className).not.toContain("disabled:opacity");
+    await waitFor(() =>
+      expect((productCard as HTMLButtonElement).disabled).toBe(false),
+    );
     fireEvent.click(image);
     fireEvent.click(image);
     expect(api.post).toHaveBeenCalledTimes(1);
@@ -1185,6 +1328,11 @@ describe("POS safety net", () => {
     render(<SalePage />);
     const firstImage = await screen.findByAltText("Test meal");
     const secondImage = screen.getByAltText("Second meal");
+    await waitFor(() =>
+      expect((firstImage.closest("button") as HTMLButtonElement).disabled).toBe(
+        false,
+      ),
+    );
 
     fireEvent.click(firstImage);
     await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));

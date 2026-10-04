@@ -1,7 +1,18 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { isAxiosError } from "axios";
+import { useEffect, useRef, useState } from "react";
+import { isMutationRejected } from "@/lib/mutation-outcome";
+import {
+  readPendingRequest,
+  savePendingRequest,
+  clearPendingRequest,
+  pendingRequestKey,
+  assertPendingOwner,
+} from "@/lib/pending-request";
+import {
+  parseCounterPayment,
+  type CounterPaymentAttempt,
+} from "@/lib/counter-payment";
 import { toast } from "sonner";
 import api from "@/lib/api";
 import {
@@ -9,13 +20,6 @@ import {
   type SentCounterOrder,
 } from "@/lib/sale-contracts";
 import CheckoutModal from "./checkout-modal";
-
-type PaymentAttempt = {
-  expectedVersion: number;
-  idempotencyKey: string;
-  payType: "cash" | "bank";
-  inputMoney?: number;
-};
 
 type Props = {
   order: SentCounterOrder;
@@ -36,29 +40,67 @@ export default function CounterOrderCheckout({
   const [received, setReceived] = useState(0);
   const [busy, setBusy] = useState(false);
   const [uncertain, setUncertain] = useState(false);
-  const attempt = useRef<PaymentAttempt | null>(null);
+  const attempt = useRef<CounterPaymentAttempt | null>(null);
+  const [ready, setReady] = useState(false);
+  const [storageError, setStorageError] = useState("");
+  const [pendingTotal, setPendingTotal] = useState<number | null>(null);
   const inFlight = useRef(false);
+  const resource = `counter-order:${order.id}`;
+  const ownerKeyRef = useRef(pendingRequestKey(resource));
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        if (ownerKeyRef.current)
+          assertPendingOwner(resource, ownerKeyRef.current);
+        const saved = readPendingRequest(resource, parseCounterPayment);
+        if (saved) {
+          if (saved.order.id !== order.id)
+            throw new Error("Maksupyyntö kuuluu toiselle tilaukselle.");
+          attempt.current = saved.payload;
+          setPendingTotal(saved.order.total);
+          setPayType(saved.payload.payType);
+          setReceived(saved.payload.inputMoney ?? saved.order.total);
+          setUncertain(true);
+        }
+      } catch {
+        setStorageError(
+          "Tallennettu maksuyritys on virheellinen. Tarkista maksun tila ennen uutta yritystä.",
+        );
+      } finally {
+        setReady(true);
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [resource, order.id]);
 
   // EN: Unknown outcomes retain the exact payment key and payload; retries must never create a new charge.
   // FI: Epävarma tulos säilyttää saman maksuavaimen ja sisällön; uusi yritys ei saa luoda uutta maksua.
   const pay = async () => {
-    if (inFlight.current) return;
+    if (inFlight.current || !ready || storageError) return;
     inFlight.current = true;
     setBusy(true);
     onBusyChange(true);
+    const ownerKey = ownerKeyRef.current;
     try {
-      attempt.current ??= {
-        expectedVersion: order.version,
-        idempotencyKey: crypto.randomUUID(),
-        payType,
-        ...(payType === "cash" ? { inputMoney: received } : {}),
-      };
+      if (!attempt.current) {
+        const payload = {
+          expectedVersion: order.version,
+          idempotencyKey: crypto.randomUUID(),
+          payType,
+          ...(payType === "cash" ? { inputMoney: received } : {}),
+        };
+        savePendingRequest(resource, { order, payload }, ownerKey);
+        attempt.current = payload;
+        setPendingTotal(order.total);
+      }
+      assertPendingOwner(resource, ownerKey);
       const response = await api.post(
         `/counterOrder/${order.id}/settle`,
         attempt.current,
       );
       const result = parseCheckoutResult(response.data);
       if (!result) throw new Error("Invalid payment response");
+      clearPendingRequest(resource, ownerKey);
       attempt.current = null;
       setUncertain(false);
       // EN: A receipt/display failure after a confirmed payment must not become a new payment attempt.
@@ -72,18 +114,16 @@ export default function CounterOrderCheckout({
         });
       }
     } catch (error: unknown) {
-      const status = isAxiosError(error) ? error.response?.status : undefined;
       const rejected =
-        status != null && [400, 401, 403, 404, 409].includes(status);
+        isMutationRejected(error) && pendingRequestKey(resource) === ownerKey;
       if (rejected) {
+        clearPendingRequest(resource, ownerKey);
         attempt.current = null;
         setUncertain(false);
-        if (status !== 400) {
-          onClose();
-          await onRefresh();
-        }
+        onClose();
+        await onRefresh();
       } else {
-        setUncertain(true);
+        setUncertain(attempt.current !== null);
       }
       toast.error(
         rejected ? "Order payment rejected" : "Payment result unknown",
@@ -107,12 +147,13 @@ export default function CounterOrderCheckout({
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      total={order.total}
+      total={pendingTotal ?? order.total}
       payType={payType}
       receivedAmount={received}
-      checkoutBusy={busy}
+      checkoutBusy={busy || !ready || !!storageError}
       receiptBusy={false}
       paymentDetailsLocked={uncertain}
+      errorMessage={storageError}
       onSelectPaymentType={(value) => {
         setPayType(value);
         setReceived(value === "bank" ? order.total : 0);

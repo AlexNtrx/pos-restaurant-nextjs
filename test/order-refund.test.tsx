@@ -22,6 +22,10 @@ const pending = {
   failureReason: null,
 };
 beforeEach(() => {
+  localStorage.clear();
+  localStorage.setItem("mytokenfornextjsproject", "test-token");
+  localStorage.setItem("next_name", "Admin");
+  localStorage.setItem("next_user_id", "7");
   vi.clearAllMocks();
   vi.mocked(api.get).mockResolvedValue({ data: { result: null } });
 });
@@ -31,7 +35,7 @@ it("reuses the exact reservation after an uncertain response without claiming a 
     .mockRejectedValueOnce(new Error("Connection failed"))
     .mockResolvedValueOnce({ data: { result: pending } });
   const user = userEvent.setup();
-  render(
+  const view = render(
     <OrderRefund
       order={order}
       onChanged={vi.fn().mockResolvedValue(undefined)}
@@ -50,7 +54,17 @@ it("reuses the exact reservation after an uncertain response without claiming a 
   expect(
     (screen.getByLabelText("Peruutuksen syy") as HTMLTextAreaElement).disabled,
   ).toBe(true);
-  await user.click(reserve);
+  view.unmount();
+  render(
+    <OrderRefund
+      order={order}
+      onChanged={vi.fn().mockResolvedValue(undefined)}
+    />,
+  );
+  const retry = await screen.findByRole("button", {
+    name: "Varaa peruutus ja palautus",
+  });
+  await user.click(retry);
   await screen.findByText(/Palautus kesken/);
   expect(vi.mocked(api.post).mock.calls[1][1]).toEqual(
     vi.mocked(api.post).mock.calls[0][1],

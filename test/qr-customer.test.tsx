@@ -85,6 +85,69 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("anonymous QR customer", () => {
+  it("does not send an order when its pending request cannot be persisted", async () => {
+    localStorage.setItem(
+      `qr02:${token}:cart`,
+      JSON.stringify([
+        { foodId: 7, foodSizeId: null, tasteId: null, quantity: 1, note: "" },
+      ]),
+    );
+    const user = userEvent.setup();
+    render(<QrCustomer view="cart" />);
+    const submit = await screen.findByRole("button", { name: "Lähetä tilaus" });
+    const original = Storage.prototype.setItem;
+    const spy = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(function (this: Storage, key, value) {
+        if (key.endsWith(":pending")) throw new Error("Quota exceeded");
+        original.call(this, key, value);
+      });
+    try {
+      await user.click(submit);
+      await screen.findByRole("alert");
+      expect(post).not.toHaveBeenCalled();
+      expect(localStorage.getItem(`qr02:${token}:pending`)).toBeNull();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("retains a confirmed request when clearing the cart fails, so recovery still uses the same key", async () => {
+    localStorage.setItem(
+      `qr02:${token}:cart`,
+      JSON.stringify([
+        { foodId: 7, foodSizeId: null, tasteId: null, quantity: 1, note: "" },
+      ]),
+    );
+    post.mockResolvedValue({
+      data: { result: { orderId: 42, status: "SUBMITTED", total: 20 } },
+    });
+    const user = userEvent.setup();
+    render(<QrCustomer view="cart" />);
+    const submit = await screen.findByRole("button", { name: "Lähetä tilaus" });
+    const original = Storage.prototype.setItem;
+    const spy = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(function (this: Storage, key, value) {
+        if (key.endsWith(":cart")) throw new Error("Storage unavailable");
+        original.call(this, key, value);
+      });
+    try {
+      await user.click(submit);
+      await screen.findByRole("alert");
+      expect(localStorage.getItem(`qr02:${token}:pending`)).not.toBeNull();
+      expect(replace).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+    await user.click(
+      screen.getByRole("button", {
+        name: "Yritä lähettää sama tilaus uudelleen",
+      }),
+    );
+    await waitFor(() => expect(replace).toHaveBeenCalled());
+    expect(post.mock.calls[1][1]).toEqual(post.mock.calls[0][1]);
+  });
   it("bounds a thousand-item menu while keeping custom portions, full search and details across pages", async () => {
     const user = userEvent.setup();
     const load = get.getMockImplementation()!;
@@ -804,52 +867,64 @@ describe("anonymous QR customer", () => {
     );
   });
 
-  it("retries an unknown submit with the exact key and clears the cart after success", async () => {
-    const user = userEvent.setup();
-    window.localStorage.setItem(
-      `qr02:${token}:cart`,
-      JSON.stringify([
-        {
-          foodId: 7,
-          foodSizeId: 4,
-          tasteId: 5,
-          quantity: 1,
-          note: "Ei chiliä",
-        },
-      ]),
-    );
-    post.mockRejectedValueOnce(new Error("network")).mockResolvedValueOnce({
-      data: { result: { orderId: 42, status: "SUBMITTED", total: 25 } },
-    });
-    render(<QrCustomer view="cart" />);
-    await screen.findByText("Basilikakana");
-    await user.click(screen.getByRole("button", { name: "Lähetä tilaus" }));
-    await screen.findByText("Yhteys epäonnistui. Yritä uudelleen.");
-    expect(screen.getByText("Huomautus keittiölle: Ei chiliä")).toBeTruthy();
-    expect(
-      screen.queryByRole("textbox", { name: /Huomautus keittiölle/ }),
-    ).toBeNull();
-    const pending = JSON.parse(
-      window.localStorage.getItem(`qr02:${token}:pending`) || "null",
-    );
-    expect(pending.expectedTotal).toBe(25);
-    await user.click(
-      screen.getByRole("button", {
-        name: "Yritä lähettää sama tilaus uudelleen",
-      }),
-    );
-    await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
-    expect(post.mock.calls[0][1]).toEqual(post.mock.calls[1][1]);
-    await waitFor(() =>
-      expect(replace).toHaveBeenCalledWith(
-        `/order/${token}/confirmation?orderId=42`,
-      ),
-    );
-    expect(window.localStorage.getItem(`qr02:${token}:pending`)).toBeNull();
-    expect(
-      JSON.parse(window.localStorage.getItem(`qr02:${token}:cart`) || "null"),
-    ).toEqual([]);
-  });
+  it.each([0, 500, 502, 408, 429])(
+    "retries an unknown HTTP %s submit after reload with the exact key and clears the cart after success",
+    async (status) => {
+      const user = userEvent.setup();
+      window.localStorage.setItem(
+        `qr02:${token}:cart`,
+        JSON.stringify([
+          {
+            foodId: 7,
+            foodSizeId: 4,
+            tasteId: 5,
+            quantity: 1,
+            note: "Ei chiliä",
+          },
+        ]),
+      );
+      post
+        .mockRejectedValueOnce(
+          status
+            ? { isAxiosError: true, response: { status, data: {} } }
+            : new Error("network"),
+        )
+        .mockResolvedValueOnce({
+          data: { result: { orderId: 42, status: "SUBMITTED", total: 25 } },
+        });
+      render(<QrCustomer view="cart" />);
+      await screen.findByText("Basilikakana");
+      await user.click(screen.getByRole("button", { name: "Lähetä tilaus" }));
+      await screen.findByText("Yhteys epäonnistui. Yritä uudelleen.");
+      expect(screen.getByText("Huomautus keittiölle: Ei chiliä")).toBeTruthy();
+      expect(
+        screen.queryByRole("textbox", { name: /Huomautus keittiölle/ }),
+      ).toBeNull();
+      const pending = JSON.parse(
+        window.localStorage.getItem(`qr02:${token}:pending`) || "null",
+      );
+      expect(pending.expectedTotal).toBe(25);
+      cleanup();
+      render(<QrCustomer view="cart" />);
+      await screen.findByText("Basilikakana");
+      await user.click(
+        screen.getByRole("button", {
+          name: "Yritä lähettää sama tilaus uudelleen",
+        }),
+      );
+      await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
+      expect(post.mock.calls[0][1]).toEqual(post.mock.calls[1][1]);
+      await waitFor(() =>
+        expect(replace).toHaveBeenCalledWith(
+          `/order/${token}/confirmation?orderId=42`,
+        ),
+      );
+      expect(window.localStorage.getItem(`qr02:${token}:pending`)).toBeNull();
+      expect(
+        JSON.parse(window.localStorage.getItem(`qr02:${token}:cart`) || "null"),
+      ).toEqual([]);
+    },
+  );
 
   it("can recover an already-submitted Order after QR mode closes", async () => {
     const user = userEvent.setup();

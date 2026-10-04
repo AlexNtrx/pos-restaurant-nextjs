@@ -20,6 +20,12 @@ import api from "@/lib/api";
 import { readStaffCatalog } from "@/lib/catalog-reads";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { usePolling } from "@/lib/use-polling";
+import { isMutationRejected } from "@/lib/mutation-outcome";
+import { pendingRequestKey, assertPendingOwner } from "@/lib/pending-request";
+import {
+  listPendingCounterPayments,
+  type SavedCounterPayment,
+} from "@/lib/counter-payment";
 import type { StaffOrderDetail } from "@/app/backoffice/orders/inbox/_lib/staff-orders";
 import { readAuthSession } from "@/lib/auth-session";
 import {
@@ -62,7 +68,11 @@ type KitchenAttempt = OrderLocation & {
   expectedTotal?: number;
 };
 type DraftPendingAttempt =
-  | { kind: "checkout"; payload: CheckoutAttempt }
+  | {
+      kind: "checkout" | "legacy";
+      payload: CheckoutAttempt;
+      quotedTotal?: number;
+    }
   | { kind: "kitchen"; payload: KitchenAttempt };
 type SentView = "active" | "history";
 
@@ -82,7 +92,7 @@ const readDraftAttempt = (scope: DraftScope): DraftPendingAttempt | null => {
     const parsed: unknown = JSON.parse(raw);
     if (
       !isRecord(parsed) ||
-      !["checkout", "kitchen"].includes(String(parsed.kind)) ||
+      !["checkout", "legacy", "kitchen"].includes(String(parsed.kind)) ||
       !isRecord(parsed.payload) ||
       (scope === "TAKEAWAY"
         ? parsed.payload.serviceType !== "TAKEAWAY" ||
@@ -90,13 +100,38 @@ const readDraftAttempt = (scope: DraftScope): DraftPendingAttempt | null => {
         : parsed.payload.tableNo !== scope ||
           parsed.payload.serviceType === "TAKEAWAY") ||
       typeof parsed.payload.idempotencyKey !== "string" ||
-      !Array.isArray(parsed.payload.items)
+      !parsed.payload.idempotencyKey ||
+      (parsed.kind !== "kitchen" &&
+        (!["cash", "bank"].includes(String(parsed.payload.payType)) ||
+          (parsed.payload.inputMoney !== undefined &&
+            (!Number.isSafeInteger(parsed.payload.inputMoney) ||
+              Number(parsed.payload.inputMoney) < 0)))) ||
+      (parsed.kind !== "legacy" && !Array.isArray(parsed.payload.items)) ||
+      (parsed.kind === "legacy" &&
+        (scope === "TAKEAWAY" || !Number.isSafeInteger(parsed.quotedTotal)))
     )
       return null;
     return parsed as DraftPendingAttempt;
   } catch {
     return null;
   }
+};
+
+const pendingDraftScopes = (): DraftScope[] => {
+  const userId = readAuthSession()?.userId;
+  if (!userId) return [];
+  const prefix = `counter-draft:v1:${userId}:`;
+  return Array.from({ length: localStorage.length }, (_, index) =>
+    localStorage.key(index),
+  ).flatMap<DraftScope>((key) => {
+    if (!key?.startsWith(prefix) || !key.endsWith(":attempt")) return [];
+    const scope = key.slice(prefix.length, -":attempt".length);
+    return scope === "takeaway"
+      ? ["TAKEAWAY" as const]
+      : /^[1-9]\d*$/.test(scope)
+        ? [Number(scope)]
+        : [];
+  });
 };
 
 // EN: Section — Confirmation types and response helpers.
@@ -115,11 +150,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 // Coordinates error message behavior for this module.
 const errorMessage = (error: unknown) =>
   error instanceof Error ? error.message : "Unexpected error";
-const hasFinalHttpResponse = (error: unknown) => {
-  if (!isRecord(error) || !isRecord(error.response)) return false;
-  const status = error.response.status;
-  return typeof status === "number" && status >= 400 && status < 500;
-};
+const hasFinalHttpResponse = isMutationRejected;
 
 // Renders the POS sale page interface.
 // EN: Section — Counter POS page.
@@ -141,6 +172,7 @@ export default function Page() {
   const [draftPending, setDraftPending] = useState<DraftPendingAttempt | null>(
     null,
   );
+  const [invalidDraftAttempt, setInvalidDraftAttempt] = useState(false);
   const [receiptBusy, setReceiptBusy] = useState(false);
   const [activeFilter, setActiveFilter] = useState<"all" | "food" | "drink">(
     "all",
@@ -150,6 +182,13 @@ export default function Page() {
   const [customizationOpen, setCustomizationOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [sentOrders, setSentOrders] = useState<SentCounterOrder[]>([]);
+  const [pendingCounterPayments, setPendingCounterPayments] = useState<
+    SavedCounterPayment[]
+  >([]);
+  const [pendingPaymentError, setPendingPaymentError] = useState("");
+  const [otherPendingScopes, setOtherPendingScopes] = useState<DraftScope[]>(
+    [],
+  );
   const [sentView, setSentView] = useState<SentView>("active");
   const [serviceType, setServiceType] = useState<"DINE_IN" | "TAKEAWAY">(
     "DINE_IN",
@@ -169,6 +208,8 @@ export default function Page() {
   );
   const [receiptBillId, setReceiptBillId] = useState<number | null>(null);
   const myRef = useRef<HTMLInputElement>(null);
+  const checkoutInFlight = useRef(false);
+  const ownerKeyRef = useRef(pendingRequestKey("counter-sale"));
   const checkoutAttemptRef = useRef<CheckoutAttempt | null>(null);
   const pendingRequestId = useRef(0);
   const sentDetailRequestId = useRef(0);
@@ -237,18 +278,28 @@ export default function Page() {
     draftMode ? draftCart.removeItem(id) : legacyCart.removeItem(id);
   const clearCart = () =>
     draftMode ? draftCart.clearCart() : legacyCart.clearCart();
-  const saveDraftAttempt = (attempt: DraftPendingAttempt) => {
+  const saveDraftAttempt = (
+    attempt: DraftPendingAttempt,
+    ownerKey = draftAttemptKey(draftScope),
+  ) => {
     const key = draftAttemptKey(draftScope);
-    if (!key) throw new Error("Sign in again before submitting this draft");
+    if (!key || key !== ownerKey)
+      throw new Error(
+        "Sign in with the original account before submitting this draft",
+      );
     localStorage.setItem(key, JSON.stringify(attempt));
     setDraftPending(attempt);
   };
-  const clearDraftAttempt = () => {
+  const clearDraftAttempt = (ownerKey = draftAttemptKey(draftScope)) => {
     const key = draftAttemptKey(draftScope);
+    if (!key || key !== ownerKey)
+      throw new Error(
+        "Account changed; recover this request with its original account",
+      );
     if (key) localStorage.removeItem(key);
     setDraftPending(null);
   };
-  const draftLocked = draftMode && draftPending !== null;
+  const draftLocked = draftPending !== null || invalidDraftAttempt;
   const draftMutationBusy = cartBusy || draftLocked;
   const attemptMatchesScope = (attempt: OrderLocation | null) =>
     draftScope === "TAKEAWAY"
@@ -257,10 +308,35 @@ export default function Page() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      setDraftPending(readDraftAttempt(draftScope));
+      const saved = readDraftAttempt(draftScope);
+      setDraftPending(saved);
+      try {
+        const key = draftAttemptKey(draftScope);
+        setInvalidDraftAttempt(
+          !!key && !!localStorage.getItem(key) && saved === null,
+        );
+      } catch {
+        setInvalidDraftAttempt(true);
+      }
     }, 0);
     return () => window.clearTimeout(timer);
   }, [draftScope]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        setPendingCounterPayments(listPendingCounterPayments());
+        setOtherPendingScopes(
+          pendingDraftScopes().filter((scope) => scope !== draftScope),
+        );
+        setPendingPaymentError("");
+      } catch {
+        setPendingPaymentError(
+          "Tallennettua tilausmaksua ei voitu lukea. Tarkista maksun tila ennen uutta yritystä.",
+        );
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [sentOrders, checkoutBusy, draftScope]);
 
   // EN: Section — Sent orders: loading, details, cancellation and polling.
   // FI: Osio — Lähetetyt tilaukset: lataus, tiedot, peruutus ja säännöllinen päivitys.
@@ -810,17 +886,20 @@ export default function Page() {
   // FI: Osio — Maksun valmistelu ja maksaminen.
   // Coordinates prepare payment while preserving transaction behavior.
   const preparePayment = () => {
-    const saved = draftMode ? readDraftAttempt(draftScope) : null;
+    const saved = readDraftAttempt(draftScope);
     if (saved?.kind === "kitchen") return;
     const pendingAttempt =
-      checkoutAttemptRef.current ??
-      (saved?.kind === "checkout" ? saved.payload : null);
+      checkoutAttemptRef.current ?? (saved ? saved.payload : null);
     if (pendingAttempt && attemptMatchesScope(pendingAttempt)) {
       checkoutAttemptRef.current = pendingAttempt;
       setPayType(pendingAttempt.payType);
       setReceivedAmount(
         pendingAttempt.payType === "bank"
-          ? summary.total
+          ? saved
+            ? (saved.quotedTotal ??
+              saved.payload.expectedTotal ??
+              summary.total)
+            : summary.total
           : (pendingAttempt.inputMoney ?? 0),
       );
       return;
@@ -832,7 +911,7 @@ export default function Page() {
 
   // Coordinates select payment type while preserving transaction behavior.
   const selectPaymentType = (nextType: "cash" | "bank") => {
-    if (draftMode && readDraftAttempt(draftScope)) return;
+    if (readDraftAttempt(draftScope) || invalidDraftAttempt) return;
     checkoutAttemptRef.current = null;
     setPayType(nextType);
     setReceivedAmount(nextType === "bank" ? summary.total : 0);
@@ -840,21 +919,34 @@ export default function Page() {
 
   // Updates received amount without changing user-visible behavior.
   const changeReceivedAmount = (nextAmount: number) => {
-    if (draftMode && readDraftAttempt(draftScope)) return;
+    if (readDraftAttempt(draftScope) || invalidDraftAttempt) return;
     checkoutAttemptRef.current = null;
     setReceivedAmount(nextAmount);
   };
 
   // Coordinates end sale behavior for this module.
   const endSale = async () => {
-    if (checkoutBusy || receiptBusy) return;
+    if (
+      checkoutInFlight.current ||
+      checkoutBusy ||
+      receiptBusy ||
+      invalidDraftAttempt
+    )
+      return;
+    checkoutInFlight.current = true;
     setCheckoutBusy(true);
+    const ownerKey = draftAttemptKey(draftScope);
     try {
-      const saved = draftMode ? readDraftAttempt(draftScope) : null;
+      assertPendingOwner("counter-sale", ownerKeyRef.current);
+      const saved = readDraftAttempt(draftScope);
+      if (ownerKey && localStorage.getItem(ownerKey) && !saved)
+        throw new Error(
+          "Saved checkout is invalid; check its outcome before a new attempt",
+        );
       if (saved?.kind === "kitchen") return;
+      const legacyPayment = saved?.kind === "legacy" || (!saved && !draftMode);
       let payload =
-        checkoutAttemptRef.current ??
-        (saved?.kind === "checkout" ? saved.payload : null);
+        checkoutAttemptRef.current ?? (saved ? saved.payload : null);
       if (!payload) {
         const refreshedCart = await refreshCart();
         if (!refreshedCart || refreshedCart.summary.total <= 0) return;
@@ -881,31 +973,51 @@ export default function Page() {
               }
             : {}),
         };
-        if (draftMode) saveDraftAttempt({ kind: "checkout", payload });
+        // EN: Legacy cart payment also survives reload after the server clears its cart; retain the exact endpoint, confirmed total and key.
+        // FI: Vanhan ostoskorin maksu säilyy uudelleenlatauksessa myös palvelimen tyhjennettyä korin; säilytä sama rajapinta, vahvistettu summa ja avain.
+        saveDraftAttempt(
+          {
+            kind: legacyPayment ? "legacy" : "checkout",
+            payload,
+            quotedTotal: refreshedCart.summary.total,
+          },
+          ownerKey,
+        );
         checkoutAttemptRef.current = payload;
       }
+      if (!ownerKey || draftAttemptKey(draftScope) !== ownerKey)
+        throw new Error(
+          "Account changed; recover this request with its original account",
+        );
       const res = await api.post(
-        draftMode ? "/counterOrder/checkout" : "/saleTemp/endSale",
+        legacyPayment ? "/saleTemp/endSale" : "/counterOrder/checkout",
         payload,
       );
       const completed = parseCheckoutResult(res.data);
       if (!completed) throw new Error("Invalid checkout response");
+      if (draftAttemptKey(draftScope) !== ownerKey)
+        throw new Error(
+          "Account changed; recover this request with its original account",
+        );
 
       setLastCompletedBillId(completed.billId);
       setReceivedAmount(0);
       setCheckoutOpen(false);
-      if (draftMode) {
+      if (!legacyPayment) {
         const cleared = await draftCart.clearCart();
         if (cleared) {
-          clearDraftAttempt();
+          clearDraftAttempt(ownerKey);
           checkoutAttemptRef.current = null;
         } else {
           toast.warning(
             "Sale completed, but the local draft could not be cleared. Retry payment to recover it.",
           );
         }
-      } else await refreshCart();
-      if (!draftMode) checkoutAttemptRef.current = null;
+      } else {
+        clearDraftAttempt(ownerKey);
+        checkoutAttemptRef.current = null;
+        await refreshCart();
+      }
       await refreshSentOrders();
       if (serviceType === "TAKEAWAY" && completed.pickupNo)
         toast.success(`Nouto #${completed.pickupNo} lähetetty keittiöön`);
@@ -920,17 +1032,16 @@ export default function Page() {
         });
       }
     } catch (e: unknown) {
-      if (hasFinalHttpResponse(e)) {
+      if (hasFinalHttpResponse(e) && draftAttemptKey(draftScope) === ownerKey) {
+        clearDraftAttempt(ownerKey);
         checkoutAttemptRef.current = null;
-        if (draftMode) {
-          clearDraftAttempt();
-          await draftCart.refreshCart();
-        }
+        await refreshCart();
       }
       toast.error("Checkout failed", {
         description: errorMessage(e),
       });
     } finally {
+      checkoutInFlight.current = false;
       setCheckoutBusy(false);
     }
   };
@@ -1101,6 +1212,48 @@ export default function Page() {
             KASSA
           </span>
         </div>
+        {(pendingPaymentError || invalidDraftAttempt) && (
+          <p role="alert" className="text-destructive">
+            {pendingPaymentError ||
+              "Tallennettu lähetys on virheellinen. Tarkista sen tila ennen uutta yritystä."}
+          </p>
+        )}
+        {pendingCounterPayments.length > 0 || otherPendingScopes.length > 0 ? (
+          <section
+            className="space-y-2 rounded-lg border border-border p-4"
+            aria-label="Epäselvät maksut ja lähetykset"
+          >
+            <p>
+              Aiemman pyynnön tulos on epäselvä. Tarkista se samoilla tiedoilla
+              ennen uutta yritystä.
+            </p>
+            {pendingCounterPayments.map((saved) => (
+              <Button
+                key={saved.order.id}
+                disabled={checkoutBusy || receiptBusy}
+                onClick={() => setPayableOrder(saved.order)}
+              >
+                Tarkista maksu #{saved.order.id}
+              </Button>
+            ))}
+            {otherPendingScopes.map((scope) => (
+              <Button
+                key={scope}
+                disabled={checkoutBusy || receiptBusy}
+                onClick={() => {
+                  if (scope === "TAKEAWAY") handleServiceTypeChange("TAKEAWAY");
+                  else {
+                    handleServiceTypeChange("DINE_IN");
+                    handleTableChange(String(scope));
+                  }
+                }}
+              >
+                Tarkista{" "}
+                {scope === "TAKEAWAY" ? "noutotilaus" : `pöytä P${scope}`}
+              </Button>
+            ))}
+          </section>
+        ) : null}
         <div className="mt-5 space-y-2" role="group" aria-label="Tilaustapa">
           <p className="text-xs text-muted-foreground">Tilaustapa</p>
           <div className="grid grid-cols-2 gap-2">
@@ -1384,7 +1537,8 @@ export default function Page() {
               €
             </strong>
           </div>
-          {summary.total > 0 ? (
+          {summary.total > 0 ||
+          (draftPending && draftPending.kind !== "kitchen") ? (
             <>
               <Button
                 type="button"
@@ -1393,7 +1547,8 @@ export default function Page() {
                 disabled={
                   checkoutBusy ||
                   receiptBusy ||
-                  cartBusy ||
+                  (cartBusy && !draftPending) ||
+                  invalidDraftAttempt ||
                   (draftMode && draftPending?.kind === "kitchen")
                 }
                 onClick={() => {
@@ -1510,12 +1665,18 @@ export default function Page() {
       <CheckoutModal
         open={checkoutOpen}
         onOpenChange={setCheckoutOpen}
-        total={summary.total}
+        total={
+          draftPending && draftPending.kind !== "kitchen"
+            ? (draftPending.quotedTotal ??
+              draftPending.payload.expectedTotal ??
+              summary.total)
+            : summary.total
+        }
         payType={payType}
         receivedAmount={receivedAmount}
-        checkoutBusy={checkoutBusy}
+        checkoutBusy={checkoutBusy || invalidDraftAttempt}
         receiptBusy={receiptBusy}
-        paymentDetailsLocked={draftMode && draftPending?.kind === "checkout"}
+        paymentDetailsLocked={draftPending !== null}
         onSelectPaymentType={selectPaymentType}
         onChangeReceivedAmount={changeReceivedAmount}
         onReceivedAmountInput={(value) => {

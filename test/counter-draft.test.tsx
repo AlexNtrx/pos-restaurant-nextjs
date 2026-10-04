@@ -15,6 +15,65 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+it("coalesces identical in-flight quotes, guards rapid cart edits and still requests a fresh completed quote", async () => {
+  const response = {
+    data: {
+      results: {
+        subtotal: 25,
+        modifierTotal: 0,
+        total: 25,
+        items: [
+          {
+            foodId: 1,
+            foodName: "Meal",
+            quantity: 1,
+            unitBasePrice: 25,
+            lineTotal: 25,
+            modifiers: [],
+          },
+        ],
+      },
+    },
+  };
+  let resolve!: (value: typeof response) => void;
+  post.mockImplementationOnce(
+    () =>
+      new Promise((done) => {
+        resolve = done;
+      }),
+  );
+  const onError = vi.fn();
+  const view = renderHook(() => useCounterDraft(1, onError));
+  await waitFor(() => expect(view.result.current.quoteReady).toBe(true));
+  let mutation!: Promise<unknown>;
+  let quotes!: Promise<unknown>[];
+  act(() => {
+    mutation = view.result.current.addItem(1);
+    void view.result.current.addItem(1);
+    quotes = Array.from({ length: 20 }, () =>
+      view.result.current.refreshCart(),
+    );
+  });
+  expect(post).toHaveBeenCalledTimes(1);
+  expect(view.result.current.units).toHaveLength(1);
+  await act(async () => {
+    resolve(response);
+    await mutation;
+    await Promise.all(quotes);
+  });
+  expect(view.result.current.summary.total).toBe(25);
+  post.mockResolvedValue({
+    ...response,
+    data: { results: { ...response.data.results, total: 30, subtotal: 30 } },
+  });
+  await act(async () => {
+    await view.result.current.refreshCart();
+  });
+  expect(post).toHaveBeenCalledTimes(2);
+  expect(view.result.current.summary.total).toBe(30);
+  expect(onError).not.toHaveBeenCalled();
+});
+
 it("ignores failed mutations from a previous scope, including returning to the same table", async () => {
   let rejectOld!: (error: Error) => void;
   post.mockImplementationOnce(

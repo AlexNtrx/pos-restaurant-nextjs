@@ -180,6 +180,12 @@ export default function useCounterDraft(
   const scopeRef = useRef(scope);
   const requestId = useRef(0);
   const mutationId = useRef(0);
+  const mutationBusy = useRef(false);
+  const quoteJob = useRef<{
+    signature: string;
+    controller: AbortController;
+    promise: Promise<Quote>;
+  } | null>(null);
   useEffect(() => {
     scopeRef.current = scope;
   }, [scope]);
@@ -189,6 +195,8 @@ export default function useCounterDraft(
       const id = ++requestId.current;
       setQuoteReady(false);
       if (targetUnits.length === 0) {
+        quoteJob.current?.controller.abort();
+        quoteJob.current = null;
         if (scopeRef.current === targetScope && requestId.current === id) {
           setItems([]);
           setSummary(emptySummary);
@@ -196,11 +204,32 @@ export default function useCounterDraft(
         }
         return { results: [], summary: emptySummary };
       }
-      const response = await api.post(
-        "/counterOrder/quote",
-        toIntent(targetScope, targetUnits),
-      );
-      const quote = parseQuote(response.data?.results);
+      const intent = toIntent(targetScope, targetUnits);
+      const signature = JSON.stringify([readAuthSession()?.userId, intent]);
+      // EN: Share only an in-flight quote for identical identifiers; a changed intent aborts the old read and every completed refresh asks the server again.
+      // FI: Jaa vain samojen tunnisteiden keskeneräinen hinta-arvio; muuttunut pyyntö keskeyttää vanhan haun ja jokainen valmis päivitys kysyy palvelimelta uudelleen.
+      if (quoteJob.current?.signature !== signature) {
+        quoteJob.current?.controller.abort();
+        const controller = new AbortController();
+        const promise = api
+          .post("/counterOrder/quote", intent, { signal: controller.signal })
+          .then((response) => parseQuote(response.data?.results));
+        const job = { signature, controller, promise };
+        quoteJob.current = job;
+        void promise
+          .finally(() => {
+            if (quoteJob.current === job) quoteJob.current = null;
+          })
+          .catch(() => {});
+      }
+      const job = quoteJob.current!;
+      const quote = await job.promise;
+      if (
+        job.controller.signal.aborted ||
+        scopeRef.current !== targetScope ||
+        requestId.current !== id
+      )
+        return null;
       const results = displayItems(targetUnits, quote);
       const nextSummary = {
         baseAmount: quote.subtotal,
@@ -222,6 +251,7 @@ export default function useCounterDraft(
     let cancelled = false;
     const timer = window.setTimeout(async () => {
       setCartBusy(false);
+      mutationBusy.current = false;
       try {
         const saved = readDraft(targetScope);
         if (cancelled) return;
@@ -244,17 +274,21 @@ export default function useCounterDraft(
       window.clearTimeout(timer);
       requestId.current += 1;
       mutationId.current += 1;
+      quoteJob.current?.controller.abort();
+      quoteJob.current = null;
     };
   }, [scope, quoteUnits, onError]);
 
   const change = async (next: DraftUnit[]) => {
     if (
       cartBusy ||
+      mutationBusy.current ||
       (scope !== "TAKEAWAY" && !validId(scope)) ||
       loadedScope !== scope
     )
       return null;
     let persisted = false;
+    mutationBusy.current = true;
     const operationId = ++mutationId.current;
     // EN: A previous scope must not change the current cart's error or busy state.
     // FI: Edellinen rajaus ei saa muuttaa nykyisen ostoskorin virhe- tai odotustilaa.
@@ -276,7 +310,10 @@ export default function useCounterDraft(
       }
       return null;
     } finally {
-      if (isCurrent()) setCartBusy(false);
+      if (isCurrent()) {
+        mutationBusy.current = false;
+        setCartBusy(false);
+      }
     }
   };
   const addItem = (foodId: number) => {
@@ -346,13 +383,19 @@ export default function useCounterDraft(
       .map((unit) => ({ ...unit, saleTempId: foodId, Food: food }));
   };
   const refreshCart = async () => {
+    const targetScope = scope;
+    const refreshedId = requestId.current + 1;
+    const isCurrent = () =>
+      scopeRef.current === targetScope && requestId.current === refreshedId;
     try {
       const refreshed = await quoteUnits(scope, unitsRef.current);
-      setLoadFailed(false);
+      if (isCurrent()) setLoadFailed(false);
       return refreshed;
     } catch (error) {
-      setQuoteReady(false);
-      onError(error, "load");
+      if (isCurrent()) {
+        setQuoteReady(false);
+        onError(error, "load");
+      }
       return null;
     }
   };
