@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { CatalogManagementPage } from "@/app/backoffice/catalog/_components/catalog-management-page";
@@ -42,6 +42,122 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("TW-05 CRUD dialogs", () => {
+  it("keeps the menu draft stable through upload and save, then enables editing after failure", async () => {
+    api.get.mockImplementation((path: string) =>
+      Promise.resolve({
+        data: { results: path === "/food/list" ? [food] : [category] },
+      }),
+    );
+    let uploaded!: (value: { data: { fileName: string } }) => void;
+    let failed!: (reason: Error) => void;
+    api.post.mockImplementation((path: string) =>
+      path === "/food/upload"
+        ? new Promise((resolve) => {
+            uploaded = resolve;
+          })
+        : new Promise((_resolve, reject) => {
+            failed = reject;
+          }),
+    );
+    const user = userEvent.setup();
+    render(<MenuItemsPage />);
+    await screen.findByText("Lohikeitto");
+    await user.click(screen.getByRole("button", { name: "Lisää ruokalaji" }));
+    const name = screen.getByLabelText(/^Nimi/) as HTMLInputElement;
+    await user.type(name, "Kahvi");
+    const price = screen.getByLabelText(/^Hinta/);
+    await user.clear(price);
+    await user.type(price, "4");
+    const file = new File(["image"], "coffee.webp", { type: "image/webp" });
+    await user.upload(screen.getByLabelText("Ruokalistan kuva"), file);
+    await user.click(screen.getByRole("button", { name: "Tallenna" }));
+    expect(name.matches(":disabled")).toBe(true);
+    expect(screen.getByLabelText("Lisätietokuva").matches(":disabled")).toBe(
+      true,
+    );
+    expect(screen.getByLabelText(/^Kategoria/).matches(":disabled")).toBe(true);
+    await user.type(name, " changed");
+    expect(name.value).toBe("Kahvi");
+    await act(async () => uploaded({ data: { fileName: "coffee.webp" } }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        "/food/create",
+        expect.objectContaining({ name: "Kahvi", price: 4 }),
+      ),
+    );
+    expect(name.matches(":disabled")).toBe(true);
+    await act(async () => failed(new Error("Save failed")));
+    await screen.findByRole("alert");
+    expect(name.matches(":disabled")).toBe(false);
+    expect(name.value).toBe("Kahvi");
+    expect(
+      (screen.getByLabelText("Ruokalistan kuva") as HTMLInputElement)
+        .files?.[0],
+    ).toBe(file);
+    await user.type(name, " updated");
+    expect(name.value).toBe("Kahvi updated");
+  });
+
+  it("locks restaurant fields through logo upload and save without discarding a failed draft", async () => {
+    api.get.mockResolvedValue({
+      data: {
+        result: {
+          id: 1,
+          name: "Ravintola POS",
+          address: "Street 1",
+          phone: "123",
+          email: "",
+          website: "",
+          bankNo: "",
+          logo: "old.png",
+          taxCode: "TEST-1",
+        },
+      },
+    });
+    let uploaded!: (value: { data: { fileName: string } }) => void;
+    let failed!: (reason: Error) => void;
+    api.post.mockImplementation((path: string) =>
+      path === "/organization/upload"
+        ? new Promise((resolve) => {
+            uploaded = resolve;
+          })
+        : new Promise((_resolve, reject) => {
+            failed = reject;
+          }),
+    );
+    const user = userEvent.setup();
+    render(<RestaurantSettingsPage />);
+    const name = (await screen.findByDisplayValue(
+      "Ravintola POS",
+    )) as HTMLInputElement;
+    const file = new File(["logo"], "new.webp", { type: "image/webp" });
+    await user.upload(screen.getByLabelText("Vaihda logo"), file);
+    await user.click(
+      screen.getByRole("button", { name: "Tallenna muutokset" }),
+    );
+    expect(name.matches(":disabled")).toBe(true);
+    expect(screen.getByLabelText("Vaihda logo").matches(":disabled")).toBe(
+      true,
+    );
+    await user.type(name, " changed");
+    expect(name.value).toBe("Ravintola POS");
+    await act(async () => uploaded({ data: { fileName: "new.webp" } }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        "/organization/create",
+        expect.objectContaining({ name: "Ravintola POS", logo: "new.webp" }),
+      ),
+    );
+    expect(name.matches(":disabled")).toBe(true);
+    await act(async () => failed(new Error("Save failed")));
+    await screen.findByRole("alert");
+    expect(name.matches(":disabled")).toBe(false);
+    expect(name.value).toBe("Ravintola POS");
+    expect(
+      (screen.getByLabelText("Vaihda logo") as HTMLInputElement).files?.[0],
+    ).toBe(file);
+  });
+
   it("creates a kitchen account and preserves its role when editing", async () => {
     const cook = { id: 9, name: "Cook", username: "cook", level: "kitchen" };
     api.get.mockResolvedValue({ data: { results: [cook] } });

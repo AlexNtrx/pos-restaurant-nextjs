@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -67,20 +67,26 @@ export function SalesReportPage() {
     "loading" | "ready" | "error" | "forbidden"
   >("loading");
   const [error, setError] = useState("");
+  const latestRequest = useRef(0);
 
   const load = useCallback(async () => {
+    // EN: A previous year's response must not replace the selected year's report.
+    // FI: Edellisen vuoden vastaus ei saa korvata valitun vuoden raporttia.
+    const request = ++latestRequest.current;
     setStatus("loading");
     setError("");
     try {
       const response = await api.post("/report/sumMonthly", {
         year: Number(year),
       });
+      if (request !== latestRequest.current) return;
       if (!isMonthlySalesResponse(response.data))
         throw new Error("Palvelin palautti virheellisiä raporttitietoja.");
       setRows(response.data.results);
       setTotal(response.data.totalAmount);
       setStatus("ready");
     } catch (reason: unknown) {
+      if (request !== latestRequest.current) return;
       setError(getApiErrorMessage(reason, "Raporttia ei voitu ladata."));
       setStatus(isPermissionDeniedError(reason) ? "forbidden" : "error");
     }
@@ -88,7 +94,10 @@ export function SalesReportPage() {
 
   useEffect(() => {
     const id = window.setTimeout(() => void load(), 0);
-    return () => window.clearTimeout(id);
+    return () => {
+      window.clearTimeout(id);
+      latestRequest.current += 1;
+    };
   }, [load]);
 
   return (
@@ -112,7 +121,14 @@ export function SalesReportPage() {
       >
         <label className="space-y-1 text-xs font-medium text-muted-foreground">
           Vuosi
-          <Select value={year} onValueChange={setYear}>
+          <Select
+            value={year}
+            onValueChange={(value) => {
+              latestRequest.current += 1;
+              setYear(value);
+              setStatus("loading");
+            }}
+          >
             <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
@@ -140,7 +156,7 @@ export function SalesReportPage() {
         </CardHeader>
         <CardContent>
           <p className="text-2xl font-medium">
-            {currencyFormatter.format(total)}
+            {status === "ready" ? currencyFormatter.format(total) : "—"}
           </p>
         </CardContent>
       </Card>

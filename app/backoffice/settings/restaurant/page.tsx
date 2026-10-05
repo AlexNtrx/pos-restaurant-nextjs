@@ -295,6 +295,8 @@ export default function RestaurantSettingsPage() {
         }
       />
 
+      {/* EN: Keep the submitted draft stable during upload and save. */}
+      {/* FI: Säilytä lähetetty luonnos muuttumattomana latauksen ja tallennuksen aikana. */}
       <form
         className="mt-6 space-y-[18px]"
         aria-busy={isSaving}
@@ -316,6 +318,7 @@ export default function RestaurantSettingsPage() {
               className={fieldClassName}
             >
               <Input
+                disabled={isSaving}
                 value={form.name}
                 maxLength={150}
                 onInvalid={(event) => {
@@ -333,6 +336,7 @@ export default function RestaurantSettingsPage() {
               className={fieldClassName}
             >
               <Input
+                disabled={isSaving}
                 value={form.address}
                 maxLength={500}
                 onInvalid={(event) => {
@@ -351,6 +355,7 @@ export default function RestaurantSettingsPage() {
                 className={fieldClassName}
               >
                 <Input
+                  disabled={isSaving}
                   value={form.phone}
                   maxLength={50}
                   onInvalid={(event) => {
@@ -367,6 +372,7 @@ export default function RestaurantSettingsPage() {
                 className={fieldClassName}
               >
                 <Input
+                  disabled={isSaving}
                   type="email"
                   value={form.email}
                   maxLength={254}
@@ -387,6 +393,7 @@ export default function RestaurantSettingsPage() {
               className={fieldClassName}
             >
               <Input
+                disabled={isSaving}
                 inputMode="url"
                 placeholder="https://example.com"
                 value={form.website}
@@ -411,6 +418,7 @@ export default function RestaurantSettingsPage() {
               className={fieldClassName}
             >
               <Input
+                disabled={isSaving}
                 value={form.taxCode}
                 maxLength={50}
                 onInvalid={(event) => {
@@ -435,6 +443,7 @@ export default function RestaurantSettingsPage() {
               className={fieldClassName}
             >
               <Input
+                disabled={isSaving}
                 value={form.bankNo}
                 maxLength={100}
                 onChange={(event) => setField("bankNo", event.target.value)}
@@ -480,6 +489,7 @@ export default function RestaurantSettingsPage() {
                 {logoFileName ? "Vaihda logo" : "Valitse logo"}
               </label>
               <input
+                disabled={isSaving}
                 ref={fileInputRef}
                 id="restaurant-logo"
                 type="file"

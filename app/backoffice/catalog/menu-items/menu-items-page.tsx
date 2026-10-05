@@ -663,7 +663,10 @@ export default function MenuItemsPage() {
               Ruokalajin tiedot, kuva ja myyntityyppi.
             </DialogDescription>
           </DialogHeader>
+          {/* EN: Keep the submitted draft stable during upload and save. */}
+          {/* FI: Säilytä lähetetty luonnos muuttumattomana latauksen ja tallennuksen aikana. */}
           <form
+            aria-busy={isSaving}
             id="menu-item-form"
             className="grid gap-4 sm:grid-cols-2"
             onSubmit={saveFood}
@@ -675,6 +678,7 @@ export default function MenuItemsPage() {
               className="sm:col-span-2"
             >
               <select
+                disabled={isSaving}
                 className="h-10 w-full rounded-md border border-border bg-surface px-3"
                 value={foodTypeId ?? ""}
                 onChange={(event) => setFoodTypeId(Number(event.target.value))}
@@ -688,6 +692,7 @@ export default function MenuItemsPage() {
             </FormField>
             <FormField id="menu-item-name" label="Nimi" required>
               <Input
+                disabled={isSaving}
                 value={name}
                 maxLength={120}
                 onChange={(event) => setName(event.target.value)}
@@ -695,6 +700,7 @@ export default function MenuItemsPage() {
             </FormField>
             <FormField id="menu-item-price" label="Hinta" required>
               <Input
+                disabled={isSaving}
                 type="number"
                 min="0"
                 step="1"
@@ -704,6 +710,7 @@ export default function MenuItemsPage() {
             </FormField>
             <FormField id="menu-item-kind" label="Tyyppi" required>
               <select
+                disabled={isSaving}
                 className="h-10 w-full rounded-md border border-border bg-surface px-3"
                 value={foodKind}
                 onChange={(event) =>
@@ -720,6 +727,7 @@ export default function MenuItemsPage() {
               description="Näkyy ruokalistassa. JPEG, PNG, WEBP tai GIF, enintään 5 MB, 24 megapikseliä ja 8000 px/sivu."
             >
               <Input
+                disabled={isSaving}
                 ref={fileInputRef}
                 type="file"
                 accept="image/jpeg,image/png,image/webp,image/gif"
@@ -734,6 +742,7 @@ export default function MenuItemsPage() {
               description="Näkyy Lisätiedot-ikkunassa. JPEG, PNG, WEBP tai GIF, enintään 5 MB, 24 megapikseliä ja 8000 px/sivu."
             >
               <Input
+                disabled={isSaving}
                 ref={detailFileInputRef}
                 type="file"
                 accept="image/jpeg,image/png,image/webp,image/gif"
@@ -748,6 +757,7 @@ export default function MenuItemsPage() {
               className="sm:col-span-2"
             >
               <Input
+                disabled={isSaving}
                 value={remark}
                 maxLength={500}
                 onChange={(event) => setRemark(event.target.value)}
@@ -767,6 +777,7 @@ export default function MenuItemsPage() {
                   type="button"
                   variant="outline"
                   size="sm"
+                  disabled={isSaving}
                   onClick={() => setCurrentDetailImage("")}
                 >
                   Poista lisätietokuva

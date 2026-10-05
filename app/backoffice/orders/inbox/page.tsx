@@ -149,8 +149,14 @@ export default function StaffOrderInboxPage() {
   const watermark = useRef<string | null>(null);
   const polls = useRef(0);
   const mounted = useRef(false);
+  const detailRequest = useRef(0);
+  const selectedOrder = useRef<number | null>(null);
+  const accessRevoked = useRef(false);
 
   const revokeView = useCallback(() => {
+    accessRevoked.current = true;
+    detailRequest.current += 1;
+    selectedOrder.current = null;
     // EN: A revoked session must not keep previously fetched Order snapshots visible.
     // FI: Perutun istunnon aiemmin haetut tilaustiedot eivät saa jäädä näkyviin.
     setOrders([]);
@@ -174,7 +180,7 @@ export default function StaffOrderInboxPage() {
           full ? { status: "SUBMITTED" } : { updatedAfter: watermark.current! },
           signal,
         );
-        if (signal.aborted) return;
+        if (signal.aborted || accessRevoked.current) return;
         setOrders((current) =>
           full
             ? mergeActiveOrders([], page.results)
@@ -187,22 +193,12 @@ export default function StaffOrderInboxPage() {
         setError("");
         setState("ready");
       } catch (cause: unknown) {
-        if (signal.aborted) return;
+        if (signal.aborted || accessRevoked.current) return;
         if (
           isPermissionDeniedError(cause) ||
           (isAxiosError(cause) && cause.response?.status === 401)
         ) {
-          // EN: The polling callback stays stable; clear cached data on access loss before any stale render.
-          // FI: Kyselyfunktio pysyy vakaana; tyhjennä välimuistissa olevat tiedot ennen vanhan näkymän piirtämistä.
-          setOrders([]);
-          setHandled([]);
-          setSelectedId(null);
-          setDetail(null);
-          setAction(null);
-          setError("");
-          setState("forbidden");
-          watermark.current = null;
-          polls.current = 0;
+          revokeView();
           throw cause;
         }
         setError(getApiErrorMessage(cause, "Tilauksia ei voitu päivittää."));
@@ -210,7 +206,7 @@ export default function StaffOrderInboxPage() {
         throw cause;
       }
     },
-    [],
+    [revokeView],
   );
 
   const sync = usePolling(pollQueue, { enabled: state !== "forbidden" });
@@ -221,7 +217,7 @@ export default function StaffOrderInboxPage() {
         fetchOrderPages({ status: "REJECTED" }),
         fetchOrderPages({ status: "CANCELLED" }),
       ]);
-      if (!mounted.current) return;
+      if (!mounted.current || accessRevoked.current) return;
       setHandled(
         [...rejected.results, ...cancelled.results].sort(
           (left, right) =>
@@ -231,7 +227,7 @@ export default function StaffOrderInboxPage() {
       );
       setError("");
     } catch (cause: unknown) {
-      if (!mounted.current) return;
+      if (!mounted.current || accessRevoked.current) return;
       if (
         isPermissionDeniedError(cause) ||
         (isAxiosError(cause) && cause.response?.status === 401)
@@ -253,12 +249,19 @@ export default function StaffOrderInboxPage() {
     }, 5_000);
     return () => {
       mounted.current = false;
+      detailRequest.current += 1;
+      selectedOrder.current = null;
       window.clearTimeout(clock);
       window.clearInterval(interval);
     };
   }, []);
 
   async function openDetail(id: number) {
+    if (accessRevoked.current) return;
+    // EN: Only the current dialog request may populate its Order snapshot.
+    // FI: Vain nykyinen dialogipyyntö saa täyttää sen tilaustiedot.
+    const request = ++detailRequest.current;
+    selectedOrder.current = id;
     setSelectedId(id);
     setDetail(null);
     setDetailError("");
@@ -266,9 +269,9 @@ export default function StaffOrderInboxPage() {
     setReason("");
     try {
       const latest = await fetchOrderDetail(id);
-      if (mounted.current) setDetail(latest);
+      if (isCurrentDetail(request, id)) setDetail(latest);
     } catch (cause: unknown) {
-      if (!mounted.current) return;
+      if (!isCurrentDetail(request, id)) return;
       if (
         isPermissionDeniedError(cause) ||
         (isAxiosError(cause) && cause.response?.status === 401)
@@ -280,8 +283,25 @@ export default function StaffOrderInboxPage() {
     }
   }
 
+  function isCurrentDetail(request: number, id: number) {
+    return (
+      mounted.current &&
+      !accessRevoked.current &&
+      detailRequest.current === request &&
+      selectedOrder.current === id
+    );
+  }
+
   async function submitAction() {
-    if (!detail || !action || saving) return;
+    if (
+      !detail ||
+      !action ||
+      saving ||
+      detail.id !== selectedId ||
+      !isCurrentDetail(detailRequest.current, detail.id)
+    )
+      return;
+    const request = detailRequest.current;
     const trimmed = reason.trim();
     if (
       action !== "CONFIRMED" &&
@@ -299,6 +319,7 @@ export default function StaffOrderInboxPage() {
         action,
         action === "CONFIRMED" ? undefined : trimmed,
       );
+      if (!isCurrentDetail(request, detail.id)) return;
       setDetail(updated);
       setAction(null);
       setReason("");
@@ -306,6 +327,7 @@ export default function StaffOrderInboxPage() {
       if (tab === "handled") void loadHandled();
       void sync();
     } catch (cause: unknown) {
+      if (!isCurrentDetail(request, detail.id)) return;
       if (
         isPermissionDeniedError(cause) ||
         (isAxiosError(cause) && cause.response?.status === 401)
@@ -316,8 +338,19 @@ export default function StaffOrderInboxPage() {
           "Tilaus muuttui toisessa istunnossa. Tiedot päivitettiin.",
         );
         try {
-          setDetail(await fetchOrderDetail(detail.id));
-        } catch {
+          const latest = await fetchOrderDetail(detail.id);
+          if (!isCurrentDetail(request, detail.id)) return;
+          setDetail(latest);
+        } catch (refreshError: unknown) {
+          if (!isCurrentDetail(request, detail.id)) return;
+          if (
+            isPermissionDeniedError(refreshError) ||
+            (isAxiosError(refreshError) &&
+              refreshError.response?.status === 401)
+          ) {
+            revokeView();
+            return;
+          }
           setDetail(null);
         }
         setAction(null);
@@ -328,7 +361,7 @@ export default function StaffOrderInboxPage() {
         );
       }
     } finally {
-      setSaving(false);
+      if (mounted.current) setSaving(false);
     }
   }
 
@@ -428,7 +461,10 @@ export default function StaffOrderInboxPage() {
         open={selectedId !== null}
         onOpenChange={(open) => {
           if (!open && !saving) {
+            detailRequest.current += 1;
+            selectedOrder.current = null;
             setSelectedId(null);
+            setDetail(null);
             setAction(null);
           }
         }}

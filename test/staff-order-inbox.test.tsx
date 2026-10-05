@@ -96,6 +96,112 @@ afterEach(() => {
 });
 
 describe("OPS-01 staff inbox", () => {
+  it.each(["success", "failure"])(
+    "ignores a closed dialog's late %s and acts only on the newly selected Order",
+    async (outcome) => {
+      let resolve!: (value: ReturnType<typeof detail>) => void;
+      let reject!: (error: Error) => void;
+      const oldRequest = new Promise<ReturnType<typeof detail>>((yes, no) => {
+        resolve = yes;
+        reject = no;
+      });
+      const second = {
+        ...base,
+        id: 42,
+        items: [{ ...base.items[0], name: "Salad" }],
+      };
+      api.get.mockImplementation((path: string) => {
+        if (path === "/orders") return Promise.resolve(page([base, second]));
+        return path === "/orders/41"
+          ? oldRequest
+          : Promise.resolve(detail(second));
+      });
+      api.patch.mockResolvedValue(
+        detail({ ...second, status: "CONFIRMED", version: 2 }),
+      );
+      const user = userEvent.setup();
+      render(<StaffOrderInboxPage />);
+      const firstCard = (await screen.findByText("Tilaus #41")).closest(
+        "article",
+      )!;
+      await user.click(within(firstCard).getByRole("button", { name: "Avaa" }));
+      await user.click(screen.getByRole("button", { name: "Sulje" }));
+      const secondCard = screen.getByText("Tilaus #42").closest("article")!;
+      await user.click(
+        within(secondCard).getByRole("button", { name: "Avaa" }),
+      );
+      await screen.findByText("Tapahtumat");
+      await act(async () => {
+        if (outcome === "success") resolve(detail(base));
+        else reject(new Error("Old detail failed"));
+      });
+      const dialog = within(screen.getByRole("dialog"));
+      expect(dialog.getByText(/Salad/)).toBeTruthy();
+      expect(dialog.queryByText(/Soup/)).toBeNull();
+      expect(dialog.queryByRole("alert")).toBeNull();
+      await user.click(dialog.getByRole("button", { name: "Vahvista" }));
+      await user.click(dialog.getByRole("button", { name: "Vahvista" }));
+      await waitFor(() =>
+        expect(api.patch).toHaveBeenCalledWith("/orders/42/status", {
+          expectedVersion: 1,
+          nextStatus: "CONFIRMED",
+        }),
+      );
+    },
+  );
+
+  it("does not restore a pending detail after polling revokes access", async () => {
+    let resolve!: (value: ReturnType<typeof detail>) => void;
+    api.get.mockImplementation((path: string) =>
+      path === "/orders"
+        ? Promise.resolve(page([base]))
+        : new Promise((yes) => {
+            resolve = yes;
+          }),
+    );
+    const user = userEvent.setup();
+    render(<StaffOrderInboxPage />);
+    await screen.findByText("Tilaus #41");
+    await user.click(screen.getByRole("button", { name: "Avaa" }));
+    api.get.mockRejectedValue(
+      Object.assign(new Error("Forbidden"), {
+        isAxiosError: true,
+        response: { status: 403 },
+      }),
+    );
+    await act(async () => poll?.());
+    await screen.findByRole("heading", { name: "Ei käyttöoikeutta" });
+    await act(async () => resolve(detail(base)));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByText("Soup")).toBeNull();
+    expect(api.patch).not.toHaveBeenCalled();
+  });
+
+  it("revokes the view when conflict recovery loses access", async () => {
+    api.patch.mockRejectedValue(
+      Object.assign(new Error("Conflict"), {
+        isAxiosError: true,
+        response: { status: 409 },
+      }),
+    );
+    const user = userEvent.setup();
+    render(<StaffOrderInboxPage />);
+    await screen.findByText("Tilaus #41");
+    await user.click(screen.getByRole("button", { name: "Avaa" }));
+    await screen.findByText("Tapahtumat");
+    api.get.mockRejectedValue(
+      Object.assign(new Error("Forbidden"), {
+        isAxiosError: true,
+        response: { status: 403 },
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: "Vahvista" }));
+    await user.click(screen.getByRole("button", { name: "Vahvista" }));
+    await screen.findByRole("heading", { name: "Ei käyttöoikeutta" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByText("Soup")).toBeNull();
+  });
+
   it("removes cached Order snapshots when staff access is revoked during polling", async () => {
     render(<StaffOrderInboxPage />);
     expect(await screen.findByText("Tilaus #41")).toBeTruthy();

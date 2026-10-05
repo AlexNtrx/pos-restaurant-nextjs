@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   afterAll,
@@ -55,6 +55,48 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("Kuukausimyynti report", () => {
+  it.each(["success", "failure"])(
+    "ignores a stale year's %s after the selected report has loaded",
+    async (outcome) => {
+      let resolve!: (value: { data: typeof report }) => void;
+      let reject!: (reason: Error) => void;
+      api.post.mockReturnValueOnce(
+        new Promise((yes, no) => {
+          resolve = yes;
+          reject = no;
+        }),
+      );
+      api.post.mockResolvedValue({
+        data: {
+          ...report,
+          totalAmount: 250,
+          results: report.results.map((row) => ({
+            ...row,
+            amount: row.month === "01" ? 250 : 0,
+          })),
+        },
+      });
+      const user = userEvent.setup();
+      render(<MonthlySalesRoute />);
+      await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+      screen.getByRole("combobox").focus();
+      await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
+      await screen.findByText("Tammikuu");
+      expect(screen.getAllByText("250,00 €")).toHaveLength(3);
+
+      await act(async () => {
+        if (outcome === "success") resolve({ data: report });
+        else reject(new Error("Old request failed"));
+      });
+      expect(screen.getAllByText("250,00 €")).toHaveLength(3);
+      expect(screen.queryByText("Raporttia ei voitu ladata")).toBeNull();
+      expect(screen.queryByText("125,00 €")).toBeNull();
+      expect(api.post).toHaveBeenLastCalledWith("/report/sumMonthly", {
+        year: new Date().getFullYear() - 1,
+      });
+    },
+  );
+
   it("loads the monthly contract and displays all months and the server total", async () => {
     render(<MonthlySalesRoute />);
 
