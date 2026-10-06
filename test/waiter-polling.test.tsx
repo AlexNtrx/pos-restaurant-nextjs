@@ -1,7 +1,7 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import WaiterPage from "@/app/backoffice/waiter/page";
-import type { StaffOrder } from "@/app/backoffice/orders/inbox/_lib/staff-orders";
+import type { StaffOrder } from "@/lib/orders/contracts";
 
 const { get } = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock("@/lib/api", () => ({ default: { get } }));

@@ -14,24 +14,19 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ErrorState, LoadingState } from "@/components/ui/states";
-import {
-  fetchOrderPages,
-  type StaffOrder,
-} from "@/app/backoffice/orders/inbox/_lib/staff-orders";
-import CheckoutModal from "@/app/backoffice/sale/_components/checkout-modal";
-import ReceiptPreview from "@/app/backoffice/sale/_components/receipt-preview";
+import { fetchOrderPages } from "@/lib/orders/client";
+import { type StaffOrder } from "@/lib/orders/contracts";
+import CheckoutModal from "@/components/payments/checkout-modal";
+import { useReceiptPreview } from "@/components/receipts/use-receipt-preview";
+import ReceiptPreview from "@/components/receipts/receipt-preview";
 import api from "@/lib/api";
-import { readAuthSession } from "@/lib/auth-session";
+import {
+  attemptKey,
+  validAttempt,
+  type Attempt,
+} from "@/lib/payments/table-payment-attempt";
 import { parseCheckoutResult } from "@/lib/sale-contracts";
 
-type Attempt = {
-  tableNo: number;
-  orders: { id: number; version: number }[];
-  idempotencyKey: string;
-  payType: "cash" | "bank";
-  inputMoney?: number;
-  total: number;
-};
 type Props = {
   sessionId: number;
   tableNo: number;
@@ -43,68 +38,6 @@ const payable = (order: StaffOrder) =>
   !["REJECTED", "CANCELLED", "PAID", "COMPLETED"].includes(order.status);
 const euros = (amount: number) =>
   `${amount.toLocaleString("fi-FI", { minimumFractionDigits: 2 })} €`;
-const attemptKey = (sessionId: number) => {
-  if (typeof window === "undefined") return null;
-  const userId = readAuthSession()?.userId;
-  return userId && /^[1-9]\d*$/.test(userId)
-    ? `table-payment:v1:${userId}:${sessionId}`
-    : null;
-};
-export const listPendingTablePayments = (): {
-  sessionId: number;
-  tableNo: number;
-}[] => {
-  const userId = readAuthSession()?.userId;
-  if (!userId || !/^[1-9]\d*$/.test(userId)) return [];
-  const prefix = `table-payment:v1:${userId}:`;
-  const pending: { sessionId: number; tableNo: number }[] = [];
-  for (let index = 0; index < localStorage.length; index += 1) {
-    const key = localStorage.key(index);
-    if (!key?.startsWith(prefix)) continue;
-    const sessionId = Number(key.slice(prefix.length));
-    if (!Number.isSafeInteger(sessionId) || sessionId <= 0) continue;
-    try {
-      const saved: unknown = JSON.parse(localStorage.getItem(key) ?? "null");
-      const tableNo =
-        saved &&
-        typeof saved === "object" &&
-        Number.isSafeInteger((saved as Record<string, unknown>).tableNo)
-          ? Number((saved as Record<string, unknown>).tableNo)
-          : 0;
-      pending.push({ sessionId, tableNo });
-    } catch {
-      pending.push({ sessionId, tableNo: 0 });
-    }
-  }
-  return pending;
-};
-const validAttempt = (value: unknown): value is Attempt => {
-  if (!value || typeof value !== "object") return false;
-  const attempt = value as Record<string, unknown>;
-  return (
-    Array.isArray(attempt.orders) &&
-    Number.isSafeInteger(attempt.tableNo) &&
-    Number(attempt.tableNo) > 0 &&
-    attempt.orders.length > 0 &&
-    attempt.orders.every(
-      (item) =>
-        item &&
-        Number.isSafeInteger(item.id) &&
-        item.id > 0 &&
-        Number.isSafeInteger(item.version) &&
-        item.version > 0,
-    ) &&
-    typeof attempt.idempotencyKey === "string" &&
-    /^[0-9a-f-]{36}$/i.test(attempt.idempotencyKey) &&
-    (attempt.payType === "cash" || attempt.payType === "bank") &&
-    Number.isSafeInteger(attempt.total) &&
-    Number(attempt.total) >= 0 &&
-    (attempt.inputMoney === undefined ||
-      (Number.isSafeInteger(attempt.inputMoney) &&
-        Number(attempt.inputMoney) >= 0))
-  );
-};
-
 export default function TableSessionCheckout({
   sessionId,
   tableNo,
@@ -124,7 +57,7 @@ export default function TableSessionCheckout({
   const [pendingTotal, setPendingTotal] = useState<number | null>(null);
   const [invalidSaved, setInvalidSaved] = useState(false);
   const [paidBillId, setPaidBillId] = useState<number | null>(null);
-  const [receiptUrl, setReceiptUrl] = useState("");
+  const { url: receiptUrl, load: loadReceipt } = useReceiptPreview();
   const attempt = useRef<Attempt | null>(null);
   const inFlight = useRef(false);
   const ownerKeyRef = useRef(attemptKey(sessionId));
@@ -176,34 +109,14 @@ export default function TableSessionCheckout({
     return () => window.clearTimeout(id);
   }, [sessionId]);
 
-  useEffect(
-    () => () => {
-      if (receiptUrl) URL.revokeObjectURL(receiptUrl);
-    },
-    [receiptUrl],
-  );
-
   const active = orders.filter(payable);
   const total = active.reduce((sum, order) => sum + order.total, 0);
   const allServed =
     active.length > 0 && active.every((order) => order.status === "SERVED");
   const displayTotal = pendingTotal ?? total;
 
-  const showReceipt = async (billId: number) => {
-    const response = await api.post(
-      "/saleTemp/printBillAfterPay",
-      { billId },
-      { responseType: "blob" },
-    );
-    if (
-      !String(response.headers["content-type"] || "").includes(
-        "application/pdf",
-      ) ||
-      !(response.data instanceof Blob)
-    )
-      throw new Error("Virheellinen kuittivastaus");
-    setReceiptUrl(URL.createObjectURL(response.data));
-  };
+  const showReceipt = (billId: number) =>
+    loadReceipt("/saleTemp/printBillAfterPay", { billId });
 
   const pay = async () => {
     if (inFlight.current || invalidSaved) return;

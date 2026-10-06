@@ -14,10 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { LoadingState } from "@/components/ui/states";
 import { StatusBadge } from "@/components/ui/status-badge";
-import type {
-  OrderStatus,
-  StaffOrderDetail,
-} from "@/app/backoffice/orders/inbox/_lib/staff-orders";
+import type { OrderStatus, StaffOrderDetail } from "@/lib/orders/contracts";
 
 const labels: Record<OrderStatus, string> = {
   SUBMITTED: "Lähetetty",

@@ -9,7 +9,7 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import WaiterPage from "@/app/backoffice/waiter/page";
-import type { StaffOrder } from "@/app/backoffice/orders/inbox/_lib/staff-orders";
+import type { StaffOrder } from "@/lib/orders/contracts";
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),

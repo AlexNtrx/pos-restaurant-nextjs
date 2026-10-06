@@ -12,7 +12,7 @@ import {
   pendingRequestKey,
   assertPendingOwner,
 } from "@/lib/pending-request";
-import type { StaffOrderDetail } from "@/app/backoffice/orders/inbox/_lib/staff-orders";
+import type { StaffOrderDetail } from "@/lib/orders/contracts";
 
 type Refund = {
   id: number;

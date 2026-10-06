@@ -5,15 +5,14 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { getApiErrorMessage } from "@/lib/api-error";
-import { loadWaiterTables, type WaiterTable } from "@/lib/waiter-orders";
-import TableSessionCheckout, {
-  listPendingTablePayments,
-} from "@/app/backoffice/settings/tables/_components/table-session-checkout";
+import { loadStaffTables, type StaffTable } from "@/lib/tables";
+import TableSessionCheckout from "@/components/payments/table-session-checkout";
+import { listPendingTablePayments } from "@/lib/payments/table-payment-attempt";
 
 // EN: Cashiers reach table settlement from Kassa without gaining table or QR administration.
 // FI: Kassatyöntekijät pääsevät pöydän maksuun Kassasta saamatta pöytä- tai QR-hallinnan oikeuksia.
 export default function TablePaymentsPage() {
-  const [tables, setTables] = useState<WaiterTable[]>([]);
+  const [tables, setTables] = useState<StaffTable[]>([]);
   const [pending, setPending] = useState<
     { sessionId: number; tableNo: number }[]
   >([]);
@@ -26,7 +25,7 @@ export default function TablePaymentsPage() {
   const load = useCallback(async () => {
     try {
       setError("");
-      setTables(await loadWaiterTables());
+      setTables(await loadStaffTables());
       setPending(listPendingTablePayments());
     } catch (cause) {
       setError(getApiErrorMessage(cause, "Pöytiä ei voitu ladata."));

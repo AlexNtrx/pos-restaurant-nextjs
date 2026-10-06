@@ -42,6 +42,111 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("TW-05 CRUD dialogs", () => {
+  it("retains the editor DOM and selected file through parent rerenders and saves the edited draft", async () => {
+    api.get.mockImplementation((path: string) =>
+      Promise.resolve({
+        data: {
+          results:
+            path === "/food/list"
+              ? [{ ...food, detailImg: "old-detail.png" }]
+              : [category],
+        },
+      }),
+    );
+    api.post.mockResolvedValue({ data: { fileName: "new-menu.webp" } });
+    const user = userEvent.setup();
+    const view = render(<MenuItemsPage />);
+    await screen.findByText("Lohikeitto");
+    await user.click(screen.getByRole("button", { name: "Muokkaa" }));
+    const fileInput = screen.getByLabelText(
+      "Ruokalistan kuva",
+    ) as HTMLInputElement;
+    const file = new File(["image"], "new-menu.webp", { type: "image/webp" });
+    await user.upload(fileInput, file);
+    await user.type(screen.getByLabelText(/^Nimi/), " updated");
+    view.rerender(<MenuItemsPage />);
+    expect(screen.getByLabelText("Ruokalistan kuva")).toBe(fileInput);
+    expect(fileInput.files?.[0]).toBe(file);
+    expect((screen.getByLabelText(/^Nimi/) as HTMLInputElement).value).toBe(
+      "Lohikeitto updated",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Poista lisätietokuva" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Tallenna" }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith("/food/update", {
+        id: 8,
+        foodTypeId: 3,
+        name: "Lohikeitto updated",
+        remark: "",
+        price: 14,
+        img: "new-menu.webp",
+        detailImg: "",
+        foodType: "food",
+      }),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await user.click(screen.getByRole("button", { name: "Lisää ruokalaji" }));
+    expect((screen.getByLabelText(/^Nimi/) as HTMLInputElement).value).toBe("");
+    expect(
+      (screen.getByLabelText("Ruokalistan kuva") as HTMLInputElement).files
+        ?.length,
+    ).toBe(0);
+  });
+
+  it("coordinates search and pagination without losing the empty-state clear action", async () => {
+    api.get.mockImplementation((path: string) =>
+      Promise.resolve({
+        data: {
+          results:
+            path === "/food/list"
+              ? Array.from({ length: 50 }, (_, index) => ({
+                  ...food,
+                  id: index + 1,
+                  name: `Meal ${index + 1}`,
+                }))
+              : [category],
+        },
+      }),
+    );
+    const user = userEvent.setup();
+    render(<MenuItemsPage />);
+    await screen.findByText("Meal 1");
+    await user.click(screen.getByRole("button", { name: "Seuraava sivu" }));
+    expect(
+      screen
+        .getByRole("button", { name: "Sivu 2" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
+    await user.type(
+      screen.getByRole("textbox", { name: "Hae ruokalistaa" }),
+      "Meal 50",
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "Sivu 1" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
+    expect(screen.getByText("Meal 50")).toBeTruthy();
+    await user.type(
+      screen.getByRole("textbox", { name: "Hae ruokalistaa" }),
+      " missing",
+    );
+    expect(screen.getByText("Ei hakutuloksia")).toBeTruthy();
+    await user.click(
+      screen.getByRole("button", { name: "Tyhjennä suodattimet" }),
+    );
+    expect(screen.getByText("Meal 1")).toBeTruthy();
+    expect(
+      (
+        screen.getByRole("textbox", {
+          name: "Hae ruokalistaa",
+        }) as HTMLInputElement
+      ).value,
+    ).toBe("");
+  });
+
   it("keeps the menu draft stable through upload and save, then enables editing after failure", async () => {
     api.get.mockImplementation((path: string) =>
       Promise.resolve({

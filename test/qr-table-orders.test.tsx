@@ -5,14 +5,11 @@ import QrTableOrders from "@/app/backoffice/sale/_components/qr-table-orders";
 
 const { get, patch } = vi.hoisted(() => ({ get: vi.fn(), patch: vi.fn() }));
 vi.mock("@/lib/api", () => ({ default: { get, patch } }));
-vi.mock(
-  "@/app/backoffice/settings/tables/_components/table-session-checkout",
-  () => ({
-    default: ({ onSettled }: { onSettled: () => Promise<void> }) => (
-      <button onClick={() => void onSettled()}>Session checkout opened</button>
-    ),
-  }),
-);
+vi.mock("@/components/payments/table-session-checkout", () => ({
+  default: ({ onSettled }: { onSettled: () => Promise<void> }) => (
+    <button onClick={() => void onSettled()}>Session checkout opened</button>
+  ),
+}));
 
 const qrOrder = {
   id: 42,

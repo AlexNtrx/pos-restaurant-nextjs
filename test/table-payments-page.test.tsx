@@ -3,16 +3,15 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import TablePaymentsPage from "@/app/backoffice/orders/tables/page";
 const mocks = vi.hoisted(() => ({ load: vi.fn(), pending: vi.fn() }));
-vi.mock("@/lib/waiter-orders", () => ({ loadWaiterTables: mocks.load }));
-vi.mock(
-  "@/app/backoffice/settings/tables/_components/table-session-checkout",
-  () => ({
-    listPendingTablePayments: mocks.pending,
-    default: ({ sessionId }: { sessionId: number }) => (
-      <div>Pöydän maksu #{sessionId}</div>
-    ),
-  }),
-);
+vi.mock("@/lib/payments/table-payment-attempt", () => ({
+  listPendingTablePayments: mocks.pending,
+}));
+vi.mock("@/lib/tables", () => ({ loadStaffTables: mocks.load }));
+vi.mock("@/components/payments/table-session-checkout", () => ({
+  default: ({ sessionId }: { sessionId: number }) => (
+    <div>Pöydän maksu #{sessionId}</div>
+  ),
+}));
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.load.mockResolvedValue([

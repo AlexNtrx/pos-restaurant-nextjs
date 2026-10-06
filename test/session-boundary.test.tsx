@@ -59,7 +59,7 @@ describe("backoffice session boundary navigation", () => {
     vi.useFakeTimers();
     storeSession();
     mocks.apiGet.mockImplementation(
-      (path, { signal }) =>
+      (_path, { signal }) =>
         new Promise((_, reject) => {
           signal.addEventListener("abort", () =>
             reject({ isAxiosError: true, code: "ERR_CANCELED" }),

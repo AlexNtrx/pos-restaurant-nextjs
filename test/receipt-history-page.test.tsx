@@ -14,7 +14,7 @@ const { api } = vi.hoisted(() => ({ api: { post: vi.fn(), get: vi.fn() } }));
 vi.mock("@/lib/api", () => ({ default: api }));
 
 import ReceiptHistoryPage from "@/app/backoffice/orders/history/page";
-import type { Bill } from "@/app/backoffice/salereport/_lib/bill-history-contract";
+import type { Bill } from "@/lib/receipts/bill-history-contract";
 
 const paidBill: Bill = {
   id: 41,

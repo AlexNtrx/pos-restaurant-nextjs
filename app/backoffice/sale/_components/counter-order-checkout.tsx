@@ -19,7 +19,7 @@ import {
   parseCheckoutResult,
   type SentCounterOrder,
 } from "@/lib/sale-contracts";
-import CheckoutModal from "./checkout-modal";
+import CheckoutModal from "@/components/payments/checkout-modal";
 
 type Props = {
   order: SentCounterOrder;

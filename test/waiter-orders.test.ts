@@ -1,14 +1,14 @@
+import { loadStaffTables } from "@/lib/tables";
 import { beforeEach, expect, it, vi } from "vitest";
 import api from "@/lib/api";
 import {
   cancelWaiterOrder,
   loadWaiterOrders,
   loadWaiterSnapshot,
-  loadWaiterTables,
   mergeWaiterOrders,
   serveWaiterOrder,
 } from "@/lib/waiter-orders";
-import type { StaffOrder } from "@/app/backoffice/orders/inbox/_lib/staff-orders";
+import type { StaffOrder } from "@/lib/orders/contracts";
 
 vi.mock("@/lib/api", () => ({
   default: { get: vi.fn(), patch: vi.fn() },
@@ -122,7 +122,7 @@ it("reads tables without fetching the menu used by waiter order entry", async ()
   vi.mocked(api.get).mockResolvedValueOnce({
     data: { results: [{ id: 1, tableNo: 4, openSession: null }] },
   });
-  expect(await loadWaiterTables()).toHaveLength(1);
+  expect(await loadStaffTables()).toHaveLength(1);
   expect(api.get).toHaveBeenCalledTimes(1);
   expect(api.get).toHaveBeenCalledWith("/tables", { signal: undefined });
 });

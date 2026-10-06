@@ -14,13 +14,10 @@ import {
 } from "@/components/ui/dialog";
 import api from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/api-error";
-import {
-  changeOrderStatus,
-  fetchOrderPages,
-  orderChannelLabel,
-  type StaffOrder,
-} from "@/app/backoffice/orders/inbox/_lib/staff-orders";
-import TableSessionCheckout from "@/app/backoffice/settings/tables/_components/table-session-checkout";
+import { changeOrderStatus, fetchOrderPages } from "@/lib/orders/client";
+import { orderChannelLabel } from "@/lib/orders/labels";
+import { type StaffOrder } from "@/lib/orders/contracts";
+import TableSessionCheckout from "@/components/payments/table-session-checkout";
 
 type OpenTable = {
   tableNo: number;

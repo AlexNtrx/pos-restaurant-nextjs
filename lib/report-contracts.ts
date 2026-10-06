@@ -26,7 +26,7 @@ const isFiniteNonNegativeNumber = (value: unknown): value is number =>
   isFiniteNumber(value) && value >= 0;
 
 // Validates is date only before it is used.
-export const isDateOnly = (value: unknown) =>
+const isDateOnly = (value: unknown) =>
   typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
 
 // Validates is daily sales response before it is used.

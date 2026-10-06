@@ -3,134 +3,24 @@
 import { isAxiosError } from "axios";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { OrderItemDetails } from "@/components/orders/order-item-details";
+import { OrderSummary } from "./_components/order-summary";
+import { OrderDetailDialog } from "./_components/order-detail-dialog";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
-import { StatusBadge } from "@/components/ui/status-badge";
+
 import { getApiErrorMessage, isPermissionDeniedError } from "@/lib/api-error";
 import { usePolling } from "@/lib/use-polling";
 import {
   changeOrderStatus,
   fetchOrderDetail,
   fetchOrderPages,
-  mergeActiveOrders,
-  type OrderStatus,
-  type StaffOrder,
-  type StaffOrderDetail,
-} from "./_lib/staff-orders";
+} from "@/lib/orders/client";
+import { mergeActiveOrders } from "./_lib/staff-orders";
+import { type StaffOrder, type StaffOrderDetail } from "@/lib/orders/contracts";
 
-type ActionStatus = "CONFIRMED" | "REJECTED" | "CANCELLED";
-const currency = new Intl.NumberFormat("fi-FI", {
-  style: "currency",
-  currency: "EUR",
-});
-const localTime = new Intl.DateTimeFormat("fi-FI", {
-  timeZone: "Europe/Helsinki",
-  dateStyle: "short",
-  timeStyle: "short",
-});
-const actionText: Record<ActionStatus, string> = {
-  CONFIRMED: "Vahvista",
-  REJECTED: "Hylkää",
-  CANCELLED: "Peruuta",
-};
-const statusText: Partial<Record<OrderStatus, string>> = {
-  SUBMITTED: "Odottaa",
-  CONFIRMED: "Vahvistettu",
-  REJECTED: "Hylätty",
-  CANCELLED: "Peruttu",
-};
-
-function elapsed(minutes: number) {
-  if (minutes < 1) return "juuri nyt";
-  if (minutes < 60) return `${minutes} min`;
-  return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
-}
-
-function OrderSummary({
-  order,
-  onOpen,
-  now,
-}: {
-  order: StaffOrder;
-  onOpen: (id: number) => void;
-  now: number;
-}) {
-  const age = Math.max(
-    0,
-    Math.floor((now - Date.parse(order.submittedAt)) / 60_000),
-  );
-  return (
-    <article className="space-y-3 rounded-lg border border-border bg-surface p-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <h2 className="font-heading text-lg font-semibold">
-            Tilaus #{order.id}
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            {order.channel === "QR"
-              ? "QR"
-              : order.channel === "STAFF"
-                ? "Tarjoilija"
-                : "Kassa"}{" "}
-            ·{" "}
-            {order.serviceType === "TAKEAWAY"
-              ? `Mukaan · Nouto #${order.id}`
-              : `Pöytä ${order.tableNo}`}{" "}
-            · {elapsed(age)}
-          </p>
-        </div>
-        <StatusBadge
-          tone={
-            order.status === "REJECTED" || order.status === "CANCELLED"
-              ? "danger"
-              : "warning"
-          }
-        >
-          {statusText[order.status] ?? order.status}
-        </StatusBadge>
-      </div>
-      <ul className="space-y-2 text-sm">
-        {order.items.map((item, index) => (
-          <li key={index}>
-            <span className="font-medium">
-              {item.quantity} × {item.name}
-            </span>
-            {item.modifiers.length > 0 && (
-              <p className="pl-5 text-xs text-muted-foreground">
-                {item.modifiers.map((modifier) => modifier.name).join(", ")}
-              </p>
-            )}
-            {item.note && (
-              <p className="pl-5 text-xs text-foreground">Huom: {item.note}</p>
-            )}
-          </li>
-        ))}
-      </ul>
-      {(order.rejectionReason || order.cancellationReason) && (
-        <p className="text-xs text-destructive">
-          Syy: {order.rejectionReason || order.cancellationReason}
-        </p>
-      )}
-      <div className="flex items-center justify-between gap-2 border-t border-border pt-3">
-        <span className="font-semibold">{currency.format(order.total)}</span>
-        <Button size="sm" onClick={() => onOpen(order.id)}>
-          Avaa
-        </Button>
-      </div>
-    </article>
-  );
-}
-
+import { type ActionStatus } from "./_lib/presentation";
 export default function StaffOrderInboxPage() {
   const [orders, setOrders] = useState<StaffOrder[]>([]);
   const [handled, setHandled] = useState<StaffOrder[]>([]);
@@ -457,8 +347,17 @@ export default function StaffOrderInboxPage() {
         </section>
       )}
 
-      <Dialog
-        open={selectedId !== null}
+      <OrderDetailDialog
+        selectedId={selectedId}
+        detail={detail}
+        saving={saving}
+        detailError={detailError}
+        action={action}
+        reason={reason}
+        setAction={setAction}
+        setReason={setReason}
+        submitAction={submitAction}
+        openDetail={openDetail}
         onOpenChange={(open) => {
           if (!open && !saving) {
             detailRequest.current += 1;
@@ -468,116 +367,7 @@ export default function StaffOrderInboxPage() {
             setAction(null);
           }
         }}
-      >
-        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Tilaus #{selectedId}</DialogTitle>
-            <DialogDescription>
-              {detail
-                ? `${detail.channel === "QR" ? "QR" : detail.channel === "STAFF" ? "Tarjoilija" : "Kassa"} · ${detail.serviceType === "TAKEAWAY" ? `Mukaan · Nouto #${detail.id}` : `Pöytä ${detail.tableNo}`} · ${localTime.format(new Date(detail.submittedAt))}`
-                : "Ladataan tilauksen tietoja"}
-            </DialogDescription>
-          </DialogHeader>
-          {detailError && (
-            <p role="alert" className="text-sm text-destructive">
-              {detailError}
-            </p>
-          )}
-          {detail ? (
-            <>
-              <StatusBadge
-                tone={detail.status === "SUBMITTED" ? "warning" : "neutral"}
-              >
-                {statusText[detail.status] ?? detail.status}
-              </StatusBadge>
-              <OrderItemDetails items={detail.items} currency={currency} />
-              <p className="text-right font-semibold">
-                Yhteensä {currency.format(detail.total)}
-              </p>
-              <div className="space-y-1 border-t border-border pt-3 text-xs text-muted-foreground">
-                <p className="font-semibold text-foreground">Tapahtumat</p>
-                {detail.history.map((event) => (
-                  <p key={event.version}>
-                    {localTime.format(new Date(event.at))} ·{" "}
-                    {statusText[event.toStatus] ?? event.toStatus}
-                    {event.reason ? ` · ${event.reason}` : ""}
-                  </p>
-                ))}
-              </div>
-              {detail.status === "SUBMITTED" && !action && (
-                <div className="flex flex-wrap gap-2">
-                  <Button onClick={() => setAction("CONFIRMED")}>
-                    Vahvista
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => setAction("REJECTED")}
-                  >
-                    Hylkää
-                  </Button>
-                  <Button
-                    variant="outline"
-                    disabled={
-                      saving ||
-                      detail.paidAt !== null ||
-                      detail.preparingAt !== null ||
-                      !["SUBMITTED", "CONFIRMED"].includes(detail.status)
-                    }
-                    onClick={() => setAction("CANCELLED")}
-                  >
-                    Peruuta
-                  </Button>
-                </div>
-              )}
-              {detail.status === "SUBMITTED" && action && (
-                <div className="space-y-3 border-t border-border pt-3">
-                  <p className="font-semibold">{actionText[action]} tilaus?</p>
-                  {action !== "CONFIRMED" && (
-                    <label className="block space-y-1 text-sm">
-                      <span>Syy (3–500 merkkiä)</span>
-                      <textarea
-                        className="min-h-24 w-full rounded-md border border-border bg-surface p-2"
-                        maxLength={500}
-                        value={reason}
-                        onChange={(event) => setReason(event.target.value)}
-                      />
-                    </label>
-                  )}
-                  <DialogFooter>
-                    <Button
-                      variant="outline"
-                      disabled={saving}
-                      onClick={() => setAction(null)}
-                    >
-                      Takaisin
-                    </Button>
-                    <Button
-                      variant={
-                        action === "CONFIRMED" ? "default" : "destructive"
-                      }
-                      disabled={
-                        saving ||
-                        (action !== "CONFIRMED" && reason.trim().length < 3)
-                      }
-                      onClick={() => void submitAction()}
-                    >
-                      {saving ? "Tallennetaan…" : actionText[action]}
-                    </Button>
-                  </DialogFooter>
-                </div>
-              )}
-            </>
-          ) : !detailError ? (
-            <LoadingState title="Tilausta ladataan" />
-          ) : (
-            <Button
-              onClick={() => selectedId !== null && void openDetail(selectedId)}
-            >
-              Yritä uudelleen
-            </Button>
-          )}
-        </DialogContent>
-      </Dialog>
+      />
     </div>
   );
 }

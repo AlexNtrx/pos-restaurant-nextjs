@@ -3,7 +3,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import api from "@/lib/api";
 import { OrderRefund } from "@/components/orders/order-refund";
-import type { StaffOrderDetail } from "@/app/backoffice/orders/inbox/_lib/staff-orders";
+import type { StaffOrderDetail } from "@/lib/orders/contracts";
 vi.mock("@/lib/api", () => ({ default: { get: vi.fn(), post: vi.fn() } }));
 const order = {
   id: 1,

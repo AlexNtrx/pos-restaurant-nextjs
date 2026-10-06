@@ -325,7 +325,7 @@ describe("anonymous QR customer", () => {
       note: "",
     };
     localStorage.setItem(`qr02:${token}:cart`, JSON.stringify([plainItem]));
-    render(<QrCustomer view="menu" />);
+    const view = render(<QrCustomer view="menu" />);
     await screen.findByText("Basilikakana");
     await user.selectOptions(
       screen.getByRole("combobox", { name: "Koko: Basilikakana" }),
@@ -346,6 +346,9 @@ describe("anonymous QR customer", () => {
       }),
       "Ilman sipulia",
     );
+    const noteInput = screen.getByRole("textbox", {
+      name: "Huomautus keittiölle: Basilikakana",
+    });
     await user.click(
       screen.getByRole("button", { name: "Lisää Basilikakana, Iso, Tulinen" }),
     );
@@ -379,6 +382,18 @@ describe("anonymous QR customer", () => {
       },
     ]);
     await user.click(dialog.getByRole("button", { name: "Sulje" }));
+    view.rerender(<QrCustomer view="menu" />);
+    expect(
+      screen.getByRole("textbox", {
+        name: "Huomautus keittiölle: Basilikakana",
+      }),
+    ).toBe(noteInput);
+    expect((noteInput as HTMLTextAreaElement).value).toBe("Ilman sipulia");
+    expect(
+      screen
+        .getByRole("button", { name: "Huomautus keittiölle: Basilikakana" })
+        .getAttribute("aria-expanded"),
+    ).toBe("true");
     expect(
       screen.getByRole("button", { name: "Ostoskori, 3 tuotetta" }),
     ).toBeTruthy();

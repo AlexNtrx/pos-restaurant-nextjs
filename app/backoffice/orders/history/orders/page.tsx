@@ -7,82 +7,21 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { ListPagination } from "@/components/ui/list-pagination";
-import { OrderRefund } from "@/components/orders/order-refund";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { OrderRecordsList } from "./_components/order-records-list";
+import { OrderRecordDetail } from "./_components/order-record-detail";
+
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
-import { StatusBadge } from "@/components/ui/status-badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+
 import { getApiErrorMessage, isPermissionDeniedError } from "@/lib/api-error";
-import {
-  fetchOrderDetail,
-  fetchOrderPages,
-  type OrderStatus,
-  type StaffOrder,
-  type StaffOrderDetail,
-} from "@/app/backoffice/orders/inbox/_lib/staff-orders";
+import { fetchOrderDetail, fetchOrderPages } from "@/lib/orders/client";
+import { type StaffOrder, type StaffOrderDetail } from "@/lib/orders/contracts";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
 const zone = "Europe/Helsinki";
-const currency = new Intl.NumberFormat("fi-FI", {
-  style: "currency",
-  currency: "EUR",
-});
-const dateTime = new Intl.DateTimeFormat("fi-FI", {
-  timeZone: zone,
-  dateStyle: "short",
-  timeStyle: "short",
-});
-const statusLabels: Record<OrderStatus, string> = {
-  SUBMITTED: "Odottaa",
-  CONFIRMED: "Vahvistettu",
-  REJECTED: "Hylätty",
-  PREPARING: "Valmistetaan",
-  READY: "Valmis keittiöstä",
-  SERVED: "Tarjoiltu",
-  PAID: "Maksettu",
-  COMPLETED: "Päätetty",
-  CANCELLED: "Peruttu",
-};
-const lifecycleFields = [
-  ["submittedAt", "Lähetetty"],
-  ["confirmedAt", "Vahvistettu"],
-  ["rejectedAt", "Hylätty"],
-  ["preparingAt", "Valmistus aloitettu"],
-  ["readyAt", "Valmis keittiöstä"],
-  ["servedAt", "Tarjoiltu"],
-  ["paidAt", "Maksettu"],
-  ["completedAt", "Päätetty"],
-  ["cancelledAt", "Peruttu"],
-] as const;
-
-function formatTime(value: string) {
-  return dateTime.format(new Date(value));
-}
-
-function orderStatusTone(status: OrderStatus) {
-  if (status === "REJECTED" || status === "CANCELLED") return "danger";
-  if (status === "COMPLETED" || status === "PAID") return "success";
-  if (status === "SUBMITTED") return "warning";
-  return "info";
-}
-
 export default function OrderRecordsPage() {
   const today = dayjs().tz(zone).format("YYYY-MM-DD");
   const [fromDate, setFromDate] = useState(today);
@@ -169,17 +108,46 @@ export default function OrderRecordsPage() {
     return () => window.clearTimeout(requestId);
   }, [load]);
 
+  const detailGeneration = useRef(0);
+  const selectedOrderRef = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      detailGeneration.current += 1;
+      selectedOrderRef.current = null;
+    },
+    [],
+  );
+
+  // EN: Closing or replacing a detail invalidates late responses, including refund refreshes.
+  // FI: Tietonäkymän sulkeminen tai vaihtaminen mitätöi myöhäiset vastaukset, myös hyvityspäivitykset.
+  const readSelectedDetail = async (id: number) => {
+    const generation = ++detailGeneration.current;
+    try {
+      const result = await fetchOrderDetail(id);
+      if (
+        generation === detailGeneration.current &&
+        selectedOrderRef.current === id
+      ) {
+        if (result.id !== id) throw new Error("Virheellinen tilauksen tunnus.");
+        setDetail(result);
+      }
+    } catch (reason: unknown) {
+      if (
+        generation === detailGeneration.current &&
+        selectedOrderRef.current === id
+      )
+        setDetailError(
+          getApiErrorMessage(reason, "Tilauksen tietoja ei voitu ladata."),
+        );
+    }
+  };
+
   const openDetail = async (id: number) => {
+    selectedOrderRef.current = id;
     setSelectedId(id);
     setDetail(null);
     setDetailError("");
-    try {
-      setDetail(await fetchOrderDetail(id));
-    } catch (reason: unknown) {
-      setDetailError(
-        getApiErrorMessage(reason, "Tilauksen tietoja ei voitu ladata."),
-      );
-    }
+    await readSelectedDetail(id);
   };
 
   return (
@@ -271,55 +239,10 @@ export default function OrderRecordsPage() {
       ) : (
         <div>
           <div className="overflow-x-auto">
-            <Table className="min-w-[760px] text-[13px]">
-              <TableHeader className="bg-[#efece6]">
-                <TableRow>
-                  <TableHead>Tilaus</TableHead>
-                  <TableHead>Kanava</TableHead>
-                  <TableHead>Pöytä / istunto</TableHead>
-                  <TableHead>Summa</TableHead>
-                  <TableHead>Tila</TableHead>
-                  <TableHead className="text-right">Toiminto</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {visibleOrders.map((order) => (
-                  <TableRow key={order.id}>
-                    <TableCell className="font-medium">
-                      #{order.id} · {formatTime(order.submittedAt)}
-                    </TableCell>
-                    <TableCell>
-                      {order.channel === "QR"
-                        ? "QR"
-                        : order.channel === "STAFF"
-                          ? "Tarjoilija"
-                          : order.serviceType === "TAKEAWAY"
-                            ? "Mukaan"
-                            : "Kassa"}
-                    </TableCell>
-                    <TableCell>
-                      {order.serviceType === "TAKEAWAY"
-                        ? `Nouto #${order.id}`
-                        : `${order.tableNo}${order.tableSessionId ? ` / #${order.tableSessionId}` : ""}`}
-                    </TableCell>
-                    <TableCell>{currency.format(order.total)}</TableCell>
-                    <TableCell>
-                      <StatusBadge tone={orderStatusTone(order.status)}>
-                        {statusLabels[order.status]}
-                      </StatusBadge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        onClick={() => void openDetail(order.id)}
-                      >
-                        Avaa
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <OrderRecordsList
+              visibleOrders={visibleOrders}
+              openDetail={openDetail}
+            />
           </div>
           <ListPagination
             label="Tilaushistorian sivut"
@@ -334,93 +257,23 @@ export default function OrderRecordsPage() {
         Aikavyöhyke: {zone}. Myyntiraportit ja vanhat myynnit perustuvat
         kuittihistoriaan.
       </p>
-      <Dialog
-        open={selectedId !== null}
+      <OrderRecordDetail
+        selectedId={selectedId}
+        detail={detail}
+        detailError={detailError}
         onOpenChange={(open) => {
           if (!open) {
+            detailGeneration.current += 1;
+            selectedOrderRef.current = null;
             setSelectedId(null);
             setDetail(null);
           }
         }}
-      >
-        <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Tilaus #{selectedId}</DialogTitle>
-            <DialogDescription>
-              {detail
-                ? `${detail.serviceType === "TAKEAWAY" ? `Mukaan · Nouto #${detail.id}` : `${detail.channel === "QR" ? "QR" : detail.channel === "STAFF" ? "Tarjoilija" : "Kassa"} · pöytä ${detail.tableNo}`} · ${statusLabels[detail.status]}`
-                : "Tilauksen tiedot"}
-            </DialogDescription>
-          </DialogHeader>
-          {detailError ? (
-            <p role="alert" className="text-sm text-destructive">
-              {detailError}
-            </p>
-          ) : !detail ? (
-            <LoadingState title="Tilausta ladataan" />
-          ) : (
-            <div className="space-y-5 text-sm">
-              <OrderRefund
-                key={detail.id}
-                order={detail}
-                onChanged={async () => {
-                  setDetail(await fetchOrderDetail(detail.id));
-                  await load();
-                }}
-              />
-              <p className="font-medium">
-                Tilauksen summa: {currency.format(detail.total)} ·{" "}
-                {detail.tableSessionId
-                  ? `istunto #${detail.tableSessionId}`
-                  : "ei pöytäistuntoa"}
-              </p>
-              {(detail.rejectionReason || detail.cancellationReason) && (
-                <p className="text-destructive">
-                  Syy: {detail.rejectionReason || detail.cancellationReason}
-                </p>
-              )}
-              <ul className="space-y-2">
-                {detail.items.map((item, index) => (
-                  <li key={index}>
-                    {item.quantity} × {item.name} ·{" "}
-                    {currency.format(item.lineTotal)}
-                    {item.modifiers.length > 0
-                      ? ` · ${item.modifiers.map((modifier) => modifier.name).join(", ")}`
-                      : ""}
-                    {item.note ? ` · ${item.note}` : ""}
-                  </li>
-                ))}
-              </ul>
-              <section aria-label="Tilauksen vaiheet">
-                <h3 className="font-semibold">Vaiheet</h3>
-                <dl className="mt-2 grid grid-cols-2 gap-2">
-                  {lifecycleFields.map(
-                    ([key, label]) =>
-                      detail[key] && (
-                        <div key={key}>
-                          <dt className="text-muted-foreground">{label}</dt>
-                          <dd>{formatTime(detail[key]!)}</dd>
-                        </div>
-                      ),
-                  )}
-                </dl>
-              </section>
-              <section aria-label="Tilahistoria">
-                <h3 className="font-semibold">Tilahistoria</h3>
-                <ol className="mt-2 space-y-1">
-                  {detail.history.map((event) => (
-                    <li key={event.version}>
-                      #{event.version} {statusLabels[event.toStatus]} ·{" "}
-                      {formatTime(event.at)}
-                      {event.reason ? ` · ${event.reason}` : ""}
-                    </li>
-                  ))}
-                </ol>
-              </section>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+        onChanged={async () => {
+          if (detail) await readSelectedDetail(detail.id);
+          await load();
+        }}
+      />
     </div>
   );
 }

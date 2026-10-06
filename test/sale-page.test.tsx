@@ -1234,8 +1234,17 @@ describe("POS safety net", () => {
   });
 
   it("filters categories and adds a menu item using the selected table", async () => {
-    render(<SalePage />);
+    const view = render(<SalePage />);
     await screen.findByText("Test meal");
+    const searchInput = screen.getByRole("textbox", { name: "Hae tuotetta" });
+    fireEvent.change(searchInput, { target: { value: "missing" } });
+    expect(screen.getByText("Ei tuotteita")).toBeTruthy();
+    view.rerender(<SalePage />);
+    expect(screen.getByRole("textbox", { name: "Hae tuotetta" })).toBe(
+      searchInput,
+    );
+    expect((searchInput as HTMLInputElement).value).toBe("missing");
+    fireEvent.change(searchInput, { target: { value: "Test meal" } });
     fireEvent.click(screen.getByAltText("Test meal"));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith("/saleTemp/create", {

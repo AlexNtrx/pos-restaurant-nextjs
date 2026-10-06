@@ -1,17 +1,8 @@
+import { loadStaffTables } from "@/lib/tables";
 import api from "@/lib/api";
 import { readStaffCatalog } from "@/lib/catalog-reads";
-import {
-  changeOrderStatus,
-  fetchOrderPages,
-  type StaffOrder,
-} from "@/app/backoffice/orders/inbox/_lib/staff-orders";
-
-export type WaiterTable = {
-  id: number;
-  tableNo: number;
-  name: string | null;
-  openSession: { id: number } | null;
-};
+import { changeOrderStatus, fetchOrderPages } from "@/lib/orders/client";
+import { type StaffOrder } from "@/lib/orders/contracts";
 
 export type WaiterCategory = {
   id: number;
@@ -29,18 +20,9 @@ export type WaiterItem = {
   note: string;
 };
 
-export async function loadWaiterTables(signal?: AbortSignal) {
-  const { data } = await api.get<{ results: WaiterTable[] }>("/tables", {
-    signal,
-  });
-  if (!Array.isArray(data?.results))
-    throw new Error("Palvelin palautti virheelliset pöytätiedot.");
-  return data.results;
-}
-
 export async function loadWaiterSetup(signal?: AbortSignal) {
   const [tables, menu] = await Promise.all([
-    loadWaiterTables(signal),
+    loadStaffTables(signal),
     readStaffCatalog(
       "/waiter/menu",
       (data) => {

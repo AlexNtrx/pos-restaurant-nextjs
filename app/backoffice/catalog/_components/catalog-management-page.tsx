@@ -1,6 +1,6 @@
 "use client";
 
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
 import {
   FormEvent,
   useCallback,
@@ -22,25 +22,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import api from "@/lib/api";
 import { readStaffCatalog, invalidateCatalogCache } from "@/lib/catalog-reads";
 import { getApiErrorMessage, isPermissionDeniedError } from "@/lib/api-error";
@@ -50,20 +33,18 @@ import {
   isTaste,
   parseResults,
   type FoodCategory,
-  type FoodSize,
-  type Taste,
 } from "@/lib/catalog-contracts";
 
-import { CatalogNavigation, type CatalogSection } from "./catalog-navigation";
+import { CatalogNavigation } from "./catalog-navigation";
 
-type ManagementKind = Exclude<CatalogSection, "menu-items">;
-type ManagementRow = FoodCategory | FoodSize | Taste;
+import {
+  hasCategory,
+  type ManagementKind,
+  type ManagementRow,
+} from "./catalog-management-types";
+import { CatalogManagementTable } from "./catalog-management-table";
+import { CatalogManagementEditor } from "./catalog-management-editor";
 type LoadStatus = "loading" | "ready" | "error" | "forbidden";
-
-const currencyFormatter = new Intl.NumberFormat("fi-FI", {
-  style: "currency",
-  currency: "EUR",
-});
 
 const configs = {
   categories: {
@@ -97,10 +78,6 @@ const configs = {
     validator: isTaste,
   },
 } satisfies Record<ManagementKind, object>;
-
-function hasCategory(row: ManagementRow): row is FoodSize | Taste {
-  return "FoodType" in row;
-}
 
 export function CatalogManagementPage({ kind }: { kind: ManagementKind }) {
   const config = configs[kind];
@@ -308,145 +285,32 @@ export function CatalogManagementPage({ kind }: { kind: ManagementKind }) {
           }
         />
       ) : (
-        <Table className="min-w-[700px]">
-          <TableHeader>
-            <TableRow>
-              {requiresCategory && <TableHead>Kategoria</TableHead>}
-              <TableHead>Nimi</TableHead>
-              {kind === "size-options" && (
-                <TableHead className="text-right">Hinnanlisä</TableHead>
-              )}
-              <TableHead>Huomautus</TableHead>
-              <TableHead className="text-right">Toiminnot</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {visibleRows.map((row) => (
-              <TableRow key={row.id}>
-                {requiresCategory && (
-                  <TableCell>
-                    {hasCategory(row) ? row.FoodType.name : "—"}
-                  </TableCell>
-                )}
-                <TableCell className="font-medium">{row.name}</TableCell>
-                {kind === "size-options" && (
-                  <TableCell className="text-right">
-                    {currencyFormatter.format(
-                      "moneyAdded" in row ? row.moneyAdded : 0,
-                    )}
-                  </TableCell>
-                )}
-                <TableCell className="max-w-80 truncate text-muted-foreground">
-                  {row.remark || "—"}
-                </TableCell>
-                <TableCell>
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => openEdit(row)}
-                      aria-label={`Muokkaa ${row.name}`}
-                    >
-                      <Pencil aria-hidden="true" /> Muokkaa
-                    </Button>
-                    <Button
-                      size="icon-sm"
-                      variant="ghost"
-                      onClick={() => setPendingDelete(row)}
-                      aria-label={`Poista ${row.name}`}
-                    >
-                      <Trash2 aria-hidden="true" className="text-destructive" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <CatalogManagementTable
+          {...{ kind, visibleRows, openEdit, setPendingDelete }}
+        />
       )}
 
-      <Dialog
-        open={editorOpen}
-        onOpenChange={(open) => !isSaving && setEditorOpen(open)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {editing ? "Muokkaa" : "Lisää"} {config.singular}
-            </DialogTitle>
-            <DialogDescription>
-              Täytä tiedot ja tallenna muutokset.
-            </DialogDescription>
-          </DialogHeader>
-          <form id={`${kind}-form`} className="grid gap-4" onSubmit={save}>
-            {requiresCategory && (
-              <FormField id={`${kind}-category`} label="Kategoria" required>
-                <select
-                  className="h-10 w-full rounded-md border border-border bg-surface px-3"
-                  value={foodTypeId ?? ""}
-                  onChange={(event) =>
-                    setFoodTypeId(Number(event.target.value))
-                  }
-                >
-                  {categories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
-              </FormField>
-            )}
-            <FormField
-              id={`${kind}-name`}
-              label="Nimi"
-              required
-              error={formError && !name.trim() ? formError : undefined}
-            >
-              <Input
-                value={name}
-                maxLength={100}
-                onChange={(event) => setName(event.target.value)}
-              />
-            </FormField>
-            {kind === "size-options" && (
-              <FormField id="size-money-added" label="Hinnanlisä" required>
-                <Input
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={moneyAdded}
-                  onChange={(event) => setMoneyAdded(event.target.value)}
-                />
-              </FormField>
-            )}
-            <FormField id={`${kind}-remark`} label="Huomautus">
-              <Input
-                value={remark}
-                maxLength={500}
-                onChange={(event) => setRemark(event.target.value)}
-              />
-            </FormField>
-            {formError && (
-              <p role="alert" className="text-sm text-destructive">
-                {formError}
-              </p>
-            )}
-          </form>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              type="button"
-              disabled={isSaving}
-              onClick={() => setEditorOpen(false)}
-            >
-              Peruuta
-            </Button>
-            <Button type="submit" form={`${kind}-form`} disabled={isSaving}>
-              {isSaving ? "Tallennetaan…" : "Tallenna"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <CatalogManagementEditor
+        {...{
+          kind,
+          config,
+          editorOpen,
+          isSaving,
+          editing,
+          foodTypeId,
+          categories,
+          name,
+          remark,
+          moneyAdded,
+          formError,
+          setEditorOpen,
+          setFoodTypeId,
+          setName,
+          setRemark,
+          setMoneyAdded,
+          save,
+        }}
+      />
 
       <AlertDialog
         open={pendingDelete !== null}

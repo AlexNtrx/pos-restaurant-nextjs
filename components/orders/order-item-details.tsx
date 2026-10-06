@@ -1,4 +1,4 @@
-import type { StaffOrder } from "@/app/backoffice/orders/inbox/_lib/staff-orders";
+import type { StaffOrder } from "@/lib/orders/contracts";
 
 // EN: Display stored Order snapshots without recalculating prices or looking up catalog names.
 // FI: Näytä tallennetut tilauksen tiedot laskematta hintoja uudelleen tai hakematta nimiä luettelosta.

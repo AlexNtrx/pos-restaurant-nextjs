@@ -9,7 +9,7 @@ import {
   parseBillHistoryResponse,
   parsePagedBillHistory,
   parseBillDetail,
-} from "../app/backoffice/salereport/_lib/bill-history-contract.ts";
+} from "../lib/receipts/bill-history-contract.ts";
 import {
   isFood,
   isFoodCategory,

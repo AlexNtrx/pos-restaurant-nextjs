@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import OrderRecordsPage from "@/app/backoffice/orders/history/orders/page";
@@ -8,7 +8,7 @@ const orders = vi.hoisted(() => ({
   fetchOrderPages: vi.fn(),
   fetchOrderDetail: vi.fn(),
 }));
-vi.mock("@/app/backoffice/orders/inbox/_lib/staff-orders", () => orders);
+vi.mock("@/lib/orders/client", () => orders);
 
 const order = {
   id: 41,
@@ -41,8 +41,9 @@ beforeEach(() => {
     results: [order],
     serverTime: "2026-09-26T10:02:00.000Z",
   });
-  orders.fetchOrderDetail.mockResolvedValue({
+  orders.fetchOrderDetail.mockImplementation(async (id: number) => ({
     ...order,
+    id,
     history: [
       {
         fromStatus: null,
@@ -61,7 +62,7 @@ beforeEach(() => {
         at: order.rejectedAt,
       },
     ],
-  });
+  }));
 });
 afterEach(cleanup);
 
@@ -135,4 +136,35 @@ describe("HIS-01 Order records", () => {
       ),
     ).toBeTruthy();
   });
+});
+
+it("ignores a closed detail response after another order opens", async () => {
+  const user = userEvent.setup();
+  orders.fetchOrderPages.mockResolvedValue({
+    results: [order, { ...order, id: 42 }],
+    serverTime: order.updatedAt,
+  });
+  let resolveOld!: (value: unknown) => void;
+  orders.fetchOrderDetail.mockImplementation((id: number) =>
+    id === 41
+      ? new Promise((resolve) => {
+          resolveOld = resolve;
+        })
+      : Promise.resolve({ ...order, id: 42, history: [] }),
+  );
+  render(<OrderRecordsPage />);
+  const buttons = await screen.findAllByRole("button", { name: "Avaa" });
+  await user.click(buttons[1]);
+  await user.click(screen.getByRole("button", { name: "Sulje" }));
+  await user.click(screen.getAllByRole("button", { name: "Avaa" })[0]);
+  await screen.findByText("Tilauksen summa:", { exact: false });
+  await act(async () =>
+    resolveOld({
+      ...order,
+      items: [{ ...order.items[0], name: "Stale detail" }],
+      history: [],
+    }),
+  );
+  expect(screen.getByRole("dialog").textContent).toContain("Tilaus #42");
+  expect(screen.queryByText("Stale detail", { exact: false })).toBeNull();
 });

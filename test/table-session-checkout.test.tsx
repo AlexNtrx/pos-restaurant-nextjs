@@ -11,9 +11,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const { get, post } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 vi.mock("@/lib/api", () => ({ default: { get, post } }));
 
-import TableSessionCheckout, {
-  listPendingTablePayments,
-} from "@/app/backoffice/settings/tables/_components/table-session-checkout";
+import TableSessionCheckout from "@/components/payments/table-session-checkout";
+import { listPendingTablePayments } from "@/lib/payments/table-payment-attempt";
 
 const order = (id: number, status = "SERVED") => ({
   id,

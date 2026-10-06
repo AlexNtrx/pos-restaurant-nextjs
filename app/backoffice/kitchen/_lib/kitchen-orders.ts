@@ -1,18 +1,15 @@
 import api from "@/lib/api";
-import {
-  fetchOrderPages,
-  type StaffOrder,
-  type StaffOrderDetail,
-} from "@/app/backoffice/orders/inbox/_lib/staff-orders";
+import { fetchOrderPages } from "@/lib/orders/client";
+import { type StaffOrder, type StaffOrderDetail } from "@/lib/orders/contracts";
 
-export type KitchenStatus = "CONFIRMED" | "PREPARING" | "READY";
+type KitchenStatus = "CONFIRMED" | "PREPARING" | "READY";
 const kitchenStatuses: readonly KitchenStatus[] = [
   "CONFIRMED",
   "PREPARING",
   "READY",
 ];
 
-export function isKitchenOrder(
+function isKitchenOrder(
   order: StaffOrder,
 ): order is StaffOrder & { status: KitchenStatus } {
   return kitchenStatuses.some((status) => status === order.status);
