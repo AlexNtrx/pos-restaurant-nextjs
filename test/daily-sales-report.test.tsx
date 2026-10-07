@@ -14,53 +14,84 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
+function reportFixture(year: number, month: number, amounts: number[]) {
+  const results = Array.from(
+    { length: new Date(Date.UTC(year, month, 0)).getUTCDate() },
+    (_, index) => {
+      const amount = amounts[index] ?? 0;
+      return {
+        date: new Date(Date.UTC(year, month - 1, index + 1))
+          .toISOString()
+          .slice(0, 10),
+        amount,
+        breakdown: {
+          grossAmount: amount,
+          refundedAmount: 0,
+          pendingRefundAmount: 0,
+          failedRefundAmount: 0,
+          unpaidCancelledCount: 0,
+          unpaidCancelledAmount: 0,
+          paidCancelledCount: 0,
+          paidCancelledAmount: 0,
+        },
+      };
+    },
+  );
+  const totalAmount = results.reduce((sum, row) => sum + row.amount, 0);
+  return {
+    results,
+    totalAmount,
+    summary: { ...results[0].breakdown, grossAmount: totalAmount },
+  };
+}
+
+const displayedDate = (day: number) =>
+  new Intl.DateTimeFormat("fi-FI", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(
+    new Date(
+      Date.UTC(new Date().getFullYear(), new Date().getMonth(), day, 12),
+    ),
+  );
+
 describe("Päivämyynti report", () => {
-  it("derives supported KPIs and hides zero-sales rows by default", async () => {
-    api.post.mockResolvedValue({
-      data: {
-        results: [
-          { date: "2026-08-01", amount: 100 },
-          { date: "2026-08-02", amount: 0 },
-          { date: "2026-08-03", amount: 300 },
-        ],
-        totalAmount: 400,
-      },
-    });
+  it("shows the report breakdown and hides empty rows by default", async () => {
+    api.post.mockImplementation(async (_path, { year, month }) => ({
+      data: reportFixture(year, month, [100, 0, 300]),
+    }));
     const user = userEvent.setup();
 
     render(<DailySalesReportPage />);
 
-    expect(await screen.findByText("400,00 €")).toBeTruthy();
-    expect(screen.getByText("Myyntipäiviä")).toBeTruthy();
-    expect(screen.getByText("2", { selector: "p" })).toBeTruthy();
-    expect(screen.getByText("200,00 €")).toBeTruthy();
-    expect(screen.queryByText("02.08.2026")).toBeNull();
+    expect((await screen.findAllByText("400,00 €")).length).toBe(2);
+    expect(
+      screen.getAllByText("Myynti ennen palautuksia").length,
+    ).toBeGreaterThan(0);
+    expect(screen.getAllByText("Nettomyynti").length).toBeGreaterThan(0);
+    expect(screen.queryByText(displayedDate(2))).toBeNull();
 
     const zeroDayControls = screen.getAllByRole("checkbox", {
-      name: "Näytä myös 0 € päivät",
+      name: "Näytä myös tyhjät päivät",
     });
     await user.click(zeroDayControls.at(-1)!);
 
-    expect(screen.getByText("02.08.2026")).toBeTruthy();
-    expect(screen.getByText("0,00 €")).toBeTruthy();
+    expect(screen.getByText(displayedDate(2))).toBeTruthy();
+    expect(screen.getAllByText("0,00 €").length).toBeGreaterThan(0);
   });
 
   it("shows one empty state when the API returns only zero-sales days", async () => {
-    api.post.mockResolvedValue({
-      data: {
-        results: [
-          { date: "2026-08-01", amount: 0 },
-          { date: "2026-08-02", amount: 0 },
-        ],
-        totalAmount: 0,
-      },
-    });
+    api.post.mockImplementation(async (_path, { year, month }) => ({
+      data: reportFixture(year, month, []),
+    }));
 
     render(<DailySalesReportPage />);
 
-    expect(await screen.findByText("Myyntiä ei löytynyt")).toBeTruthy();
-    expect(screen.queryByText("01.08.2026")).toBeNull();
-    expect(screen.queryByText("02.08.2026")).toBeNull();
+    expect(await screen.findByText("Tapahtumia ei löytynyt")).toBeTruthy();
+    expect(screen.queryByText(displayedDate(1))).toBeNull();
+    expect(screen.queryByText(displayedDate(2))).toBeNull();
   });
 
   it("shows a retryable error without replacing the report filters", async () => {

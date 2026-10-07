@@ -3,7 +3,6 @@ import { beforeEach, expect, it, vi } from "vitest";
 import api from "@/lib/api";
 import {
   cancelWaiterOrder,
-  loadWaiterOrders,
   loadWaiterSnapshot,
   mergeWaiterOrders,
   serveWaiterOrder,
@@ -69,7 +68,7 @@ it("loads every active dine-in stage without including takeaway orders", async (
       serverTime: "2026-09-30T12:00:00.000Z",
     },
   }));
-  const orders = await loadWaiterOrders();
+  const { results: orders } = await loadWaiterSnapshot();
   expect(orders.map((order) => order.status)).toEqual(stages);
   expect(orders.every((order) => order.serviceType === "DINE_IN")).toBe(true);
   expect(api.get).not.toHaveBeenCalledWith(
@@ -99,7 +98,7 @@ it("shows a transitioning order once at the latest version across stage reads", 
       serverTime: "2026-09-30T12:00:00.000Z",
     },
   }));
-  const orders = await loadWaiterOrders();
+  const { results: orders } = await loadWaiterSnapshot();
   expect(orders).toHaveLength(1);
   expect(orders[0].status).toBe("PREPARING");
   expect(orders[0].version).toBe(3);

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  isDailySalesResponse,
+  isDailySalesBreakdownResponse,
   isMonthlySalesResponse,
 } from "../lib/report-contracts.ts";
 import {
@@ -13,8 +13,31 @@ import {
 } from "../lib/catalog-contracts.ts";
 
 const validDaily = {
-  results: [{ date: "2026-08-01", amount: 10 }],
-  totalAmount: 10,
+  results: Array.from({ length: 31 }, (_, index) => ({
+    date: `2026-08-${String(index + 1).padStart(2, "0")}`,
+    amount: index === 0 ? 8 : 0,
+    breakdown: {
+      grossAmount: index === 0 ? 10 : 0,
+      refundedAmount: index === 0 ? 2 : 0,
+      pendingRefundAmount: 0,
+      failedRefundAmount: 0,
+      unpaidCancelledCount: 0,
+      unpaidCancelledAmount: 0,
+      paidCancelledCount: 0,
+      paidCancelledAmount: 0,
+    },
+  })),
+  totalAmount: 8,
+  summary: {
+    grossAmount: 10,
+    refundedAmount: 2,
+    pendingRefundAmount: 0,
+    failedRefundAmount: 0,
+    unpaidCancelledCount: 0,
+    unpaidCancelledAmount: 0,
+    paidCancelledCount: 0,
+    paidCancelledAmount: 0,
+  },
 };
 const validMonthly = {
   results: Array.from({ length: 12 }, (_, index) => ({
@@ -24,14 +47,10 @@ const validMonthly = {
   totalAmount: 66,
 };
 
-test("daily report validator accepts the existing daily contract", () => {
-  assert.equal(isDailySalesResponse(validDaily), true);
-  assert.equal(isDailySalesResponse({ ...validDaily, totalAmount: -1 }), true);
+test("daily report validator accepts the reconciled breakdown contract", () => {
+  assert.equal(isDailySalesBreakdownResponse(validDaily, 2026, 8), true);
   assert.equal(
-    isDailySalesResponse(
-      { ...validDaily, totalAmount: -1 },
-      { requireNonNegativeTotal: true },
-    ),
+    isDailySalesBreakdownResponse({ ...validDaily, totalAmount: -1 }, 2026, 8),
     false,
   );
 });
@@ -48,7 +67,7 @@ test("daily report validator rejects malformed rows and totals", () => {
       totalAmount: Number.POSITIVE_INFINITY,
     },
   ]) {
-    assert.equal(isDailySalesResponse(value), false);
+    assert.equal(isDailySalesBreakdownResponse(value, 2026, 8), false);
   }
 });
 

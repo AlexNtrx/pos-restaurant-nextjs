@@ -9,7 +9,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { type DailySalesRow } from "@/lib/report-contracts";
+import {
+  type DailySalesRow,
+  type DailySalesBreakdownRow,
+  type DailySalesBreakdown,
+} from "@/lib/report-contracts";
 import {
   dailySalesMonths,
   type DailySalesReportStatus,
@@ -42,10 +46,23 @@ function formatReportDate(date: string) {
   return dateFormatter.format(new Date(`${date}T12:00:00Z`));
 }
 
+// EN: A fully refunded sale or a zero-price cancellation is still report activity and must remain visible.
+// FI: Kokonaan palautettu myynti tai nollahintainen peruutus on silti raporttitapahtuma ja sen on pysyttävä näkyvissä.
+function hasDailyActivity(row: DailySalesBreakdownRow) {
+  return (
+    row.breakdown.grossAmount > 0 ||
+    row.breakdown.refundedAmount > 0 ||
+    row.breakdown.pendingRefundAmount > 0 ||
+    row.breakdown.failedRefundAmount > 0 ||
+    row.breakdown.unpaidCancelledCount > 0 ||
+    row.breakdown.paidCancelledCount > 0
+  );
+}
+
 function getChartMaximum(rows: DailySalesRow[]) {
   // EN: Round the chart ceiling to a readable power-of-ten step.
   // FI: Pyöristä kaavion yläraja luettavaan kymmenpotenssin mukaiseen väliin.
-  const largestAmount = Math.max(0, ...rows.map((row) => row.amount));
+  const largestAmount = Math.max(0, ...rows.map((row) => Math.abs(row.amount)));
   if (largestAmount === 0) return 1;
 
   const magnitude = 10 ** Math.floor(Math.log10(largestAmount));
@@ -93,13 +110,11 @@ function KpiCard({
   value,
   detail,
   primary = false,
-  mobileLabel,
 }: {
   label: string;
   value: string;
   detail: string;
   primary?: boolean;
-  mobileLabel?: string;
 }) {
   return (
     <article
@@ -110,14 +125,7 @@ function KpiCard({
       )}
     >
       <p className="m-0 text-[11px] leading-[15px] font-medium text-muted-foreground md:text-xs">
-        {mobileLabel ? (
-          <>
-            <span className="md:hidden">{mobileLabel}</span>
-            <span className="hidden md:inline">{label}</span>
-          </>
-        ) : (
-          label
-        )}
+        {label}
       </p>
       <p
         className={cn(
@@ -136,7 +144,8 @@ function KpiCard({
 
 function DailySalesChart({ rows }: { rows: DailySalesRow[] }) {
   const maximum = getChartMaximum(rows);
-  const midpoint = maximum / 2;
+  const hasNegative = rows.some((row) => row.amount < 0);
+  const midpoint = hasNegative ? 0 : maximum / 2;
   const lastDay = rows.length;
   const labelledDays = new Set([1, 7, 14, 21, lastDay]);
 
@@ -149,24 +158,18 @@ function DailySalesChart({ rows }: { rows: DailySalesRow[] }) {
         id="daily-sales-chart-title"
         className="m-0 text-[17px] leading-[22px] font-semibold text-foreground md:text-lg"
       >
-        Päivittäinen myynti
+        Päivittäinen nettomyynti
       </h2>
       <p className="mt-1.5 mb-0 text-[11px] leading-[15px] text-muted-foreground md:text-xs">
-        <span className="md:hidden">Nollapäivät näkyvät aikajanalla.</span>
-        <span className="hidden md:inline xl:hidden">
-          Nollapäivät näkyvät aikajanalla hillittynä.
-        </span>
-        <span className="hidden xl:inline">
-          Nollapäivät säilyvät aikajanalla, mutta eivät hallitse taulukkoa.
-        </span>
+        Kaikki päivät näkyvät aikajanalla.
       </p>
 
       <div
         role="img"
-        aria-label={`Päivittäinen myyntikaavio. Suurin päivämyynti ${currencyFormatter.format(Math.max(0, ...rows.map((row) => row.amount)))}.`}
+        aria-label={`Päivittäinen nettomyyntikaavio. Suurin nettomyynti ${currencyFormatter.format(Math.max(0, ...rows.map((row) => row.amount)))}.`}
         className="relative mt-[12px] h-[226px] pl-[30px] md:h-[246px] md:pl-[38px] xl:h-[300px] xl:pl-11"
       >
-        {[maximum, midpoint, 0].map((value, index) => (
+        {[maximum, midpoint, hasNegative ? -maximum : 0].map((value, index) => (
           <div
             key={value}
             className="absolute right-0 left-0 flex items-center gap-1.5"
@@ -195,19 +198,32 @@ function DailySalesChart({ rows }: { rows: DailySalesRow[] }) {
           >
             {rows.map((row) => {
               const height =
-                row.amount > 0 ? Math.max(3, (row.amount / maximum) * 100) : 1;
+                row.amount !== 0
+                  ? Math.max(
+                      3,
+                      (Math.abs(row.amount) / maximum) *
+                        (hasNegative ? 50 : 100),
+                    )
+                  : 0;
 
               return (
-                <div key={row.date} className="flex h-full min-w-0 items-end">
+                <div key={row.date} className="relative h-full min-w-0">
                   <div
                     title={`${formatReportDate(row.date)}: ${currencyFormatter.format(row.amount)}`}
                     className={cn(
-                      "mx-auto w-full max-w-3 rounded-t-[3px]",
-                      row.amount > 0 ? "bg-olive" : "h-0.5 bg-[#efece6]",
+                      "absolute right-0 left-0 mx-auto w-full max-w-3 rounded-[3px]",
+                      row.amount > 0
+                        ? "bg-olive"
+                        : row.amount < 0
+                          ? "bg-destructive"
+                          : "h-0.5 bg-[#efece6]",
                     )}
-                    style={
-                      row.amount > 0 ? { height: `${height}%` } : undefined
-                    }
+                    style={{
+                      bottom: hasNegative ? "50%" : "0",
+                      height: row.amount !== 0 ? `${height}%` : undefined,
+                      transform:
+                        row.amount < 0 ? "translateY(100%)" : undefined,
+                    }}
                   />
                 </div>
               );
@@ -236,7 +252,7 @@ function DailySalesChart({ rows }: { rows: DailySalesRow[] }) {
 
       <div className="daily-chart-legend mt-2 items-center gap-2 text-[11px] text-muted-foreground">
         <span aria-hidden="true" className="size-2 rounded-full bg-olive" />
-        Myynti päivittäin
+        Nettomyynti päivittäin
       </div>
     </section>
   );
@@ -248,19 +264,18 @@ function DailyBreakdown({
   showZeroDays,
   onShowZeroDaysChange,
 }: {
-  rows: DailySalesRow[];
+  rows: DailySalesBreakdownRow[];
   allRowsCount: number;
   showZeroDays: boolean;
   onShowZeroDaysChange: (checked: boolean) => void;
 }) {
-  const zeroDayCount =
-    allRowsCount - rows.filter((row) => row.amount > 0).length;
-  const activeDayCount = rows.filter((row) => row.amount > 0).length;
+  const activeDayCount = rows.filter(hasDailyActivity).length;
+  const zeroDayCount = allRowsCount - activeDayCount;
 
   return (
     <section
       aria-labelledby="daily-breakdown-title"
-      className="flex h-[233px] min-h-0 flex-col overflow-hidden rounded-[10px] border border-border bg-surface md:h-[209px] xl:h-[484px]"
+      className="flex max-h-[540px] min-h-0 flex-col overflow-hidden rounded-[10px] border border-border bg-surface"
     >
       <div className="flex min-h-[61px] shrink-0 items-center justify-between gap-4 px-3.5 py-3.5 md:min-h-[65px] md:px-4 xl:min-h-[71px] xl:px-[18px]">
         <div>
@@ -268,12 +283,12 @@ function DailyBreakdown({
             id="daily-breakdown-title"
             className="m-0 text-[17px] leading-[22px] font-semibold text-foreground md:text-lg"
           >
-            Myyntipäivät
+            Päivittäinen erittely
           </h2>
           <p className="m-0 text-[10px] leading-[13px] text-muted-foreground md:text-[11px]">
             {showZeroDays
-              ? `Kaikki ${allRowsCount} päivää · ${zeroDayCount} nollapäivää näkyvissä`
-              : `${activeDayCount} päivää · ${zeroDayCount} nollapäivää piilotettu`}
+              ? `Kaikki ${allRowsCount} päivää · ${zeroDayCount} tyhjää päivää`
+              : `${activeDayCount} tapahtumapäivää · ${zeroDayCount} tyhjää päivää piilotettu`}
           </p>
         </div>
         <ZeroDayControl
@@ -283,23 +298,71 @@ function DailyBreakdown({
         />
       </div>
 
-      <div className="hidden h-[38px] items-center bg-[#efece6] px-[18px] text-[11px] font-medium text-muted-foreground xl:flex">
-        <span className="flex-1">Päivä</span>
-        <span className="w-[110px]">Myynti</span>
-      </div>
-
-      <div className="daily-breakdown-scroll min-h-0 flex-1 overflow-y-auto">
-        {rows.map((row) => (
-          <div
-            key={row.date}
-            className="flex h-11 items-center border-b border-border px-3.5 text-xs text-foreground last:border-b-0 md:h-12 md:px-4 md:text-[13px] xl:h-[52px] xl:px-[18px]"
-          >
-            <span className="min-w-0 flex-1">{formatReportDate(row.date)}</span>
-            <span className="shrink-0 text-right font-semibold xl:w-[110px] xl:text-left">
-              {currencyFormatter.format(row.amount)}
-            </span>
-          </div>
-        ))}
+      <div
+        className="daily-breakdown-scroll min-h-0 flex-1 overflow-auto"
+        tabIndex={0}
+        role="region"
+        aria-label="Päivittäinen erittely, vieritettävä taulukko"
+      >
+        <table className="w-full min-w-[1060px] border-collapse text-right text-xs">
+          <thead className="sticky top-0 bg-[#efece6] text-muted-foreground">
+            <tr>
+              {[
+                "Päivä",
+                "Myynti ennen palautuksia",
+                "Palautukset",
+                "Nettomyynti",
+                "Perutut · maksamatta",
+                "Perutut · maksettu",
+                "Palautus kesken",
+                "Palautus epäonnistui",
+              ].map((label) => (
+                <th
+                  key={label}
+                  scope="col"
+                  className="px-4 py-3 font-medium first:text-left"
+                >
+                  {label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(({ date, amount, breakdown }) => (
+              <tr key={date} className="border-b border-border last:border-b-0">
+                <th
+                  scope="row"
+                  className="px-4 py-3 text-left font-normal whitespace-nowrap"
+                >
+                  {formatReportDate(date)}
+                </th>
+                <td className="px-4 py-3 whitespace-nowrap">
+                  {currencyFormatter.format(breakdown.grossAmount)}
+                </td>
+                <td className="px-4 py-3 whitespace-nowrap">
+                  {currencyFormatter.format(breakdown.refundedAmount)}
+                </td>
+                <td className="px-4 py-3 font-semibold whitespace-nowrap">
+                  {currencyFormatter.format(amount)}
+                </td>
+                <td className="px-4 py-3 whitespace-nowrap">
+                  {breakdown.unpaidCancelledCount} kpl ·{" "}
+                  {currencyFormatter.format(breakdown.unpaidCancelledAmount)}
+                </td>
+                <td className="px-4 py-3 whitespace-nowrap">
+                  {breakdown.paidCancelledCount} kpl ·{" "}
+                  {currencyFormatter.format(breakdown.paidCancelledAmount)}
+                </td>
+                <td className="px-4 py-3 whitespace-nowrap">
+                  {currencyFormatter.format(breakdown.pendingRefundAmount)}
+                </td>
+                <td className="px-4 py-3 whitespace-nowrap">
+                  {currencyFormatter.format(breakdown.failedRefundAmount)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       <div className="flex min-h-10 items-center px-3.5 md:hidden xl:flex xl:min-h-11 xl:px-[18px]">
@@ -338,7 +401,7 @@ function ZeroDayControl({
         onChange={(event) => onCheckedChange(event.target.checked)}
         className="size-4 rounded-[3px] border-border accent-olive"
       />
-      Näytä myös 0 € päivät
+      Näytä myös tyhjät päivät
     </label>
   );
 }
@@ -377,8 +440,9 @@ type DailySalesReportViewProps = {
   years: number[];
   year: string;
   month: string;
-  rows: DailySalesRow[];
+  rows: DailySalesBreakdownRow[];
   total: number;
+  summary: DailySalesBreakdown | null;
   status: DailySalesReportStatus;
   error: string;
   showZeroDays: boolean;
@@ -394,6 +458,7 @@ export function DailySalesReportView({
   month,
   rows,
   total,
+  summary,
   status,
   error,
   showZeroDays,
@@ -402,11 +467,10 @@ export function DailySalesReportView({
   onLoad: load,
   onShowZeroDaysChange: setShowZeroDays,
 }: DailySalesReportViewProps) {
-  const activeRows = rows.filter((row) => row.amount > 0);
+  const activeRows = rows.filter(hasDailyActivity);
   const displayedRows = showZeroDays ? rows : activeRows;
-  const averageSalesDay = activeRows.length > 0 ? total / activeRows.length : 0;
   const period = `${dailySalesMonths[Number(month) - 1]} ${year}`;
-  const hasSales = activeRows.length > 0;
+  const hasActivity = activeRows.length > 0;
 
   return (
     <div className="daily-sales-report tw04-layout -mx-[16px] -my-[20px] min-h-[calc(100dvh-4rem)] bg-canvas px-[20px] py-[24px] font-sans sm:mx-[0px] sm:my-[0px] sm:min-h-0 sm:px-[0px] sm:py-[0px] md:-mr-2 xl:mr-0">
@@ -493,10 +557,10 @@ export function DailySalesReportView({
             }
             className="min-h-[300px] bg-surface"
           />
-        ) : !hasSales ? (
+        ) : !hasActivity || !summary ? (
           <EmptyState
-            title="Myyntiä ei löytynyt"
-            description={`${period} ei sisällä kirjattua myyntiä.`}
+            title="Tapahtumia ei löytynyt"
+            description={`${period} ei sisällä kirjattua myyntiä, peruutuksia tai palautuksia.`}
             action={
               <Button
                 type="button"
@@ -516,25 +580,57 @@ export function DailySalesReportView({
               className="grid grid-cols-2 gap-x-[10px] gap-y-[18px] md:grid-cols-3 md:gap-[12px] xl:gap-[16px]"
             >
               <KpiCard
-                label="Kokonaismyynti"
-                value={currencyFormatter.format(total)}
+                label="Myynti ennen palautuksia"
+                value={currencyFormatter.format(summary.grossAmount)}
                 detail={period}
+              />
+              <KpiCard
+                label="Palautukset"
+                value={currencyFormatter.format(summary.refundedAmount)}
+                detail="Vahvistetut palautukset"
+              />
+              <KpiCard
+                label="Nettomyynti"
+                value={currencyFormatter.format(total)}
+                detail="Myynti − vahvistetut palautukset"
                 primary
-              />
-              <KpiCard
-                label="Myyntipäiviä"
-                value={String(activeRows.length)}
-                detail="Päivät, joiden myynti > 0 €"
-              />
-              <KpiCard
-                label="Myyntipäivän keskiarvo"
-                mobileLabel="Päiväkeskiarvo"
-                value={currencyFormatter.format(averageSalesDay)}
-                detail="Vain myyntipäiviltä"
               />
             </section>
 
-            <div className="mt-[18px] grid gap-[18px] md:mt-5 md:gap-5 xl:mt-6 xl:grid-cols-[minmax(0,1.585fr)_minmax(320px,1fr)] xl:gap-4">
+            <section
+              aria-label="Peruutukset ja keskeneräiset palautukset"
+              className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+            >
+              <KpiCard
+                label="Perutut tilaukset · maksamatta"
+                value={currencyFormatter.format(summary.unpaidCancelledAmount)}
+                detail={`${summary.unpaidCancelledCount} tilausta · ei vähennetä myynnistä`}
+              />
+              <KpiCard
+                label="Perutut tilaukset · maksettu"
+                value={currencyFormatter.format(summary.paidCancelledAmount)}
+                detail={`${summary.paidCancelledCount} tilausta · palautus kirjataan erikseen`}
+              />
+              <KpiCard
+                label="Palautus kesken"
+                value={currencyFormatter.format(summary.pendingRefundAmount)}
+                detail="Ei vähennetä nettomyynnistä"
+              />
+              <KpiCard
+                label="Palautus epäonnistui"
+                value={currencyFormatter.format(summary.failedRefundAmount)}
+                detail="Ei vähennetä nettomyynnistä"
+              />
+            </section>
+
+            <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
+              Myynti ja palautukset kohdistuvat alkuperäiseen myyntipäivään
+              (UTC), eivät rahan palautuspäivään. Perutut tilaukset kohdistuvat
+              peruutuspäivään (UTC). Peruutussummia ei vähennetä myynnistä
+              uudelleen.
+            </p>
+
+            <div className="mt-[18px] grid gap-[18px] md:mt-5 md:gap-5 xl:mt-6 xl:gap-4">
               <DailySalesChart rows={rows} />
               <DailyBreakdown
                 rows={displayedRows}

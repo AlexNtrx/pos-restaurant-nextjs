@@ -34,7 +34,6 @@ vi.mock("@/lib/service-calls", () => ({
 vi.mock("@/lib/waiter-orders", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/waiter-orders")>()),
   loadWaiterSetup: mocks.loadSetup,
-  loadWaiterOrders: mocks.loadQueues,
   loadWaiterSnapshot: async (signal: AbortSignal) => ({
     results: await mocks.loadQueues(signal),
     serverTime: new Date().toISOString(),

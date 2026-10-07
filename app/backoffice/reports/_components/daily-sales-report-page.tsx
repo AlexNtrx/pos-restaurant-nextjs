@@ -5,8 +5,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import api from "@/lib/api";
 import { getApiErrorMessage, isPermissionDeniedError } from "@/lib/api-error";
 import {
-  isDailySalesResponse,
-  type DailySalesRow,
+  isDailySalesBreakdownResponse,
+  type DailySalesBreakdownRow,
+  type DailySalesBreakdown,
 } from "@/lib/report-contracts";
 import { DailySalesReportView } from "./daily-sales-report-view";
 import { type DailySalesReportStatus } from "./daily-sales-report-types";
@@ -20,7 +21,8 @@ export function DailySalesReportPage() {
   );
   const [year, setYear] = useState(String(currentYear));
   const [month, setMonth] = useState(String(new Date().getMonth() + 1));
-  const [rows, setRows] = useState<DailySalesRow[]>([]);
+  const [rows, setRows] = useState<DailySalesBreakdownRow[]>([]);
+  const [summary, setSummary] = useState<DailySalesBreakdown | null>(null);
   const [total, setTotal] = useState(0);
   const [status, setStatus] = useState<DailySalesReportStatus>("loading");
   const [error, setError] = useState("");
@@ -36,13 +38,20 @@ export function DailySalesReportPage() {
         year: Number(year),
         month: Number(month),
       });
-      if (!isDailySalesResponse(response.data)) {
+      if (
+        !isDailySalesBreakdownResponse(
+          response.data,
+          Number(year),
+          Number(month),
+        )
+      ) {
         throw new Error("Palvelin palautti virheellisiä raporttitietoja.");
       }
       // EN: Ignore a slower response when staff have already selected another reporting period.
       // FI: Ohita hitaampi vastaus, jos henkilökunta on jo valinnut toisen raportointijakson.
       if (requestId !== latestRequestId.current) return;
       setRows(response.data.results);
+      setSummary(response.data.summary);
       setTotal(response.data.totalAmount);
       setStatus("ready");
     } catch (reason: unknown) {
@@ -64,6 +73,7 @@ export function DailySalesReportPage() {
       month={month}
       rows={rows}
       total={total}
+      summary={summary}
       status={status}
       error={error}
       showZeroDays={showZeroDays}

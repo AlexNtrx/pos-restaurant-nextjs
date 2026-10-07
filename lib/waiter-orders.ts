@@ -86,10 +86,6 @@ export async function loadWaiterSnapshot(signal?: AbortSignal) {
   };
 }
 
-export async function loadWaiterOrders() {
-  return (await loadWaiterSnapshot()).results;
-}
-
 export function mergeWaiterOrders(
   current: StaffOrder[],
   changes: StaffOrder[],
