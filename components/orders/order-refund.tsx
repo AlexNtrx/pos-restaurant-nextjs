@@ -81,6 +81,7 @@ export function OrderRefund({
   const [reason, setReason] = useState("");
   const [method, setMethod] = useState<"cash" | "bank">("cash");
   const [reference, setReference] = useState("");
+  const [failureReason, setFailureReason] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [reservationRequested, setReservationRequested] = useState(false);
@@ -156,7 +157,7 @@ export function OrderRefund({
               idempotencyKey: refund!.idempotencyKey,
               ...(action === "complete"
                 ? { reference: reference.trim() }
-                : { reason: reference.trim() }),
+                : { reason: failureReason.trim() }),
             },
       );
       const result = parseRefund(response.data.result);
@@ -207,8 +208,9 @@ export function OrderRefund({
       {loaded && !refund && canReserve && (
         <>
           <p>
-            Varaa peruutus ennen valmistusta. Varaus pysäyttää tilauksen, mutta
-            rahat eivät vielä palaudu.
+            Peruuta tilaus ennen valmistuksen alkamista ja palauta sen jälkeen
+            rahat asiakkaalle. Kun jatkat, tilaus perutaan heti. Tämä toiminto
+            ei siirrä rahaa.
           </p>
           <label className="block">
             Peruutuksen syy
@@ -238,7 +240,9 @@ export function OrderRefund({
             disabled={busy || reason.trim().length < 3}
             onClick={() => void act("reserve")}
           >
-            Varaa peruutus ja palautus
+            {reservationRequested
+              ? "Tarkista peruutuksen tila"
+              : "Peruuta tilaus ja aloita palautus"}
           </Button>
         </>
       )}
@@ -251,7 +255,7 @@ export function OrderRefund({
               ? "Palautus vahvistettu"
               : refund.status === "FAILED"
                 ? "Palautus epäonnistui"
-                : "Palautus kesken"}
+                : "Rahat odottavat palautusta"}
           </p>
           {refund.reference && <p>Tosite / viite: {refund.reference}</p>}
           {refund.failureReason && (
@@ -260,11 +264,12 @@ export function OrderRefund({
           {refund.status !== "COMPLETED" && (
             <>
               <p>
-                Palauta rahat erikseen. Vahvista vasta, kun koko summa on
-                palautettu. Tämä toiminto kirjaa palautuksen eikä siirrä rahaa.
+                Tilaus on peruttu. Palauta koko summa asiakkaalle yllä olevalla
+                maksutavalla ja vahvista sen jälkeen palautus. Vahvistus kirjaa
+                palautuksen eikä siirrä rahaa.
               </p>
               <label className="block">
-                Tosite / viite tai epäonnistumisen syy
+                Tosite / viite
                 <textarea
                   className="block w-full rounded border p-2"
                   maxLength={500}
@@ -279,13 +284,37 @@ export function OrderRefund({
               >
                 Vahvista rahat palautetuiksi
               </Button>
-              <Button
-                variant="outline"
-                disabled={busy || reference.trim().length < 3}
-                onClick={() => void act("fail")}
-              >
-                Kirjaa palautuksen epäonnistuminen
-              </Button>
+              {/* EN: Failure is a secondary manual outcome; its reason must never reuse the proof of returned money. */}
+              {/* FI: Epäonnistuminen on toissijainen käsin kirjattava tulos; sen syy ei saa käyttää palautetun rahan tositetta. */}
+              <details className="rounded border border-border p-3">
+                <summary className="cursor-pointer font-medium">
+                  Palautuksessa on ongelma
+                </summary>
+                <div className="mt-3 space-y-3">
+                  <p>
+                    Jos et ole vielä yrittänyt palautusta, jätä se odottamaan.
+                    Kirjaa epäonnistuminen vain, jos rahan palautus ei
+                    onnistunut.
+                  </p>
+                  <label className="block">
+                    Epäonnistumisen syy
+                    <textarea
+                      className="block w-full rounded border p-2"
+                      maxLength={500}
+                      value={failureReason}
+                      onChange={(event) => setFailureReason(event.target.value)}
+                      disabled={busy}
+                    />
+                  </label>
+                  <Button
+                    variant="outline"
+                    disabled={busy || failureReason.trim().length < 3}
+                    onClick={() => void act("fail")}
+                  >
+                    Kirjaa palautuksen epäonnistuminen
+                  </Button>
+                </div>
+              </details>
             </>
           )}
         </>

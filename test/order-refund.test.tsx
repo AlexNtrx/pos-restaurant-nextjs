@@ -48,7 +48,7 @@ it("reuses the exact reservation after an uncertain response without claiming a 
     "Customer request",
   );
   const reserve = screen.getByRole("button", {
-    name: "Varaa peruutus ja palautus",
+    name: "Peruuta tilaus ja aloita palautus",
   });
   await user.click(reserve);
   await screen.findByRole("alert");
@@ -64,10 +64,10 @@ it("reuses the exact reservation after an uncertain response without claiming a 
     />,
   );
   const retry = await screen.findByRole("button", {
-    name: "Varaa peruutus ja palautus",
+    name: "Tarkista peruutuksen tila",
   });
   await user.click(retry);
-  await screen.findByText(/Palautus kesken/);
+  await screen.findByText(/Rahat odottavat palautusta/);
   expect(vi.mocked(api.post).mock.calls[1][1]).toEqual(
     vi.mocked(api.post).mock.calls[0][1],
   );
@@ -93,9 +93,9 @@ it("reserves cancellation first and only records returned money after explicit p
   );
   await user.selectOptions(screen.getByLabelText("Palautustapa"), "bank");
   await user.click(
-    screen.getByRole("button", { name: "Varaa peruutus ja palautus" }),
+    screen.getByRole("button", { name: "Peruuta tilaus ja aloita palautus" }),
   );
-  await screen.findByText(/Palautus kesken/);
+  await screen.findByText(/Rahat odottavat palautusta/);
   expect(screen.queryByText(/Palautus vahvistettu/)).toBeNull();
   expect(vi.mocked(api.post).mock.calls[0][1]).toEqual(
     expect.objectContaining({
@@ -108,10 +108,7 @@ it("reserves cancellation first and only records returned money after explicit p
     name: "Vahvista rahat palautetuiksi",
   });
   expect((confirm as HTMLButtonElement).disabled).toBe(true);
-  await user.type(
-    screen.getByLabelText("Tosite / viite tai epäonnistumisen syy"),
-    "Bank proof 123",
-  );
+  await user.type(screen.getByLabelText("Tosite / viite"), "Bank proof 123");
   await user.click(confirm);
   await screen.findByText(/Palautus vahvistettu/);
   expect(api.post).toHaveBeenLastCalledWith("/orders/1/refund/complete", {
@@ -130,13 +127,13 @@ it("retains a pending refund when completion fails and reloads existing reservat
     />,
   );
   await user.type(
-    await screen.findByLabelText("Tosite / viite tai epäonnistumisen syy"),
+    await screen.findByLabelText("Tosite / viite"),
     "Bank proof 123",
   );
   await user.click(
     screen.getByRole("button", { name: "Vahvista rahat palautetuiksi" }),
   );
   await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
-  expect(screen.getByText(/Palautus kesken/)).toBeTruthy();
+  expect(screen.getByText(/Rahat odottavat palautusta/)).toBeTruthy();
   expect(screen.queryByText(/Palautus vahvistettu/)).toBeNull();
 });
