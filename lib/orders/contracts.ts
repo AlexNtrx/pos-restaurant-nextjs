@@ -40,6 +40,14 @@ export type StaffOrder = {
 };
 
 export type StaffOrderDetail = StaffOrder & {
+  // EN: Cashier detail carries original payment metadata; shared receipts belong to the bill, not to an individual Order total.
+  // FI: Kassan tarkenne sisältää alkuperäiset maksutiedot; yhteinen kuitti kuuluu laskulle eikä yksittäisen tilauksen summalle.
+  receipt?: {
+    billId: number;
+    amount: number;
+    status: "use" | "cancelled";
+    orderCount: number;
+  } | null;
   history: {
     fromStatus: OrderStatus | null;
     toStatus: OrderStatus;

@@ -6,7 +6,6 @@ export type NavigationIcon =
   | "catalog"
   | "orders"
   | "kitchen"
-  | "receipts"
   | "orderHistory"
   | "reports"
   | "settings";
@@ -27,7 +26,6 @@ export type BackofficeNavigationGroup = {
   legacyPaths?: readonly string[];
   unavailable?: boolean;
   hiddenFromNavigation?: boolean;
-  activeExact?: boolean;
   children?: readonly BackofficeNavigationChild[];
 };
 
@@ -99,18 +97,7 @@ export const backofficeNavigation: readonly BackofficeNavigationGroup[] = [
     href: "/backoffice/orders/history/orders",
     label: "Tilaushistoria",
     icon: "orderHistory",
-    roles: adminOnly,
-  },
-  {
-    id: "receipts",
-    href: "/backoffice/orders/history",
-    label: "Kuittihistoria",
-    icon: "receipts",
-    roles: adminOnly,
-    legacyPaths: ["/backoffice/salereport"],
-    // EN: The Order history URL is nested under this route, so only the receipt page highlights this item.
-    // FI: Tilaushistorian URL on tämän reitin alla, joten vain kuittisivu korostaa tämän kohdan.
-    activeExact: true,
+    roles: allStaff,
   },
   {
     id: "reports",
@@ -234,11 +221,6 @@ export function isNavigationGroupActive(
   group: BackofficeNavigationGroup,
   pathname: string,
 ) {
-  if (group.activeExact && group.href)
-    return (
-      pathname === group.href ||
-      (group.legacyPaths?.some((path) => matchesPath(pathname, path)) ?? false)
-    );
   if (group.href && matchesPath(pathname, group.href, group.legacyPaths))
     return true;
   return (

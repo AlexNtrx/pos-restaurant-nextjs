@@ -11,6 +11,8 @@ const order = {
   status: "CONFIRMED",
   paidAt: "2026-10-02T12:00:00Z",
   preparingAt: null,
+  total: 20,
+  receipt: { billId: 3, amount: 20, status: "use", orderCount: 1 },
 } as StaffOrderDetail;
 const pending = {
   id: 4,

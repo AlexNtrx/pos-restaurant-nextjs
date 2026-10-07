@@ -96,7 +96,7 @@ describe("TW-03 staff shell and navigation", () => {
       true,
     );
     expect(canAccessBackofficePath("/backoffice/orders/history", "admin")).toBe(
-      true,
+      false,
     );
     expect(
       canAccessBackofficePath("/backoffice/orders/history/orders", "admin"),
@@ -105,11 +105,11 @@ describe("TW-03 staff shell and navigation", () => {
       false,
     );
     expect(canAccessBackofficePath("/backoffice/salereport", "admin")).toBe(
-      true,
+      false,
     );
     expect(
       canAccessBackofficePath("/backoffice/orders/history/orders", "kassa"),
-    ).toBe(false);
+    ).toBe(true);
     expect(getBackofficeLanding("admin")).toBe("/backoffice/dashboard");
     expect(getBackofficeLanding("kassa")).toBe("/backoffice/sale");
     expect(getBackofficeLanding("waiter")).toBe("/backoffice/waiter");
@@ -129,7 +129,7 @@ describe("TW-03 staff shell and navigation", () => {
   it("shows only navigation groups permitted by the existing role contract", () => {
     expect(
       getVisibleBackofficeNavigation("kassa").map(({ label }) => label),
-    ).toEqual(["Kassa", "Tarjoilija"]);
+    ).toEqual(["Kassa", "Tarjoilija", "Tilaushistoria"]);
     expect(
       getVisibleBackofficeNavigation("waiter").map(({ label }) => label),
     ).toEqual(["Tarjoilija"]);
@@ -141,36 +141,25 @@ describe("TW-03 staff shell and navigation", () => {
       "Tarjoilija",
       "Keittiö",
       "Tilaushistoria",
-      "Kuittihistoria",
       "Raportit",
       "Ruokalista",
       "Asetukset",
     ]);
   });
 
-  it("keeps the two history pages as distinct active sidebar destinations", () => {
+  it("uses one history destination and removes receipt aliases", () => {
     const groups = getVisibleBackofficeNavigation("admin");
-    const receipts = groups.find(({ id }) => id === "receipts")!;
-    const orderHistory = groups.find(({ id }) => id === "orderHistory")!;
-
+    expect(groups.some(({ id }) => id === "receipts")).toBe(false);
+    const history = groups.find(({ id }) => id === "orderHistory")!;
     expect(
-      isNavigationGroupActive(receipts, "/backoffice/orders/history"),
+      isNavigationGroupActive(history, "/backoffice/orders/history/orders"),
     ).toBe(true);
-    expect(isNavigationGroupActive(receipts, "/backoffice/salereport")).toBe(
-      true,
+    expect(isNavigationGroupActive(history, "/backoffice/orders/history")).toBe(
+      false,
     );
-    expect(
-      isNavigationGroupActive(orderHistory, "/backoffice/orders/history"),
-    ).toBe(false);
-    expect(
-      isNavigationGroupActive(receipts, "/backoffice/orders/history/orders"),
-    ).toBe(false);
-    expect(
-      isNavigationGroupActive(
-        orderHistory,
-        "/backoffice/orders/history/orders",
-      ),
-    ).toBe(true);
+    expect(canAccessBackofficePath("/backoffice/salereport", "admin")).toBe(
+      false,
+    );
   });
 
   it("renders the responsive shell without changing page content", async () => {
@@ -255,7 +244,7 @@ describe("TW-03 staff shell and navigation", () => {
       desktopSidebar.querySelectorAll<HTMLElement>('[data-slot="nav-item"]'),
     );
 
-    expect(navigationItems).toHaveLength(9);
+    expect(navigationItems).toHaveLength(8);
     for (const item of navigationItems) {
       expect(item.className).toContain("h-10");
       expect(item.className).toContain("min-h-10");
@@ -278,7 +267,7 @@ describe("TW-03 staff shell and navigation", () => {
       navigationItems
         .find((item) => item.textContent === "Kuittihistoria")
         ?.getAttribute("href"),
-    ).toBe("/backoffice/orders/history");
+    ).toBeUndefined();
     expect(
       navigationItems
         .find((item) => item.textContent === "Tilaushistoria")

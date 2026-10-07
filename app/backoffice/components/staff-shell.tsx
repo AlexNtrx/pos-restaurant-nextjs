@@ -43,25 +43,46 @@ export default function StaffShell({
   const qrModeVersionRef = useRef(0);
 
   useEffect(() => {
-    if (userLevel !== "admin") return;
     let active = true;
-    const version = qrModeVersionRef.current;
-    void api
-      .get("/qr-mode")
-      .then(({ data }) => {
+    let request: AbortController | null = null;
+
+    // EN: Refresh all staff devices while visible and on return, without overlapping reads or replacing a newer local mode change.
+    // FI: Päivitä kaikkien työntekijöiden laitteet näkyvissä ja palattaessa ilman päällekkäisiä lukuja tai uudemman paikallisen tilamuutoksen korvaamista.
+    const refreshMode = async () => {
+      if (!active || request || document.visibilityState === "hidden") return;
+      const controller = new AbortController();
+      request = controller;
+      const version = qrModeVersionRef.current;
+      try {
+        const { data } = await api.get("/qr-mode", {
+          signal: controller.signal,
+        });
         const mode = data?.result?.mode;
-        if (
-          active &&
-          version === qrModeVersionRef.current &&
-          (mode === "DISABLED" || mode === "MENU_ONLY" || mode === "ORDERING")
-        )
-          setQrMode(mode);
-      })
-      .catch(() => {
+        if (active && version === qrModeVersionRef.current) {
+          setQrMode(
+            mode === "DISABLED" || mode === "MENU_ONLY" || mode === "ORDERING"
+              ? mode
+              : null,
+          );
+        }
+      } catch {
         if (active && version === qrModeVersionRef.current) setQrMode(null);
-      });
+      } finally {
+        if (request === controller) request = null;
+      }
+    };
+
+    const onReturn = () => void refreshMode();
+    void refreshMode();
+    const interval = window.setInterval(onReturn, 30_000);
+    window.addEventListener("focus", onReturn);
+    document.addEventListener("visibilitychange", onReturn);
     return () => {
       active = false;
+      request?.abort();
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onReturn);
+      document.removeEventListener("visibilitychange", onReturn);
     };
   }, [userLevel]);
 

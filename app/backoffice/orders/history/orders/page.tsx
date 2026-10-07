@@ -154,7 +154,7 @@ export default function OrderRecordsPage() {
     <div className="tw04-layout space-y-6 font-sans">
       <PageHeader
         title="Tilaushistoria"
-        description="Kaikki Orders, myös maksamattomat, hylätyt ja perutut. Tilaussummat eivät ole myyntituloja."
+        description="Tilaukset, kuitit sekä peruutukset ja palautukset yhdessä paikassa."
         actions={
           <Button
             size="sm"
@@ -234,7 +234,7 @@ export default function OrderRecordsPage() {
       ) : orders.length === 0 ? (
         <EmptyState
           title="Tilauksia ei löytynyt"
-          description="Valitulla aikavälillä ei ole Orders-tietueita. Vanhemmat myynnit näkyvät kuittihistoriassa."
+          description="Valitulla aikavälillä ei ole tilauksia."
         />
       ) : (
         <div>
@@ -254,8 +254,9 @@ export default function OrderRecordsPage() {
         </div>
       )}
       <p className="text-[11px] text-muted-foreground">
-        Aikavyöhyke: {zone}. Myyntiraportit ja vanhat myynnit perustuvat
-        kuittihistoriaan.
+        Aikavyöhyke: {zone}. Päivämääräväli perustuu tilauksen lähetysaikaan.
+        Kuitit perustuvat alkuperäisiin maksutietoihin. Tilaussummat eivät ole
+        myyntituloja.
       </p>
       <OrderRecordDetail
         selectedId={selectedId}

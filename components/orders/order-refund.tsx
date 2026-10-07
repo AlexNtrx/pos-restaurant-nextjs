@@ -67,8 +67,8 @@ function parseRefund(value: unknown): Refund {
   return value as Refund;
 }
 
-// EN: This component is used on the admin history page; the API independently verifies current admin authority.
-// FI: Komponenttia käytetään ylläpitäjän historiasivulla; API tarkistaa ylläpitäjän nykyisen oikeuden erikseen.
+// EN: Admin and kassa share the history workflow; the API independently rechecks current cashier authority and refund eligibility.
+// FI: Admin ja kassa jakavat historiatyönkulun; API tarkistaa nykyisen kassaoikeuden ja palautuskelpoisuuden erikseen.
 export function OrderRefund({
   order,
   onChanged,
@@ -188,6 +188,9 @@ export function OrderRefund({
   const canReserve =
     order.paidAt !== null &&
     order.preparingAt === null &&
+    order.receipt?.status === "use" &&
+    order.receipt.orderCount === 1 &&
+    order.receipt.amount === order.total &&
     ["SUBMITTED", "CONFIRMED"].includes(order.status);
   if (!canReserve && !refund && !error) return null;
   return (

@@ -53,6 +53,18 @@ export async function fetchOrderDetail(id: number): Promise<StaffOrderDetail> {
   const response = await api.get<{ result: StaffOrderDetail }>(`/orders/${id}`);
   if (!response.data?.result || !Array.isArray(response.data.result.history))
     throw new Error("Palvelin palautti virheellisen tilauksen.");
+  const receipt = response.data.result.receipt;
+  if (
+    receipt != null &&
+    (!Number.isSafeInteger(receipt.billId) ||
+      receipt.billId <= 0 ||
+      !Number.isSafeInteger(receipt.amount) ||
+      receipt.amount < 0 ||
+      !Number.isSafeInteger(receipt.orderCount) ||
+      receipt.orderCount < 1 ||
+      !["use", "cancelled"].includes(receipt.status))
+  )
+    throw new Error("Palvelin palautti virheellisen kuitin.");
   return response.data.result;
 }
 

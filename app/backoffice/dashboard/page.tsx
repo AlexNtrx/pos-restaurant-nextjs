@@ -102,9 +102,9 @@ const quickActions = [
     icon: Plus,
   },
   {
-    href: "/backoffice/orders/history",
-    label: "Kuittihistoria",
-    description: "Tarkastele valmiita myyntejä",
+    href: "/backoffice/orders/history/orders",
+    label: "Tilaushistoria",
+    description: "Tarkastele tilauksia, kuitteja ja palautuksia",
     icon: ReceiptText,
   },
   {

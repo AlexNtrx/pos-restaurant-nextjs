@@ -14,6 +14,8 @@ import {
   lifecycleFields,
 } from "../_lib/presentation";
 import { OrderRefund } from "@/components/orders/order-refund";
+import { OrderReceipt } from "./order-receipt";
+import { OrderCancellation } from "./order-cancellation";
 
 export function OrderRecordDetail({
   selectedId,
@@ -47,6 +49,15 @@ export function OrderRecordDetail({
           <LoadingState title="Tilausta ladataan" />
         ) : (
           <div className="space-y-5 text-sm">
+            <OrderReceipt
+              key={`receipt:${detail.id}:${detail.receipt?.billId}`}
+              receipt={detail.receipt}
+            />
+            <OrderCancellation
+              key={`cancel:${detail.id}`}
+              order={detail}
+              onChanged={onChanged}
+            />
             <OrderRefund key={detail.id} order={detail} onChanged={onChanged} />
             <p className="font-medium">
               Tilauksen summa: {currency.format(detail.total)} ·{" "}
