@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import OrderRecordsPage from "@/app/backoffice/orders/history/orders/page";
 
 const orders = vi.hoisted(() => ({
-  fetchOrderPages: vi.fn(),
+  fetchOrderHistoryPage: vi.fn(),
   fetchOrderDetail: vi.fn(),
 }));
 vi.mock("@/lib/orders/client", () => orders);
@@ -37,8 +37,10 @@ const order = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  orders.fetchOrderPages.mockResolvedValue({
+  orders.fetchOrderHistoryPage.mockResolvedValue({
     results: [order],
+    nextCursor: null,
+    sort: "submitted_desc",
     serverTime: "2026-09-26T10:02:00.000Z",
   });
   orders.fetchOrderDetail.mockImplementation(async (id: number) => ({
@@ -69,27 +71,38 @@ afterEach(cleanup);
 describe("HIS-01 Order records", () => {
   it("bounds history rows, opens the last-page order and resets after filtering", async () => {
     const user = userEvent.setup();
-    orders.fetchOrderPages.mockResolvedValue({
-      results: Array.from({ length: 101 }, (_, index) => ({
-        ...order,
-        id: index + 1,
-      })),
-      serverTime: order.updatedAt,
-    });
+    orders.fetchOrderHistoryPage.mockImplementation(
+      async (_filters, cursor) => {
+        const start = cursor === "page-3" ? 100 : cursor === "page-2" ? 50 : 0;
+        return {
+          results: Array.from(
+            { length: Math.min(50, 101 - start) },
+            (_, index) => ({
+              ...order,
+              id: 101 - start - index,
+            }),
+          ),
+          nextCursor: start === 0 ? "page-2" : start === 50 ? "page-3" : null,
+          sort: "submitted_desc",
+          serverTime: order.updatedAt,
+        };
+      },
+    );
     render(<OrderRecordsPage />);
-    await screen.findByText("1–50 / 101");
+    await screen.findByText("Sivu 1 · 1–50 tilausta");
     expect(screen.getAllByRole("button", { name: "Avaa" })).toHaveLength(50);
     expect(orders.fetchOrderDetail).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Seuraava" }));
-    expect(screen.getByText("51–100 / 101")).toBeTruthy();
+    expect(await screen.findByText("Sivu 2 · 51–100 tilausta")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Seuraava" }));
+    await screen.findByText("Sivu 3 · 101–101 tilausta");
     expect(screen.getAllByRole("button", { name: "Avaa" })).toHaveLength(1);
     await user.click(screen.getByRole("button", { name: "Avaa" }));
     expect(orders.fetchOrderDetail).toHaveBeenLastCalledWith(1);
     await screen.findByText("Tilauksen summa:", { exact: false });
     await user.click(screen.getByRole("button", { name: "Sulje" }));
     await user.selectOptions(screen.getByLabelText("Tilauskanava"), "QR");
-    await screen.findByText("1–50 / 101");
+    await screen.findByText("Sivu 1 · 1–50 tilausta");
     expect(screen.getAllByRole("button", { name: "Avaa" })).toHaveLength(50);
   }, 15000);
   it("keeps rejected Orders separate from receipts and filters by channel/session", async () => {
@@ -111,8 +124,10 @@ describe("HIS-01 Order records", () => {
     await user.selectOptions(screen.getByLabelText("Tilauskanava"), "QR");
     await user.type(screen.getByLabelText("Pöytäistunto"), "19");
     await waitFor(() =>
-      expect(orders.fetchOrderPages).toHaveBeenLastCalledWith(
+      expect(orders.fetchOrderHistoryPage).toHaveBeenLastCalledWith(
         expect.objectContaining({ channel: "QR", tableSessionId: 19 }),
+        null,
+        expect.any(AbortSignal),
       ),
     );
 
@@ -140,8 +155,10 @@ describe("HIS-01 Order records", () => {
 
 it("ignores a closed detail response after another order opens", async () => {
   const user = userEvent.setup();
-  orders.fetchOrderPages.mockResolvedValue({
-    results: [order, { ...order, id: 42 }],
+  orders.fetchOrderHistoryPage.mockResolvedValue({
+    results: [{ ...order, id: 42 }, order],
+    nextCursor: null,
+    sort: "submitted_desc",
     serverTime: order.updatedAt,
   });
   let resolveOld!: (value: unknown) => void;

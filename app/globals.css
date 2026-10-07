@@ -75,6 +75,16 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* EN: Hide application scrollbars without changing overflow, input scrolling, or dialog scroll locks. */
+/* FI: Piilota sovelluksen vierityspalkit muuttamatta ylivuotoa, syötteillä vierittämistä tai dialogien vierityslukkoja. */
+* {
+  scrollbar-width: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+}
+
 @layer components {
   .signin-ui {
     font-family: var(--font-instrument-sans), Arial, Helvetica, sans-serif;
@@ -91,14 +101,6 @@ body:has(.counter-pos) #main-content {
   padding: 0 !important;
 }
 
-.catalog-navigation {
-  scrollbar-width: none;
-}
-
-.catalog-navigation::-webkit-scrollbar {
-  display: none;
-}
-
 .daily-sales-report .daily-zero-control-header {
   display: none !important;
 }
@@ -109,14 +111,6 @@ body:has(.counter-pos) #main-content {
 
 .daily-sales-report .daily-chart-legend {
   display: none !important;
-}
-
-.daily-sales-report .daily-breakdown-scroll {
-  scrollbar-width: none;
-}
-
-.daily-sales-report .daily-breakdown-scroll::-webkit-scrollbar {
-  display: none;
 }
 
 @media (min-width: 768px) {
