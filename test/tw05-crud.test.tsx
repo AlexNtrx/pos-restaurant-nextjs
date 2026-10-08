@@ -6,6 +6,7 @@ import { CatalogManagementPage } from "@/app/backoffice/catalog/_components/cata
 import MenuItemsPage from "@/app/backoffice/catalog/menu-items/menu-items-page";
 import RestaurantSettingsPage from "@/app/backoffice/settings/restaurant/page";
 import StaffPage from "@/app/backoffice/staff/page";
+import type { Food } from "@/lib/catalog-contracts";
 
 const api = vi.hoisted(() => ({
   get: vi.fn(),
@@ -31,6 +32,36 @@ const food = {
   FoodType: category,
 };
 
+const menuPage = (
+  foods: Food[],
+  config: {
+    params: { page: number; limit: number; q: string; categoryId?: number };
+  },
+) => {
+  const { page: requestedPage, limit, q, categoryId } = config.params;
+  const query = q.trim().toLocaleLowerCase("fi-FI");
+  const matches = foods
+    .filter(
+      (item) =>
+        (categoryId === undefined || item.foodTypeId === categoryId) &&
+        (!query ||
+          [item.name, item.remark, item.FoodType.name].some((text) =>
+            text.toLocaleLowerCase("fi-FI").includes(query),
+          )),
+    )
+    .sort((left, right) => right.id - left.id);
+  const pageCount = Math.max(1, Math.ceil(matches.length / limit));
+  const page = Math.min(requestedPage, pageCount);
+  return {
+    results: matches.slice((page - 1) * limit, page * limit),
+    totalCount: foods.length,
+    filteredCount: matches.length,
+    page,
+    pageSize: limit,
+    pageCount,
+  };
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   window.localStorage.clear();
@@ -43,14 +74,12 @@ afterEach(cleanup);
 
 describe("TW-05 CRUD dialogs", () => {
   it("retains the editor DOM and selected file through parent rerenders and saves the edited draft", async () => {
-    api.get.mockImplementation((path: string) =>
+    api.get.mockImplementation((path: string, config) =>
       Promise.resolve({
-        data: {
-          results:
-            path === "/food/list"
-              ? [{ ...food, detailImg: "old-detail.png" }]
-              : [category],
-        },
+        data:
+          path === "/food/page"
+            ? menuPage([{ ...food, detailImg: "old-detail.png" }], config)
+            : { results: [category] },
       }),
     );
     api.post.mockResolvedValue({ data: { fileName: "new-menu.webp" } });
@@ -96,48 +125,53 @@ describe("TW-05 CRUD dialogs", () => {
   });
 
   it("coordinates search and pagination without losing the empty-state clear action", async () => {
-    api.get.mockImplementation((path: string) =>
+    api.get.mockImplementation((path: string, config) =>
       Promise.resolve({
-        data: {
-          results:
-            path === "/food/list"
-              ? Array.from({ length: 50 }, (_, index) => ({
+        data:
+          path === "/food/page"
+            ? menuPage(
+                Array.from({ length: 50 }, (_, index) => ({
                   ...food,
-                  id: index + 1,
+                  id: 50 - index,
                   name: `Meal ${index + 1}`,
-                }))
-              : [category],
-        },
+                })),
+                config,
+              )
+            : { results: [category] },
       }),
     );
     const user = userEvent.setup();
     render(<MenuItemsPage />);
     await screen.findByText("Meal 1");
     await user.click(screen.getByRole("button", { name: "Seuraava sivu" }));
-    expect(
-      screen
-        .getByRole("button", { name: "Sivu 2" })
-        .getAttribute("aria-current"),
-    ).toBe("page");
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: "Sivu 2" })
+          .getAttribute("aria-current"),
+      ).toBe("page"),
+    );
     await user.type(
       screen.getByRole("textbox", { name: "Hae ruokalistaa" }),
       "Meal 50",
     );
-    expect(
-      screen
-        .getByRole("button", { name: "Sivu 1" })
-        .getAttribute("aria-current"),
-    ).toBe("page");
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: "Sivu 1" })
+          .getAttribute("aria-current"),
+      ).toBe("page"),
+    );
     expect(screen.getByText("Meal 50")).toBeTruthy();
     await user.type(
       screen.getByRole("textbox", { name: "Hae ruokalistaa" }),
       " missing",
     );
-    expect(screen.getByText("Ei hakutuloksia")).toBeTruthy();
+    expect(await screen.findByText("Ei hakutuloksia")).toBeTruthy();
     await user.click(
       screen.getByRole("button", { name: "Tyhjennä suodattimet" }),
     );
-    expect(screen.getByText("Meal 1")).toBeTruthy();
+    expect(await screen.findByText("Meal 1")).toBeTruthy();
     expect(
       (
         screen.getByRole("textbox", {
@@ -148,9 +182,12 @@ describe("TW-05 CRUD dialogs", () => {
   });
 
   it("keeps the menu draft stable through upload and save, then enables editing after failure", async () => {
-    api.get.mockImplementation((path: string) =>
+    api.get.mockImplementation((path: string, config) =>
       Promise.resolve({
-        data: { results: path === "/food/list" ? [food] : [category] },
+        data:
+          path === "/food/page"
+            ? menuPage([food], config)
+            : { results: [category] },
       }),
     );
     let uploaded!: (value: { data: { fileName: string } }) => void;
@@ -333,9 +370,12 @@ describe("TW-05 CRUD dialogs", () => {
             : {},
       }),
     );
-    api.get.mockImplementation((path: string) =>
+    api.get.mockImplementation((path: string, config) =>
       Promise.resolve({
-        data: { results: path === "/food/list" ? [food] : [category] },
+        data:
+          path === "/food/page"
+            ? menuPage([food], config)
+            : { results: [category] },
       }),
     );
     const user = userEvent.setup();
@@ -378,9 +418,12 @@ describe("TW-05 CRUD dialogs", () => {
   });
 
   it("keeps edit and delete actions inside the menu item overflow", async () => {
-    api.get.mockImplementation((path: string) =>
+    api.get.mockImplementation((path: string, config) =>
       Promise.resolve({
-        data: { results: path === "/food/list" ? [food] : [category] },
+        data:
+          path === "/food/page"
+            ? menuPage([food], config)
+            : { results: [category] },
       }),
     );
     const user = userEvent.setup();

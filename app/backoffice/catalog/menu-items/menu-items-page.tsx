@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -17,7 +17,6 @@ import api from "@/lib/api";
 import { readStaffCatalog, invalidateCatalogCache } from "@/lib/catalog-reads";
 import { getApiErrorMessage, isPermissionDeniedError } from "@/lib/api-error";
 import {
-  isFood,
   isFoodCategory,
   parseResults,
   type Food,
@@ -32,7 +31,7 @@ import {
   MenuItemsToolbar,
   type CategoryFilter,
 } from "./_components/menu-items-toolbar";
-import { filterMenuItems } from "./menu-item-filter";
+import { fetchMenuItemPage, type MenuItemPage } from "./menu-item-page";
 
 function getPageSize() {
   if (typeof window === "undefined") return 24;
@@ -41,7 +40,7 @@ function getPageSize() {
   return 12;
 }
 
-function useResponsivePageSize() {
+function useResponsivePageSize(onChange: (size: number) => void) {
   const [pageSize, setPageSize] = useState(24);
 
   useEffect(() => {
@@ -49,7 +48,11 @@ function useResponsivePageSize() {
 
     const desktop = window.matchMedia("(min-width: 1280px)");
     const tablet = window.matchMedia("(min-width: 768px)");
-    const update = () => setPageSize(getPageSize());
+    const update = () => {
+      const size = getPageSize();
+      setPageSize(size);
+      onChange(size);
+    };
 
     update();
     desktop.addEventListener("change", update);
@@ -59,78 +62,106 @@ function useResponsivePageSize() {
       desktop.removeEventListener("change", update);
       tablet.removeEventListener("change", update);
     };
-  }, []);
+  }, [onChange]);
 
   return pageSize;
 }
 
 export default function MenuItemsPage() {
-  const [foods, setFoods] = useState<Food[]>([]);
+  const [data, setData] = useState<MenuItemPage | null>(null);
   const [categories, setCategories] = useState<FoodCategory[]>([]);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<CategoryFilter>("all");
-  const [page, setPage] = useState(1);
+  const [paginationRequest, setPaginationRequest] = useState({
+    page: 1,
+    size: 24,
+  });
+  const [reloadVersion, setReloadVersion] = useState(0);
   const [status, setStatus] = useState<LoadStatus>("loading");
   const [error, setError] = useState("");
   const [pendingDelete, setPendingDelete] = useState<Food | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const pageSize = useResponsivePageSize();
+  const resetForPageSize = useCallback((size: number) => {
+    setPaginationRequest({ page: 1, size });
+  }, []);
+  const pageSize = useResponsivePageSize(resetForPageSize);
+  const page = paginationRequest.size === pageSize ? paginationRequest.page : 1;
   // EN: A previous load must not overwrite a reload after a catalog mutation.
   // FI: Aiempi haku ei saa korvata luettelomuutoksen jälkeistä uudelleenlatausta.
   const loadSequence = useRef(0);
+  const activeRequest = useRef<AbortController | null>(null);
+  const previousQuery = useRef(query);
 
-  const load = useCallback(async () => {
-    const requestId = ++loadSequence.current;
+  const reload = useCallback(async () => {
+    activeRequest.current?.abort();
+    ++loadSequence.current;
     setStatus("loading");
-    setError("");
-
-    try {
-      const [parsedFoods, parsedCategories] = await Promise.all([
-        readStaffCatalog("/food/list", (data) => parseResults(data, isFood)),
-        readStaffCatalog("/foodType/list", (data) =>
-          parseResults(data, isFoodCategory),
-        ),
-      ]);
-      if (requestId !== loadSequence.current) return;
-
-      if (!parsedFoods || !parsedCategories) {
-        throw new Error("Palvelin palautti virheellisiä ruokalistatietoja.");
-      }
-
-      setFoods(parsedFoods);
-      setCategories(parsedCategories);
-      setStatus("ready");
-    } catch (reason: unknown) {
-      if (requestId !== loadSequence.current) return;
-      setError(getApiErrorMessage(reason, "Ruokalistaa ei voitu ladata."));
-      setStatus(isPermissionDeniedError(reason) ? "forbidden" : "error");
-    }
+    setReloadVersion((version) => version + 1);
   }, []);
 
   useEffect(() => {
-    const requestId = window.setTimeout(() => void load(), 0);
-    return () => window.clearTimeout(requestId);
-  }, [load]);
+    const controller = new AbortController();
+    activeRequest.current = controller;
+    const requestId = ++loadSequence.current;
+    const delay = previousQuery.current === query ? 0 : 300;
+    previousQuery.current = query;
 
-  const filteredFoods = useMemo(() => {
-    return filterMenuItems(foods, category, query);
-  }, [category, foods, query]);
+    const load = async () => {
+      setStatus("loading");
+      setError("");
+      try {
+        const [parsedPage, parsedCategories] = await Promise.all([
+          fetchMenuItemPage(
+            { query, category, page, pageSize },
+            controller.signal,
+          ),
+          readStaffCatalog(
+            "/foodType/list",
+            (data) => parseResults(data, isFoodCategory),
+            controller.signal,
+          ),
+        ]);
+        if (controller.signal.aborted || requestId !== loadSequence.current)
+          return;
+        if (!parsedCategories)
+          throw new Error("Palvelin palautti virheellisiä ruokalistatietoja.");
+        setData(parsedPage);
+        setCategories(parsedCategories);
+        setStatus("ready");
+      } catch (reason: unknown) {
+        if (controller.signal.aborted || requestId !== loadSequence.current)
+          return;
+        setError(getApiErrorMessage(reason, "Ruokalistaa ei voitu ladata."));
+        setStatus(isPermissionDeniedError(reason) ? "forbidden" : "error");
+      }
+    };
 
-  const pageCount = Math.max(1, Math.ceil(filteredFoods.length / pageSize));
-  const currentPage = Math.min(page, pageCount);
-  const visibleFoods = filteredFoods.slice(
-    (currentPage - 1) * pageSize,
-    currentPage * pageSize,
-  );
-  const firstResult = filteredFoods.length
-    ? (currentPage - 1) * pageSize + 1
-    : 0;
-  const lastResult = Math.min(currentPage * pageSize, filteredFoods.length);
+    const timer = window.setTimeout(() => void load(), delay);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [category, page, pageSize, query, reloadVersion]);
+
+  const currentPage = data?.page ?? 1;
+  const pageCount = data?.pageCount ?? 1;
+  const filteredCount = data?.filteredCount ?? 0;
+  const firstResult = filteredCount ? (currentPage - 1) * pageSize + 1 : 0;
+  const lastResult = Math.min(currentPage * pageSize, filteredCount);
+
+  // EN: Invalidate immediately, including while search is debouncing; an old response must not restore stale edit actions.
+  // FI: Mitätöi heti myös haun viiveen aikana; vanha vastaus ei saa palauttaa vanhentuneita muokkaustoimintoja.
+  const startNavigation = (nextPage = 1) => {
+    activeRequest.current?.abort();
+    ++loadSequence.current;
+    setStatus("loading");
+    setPaginationRequest({ page: nextPage, size: pageSize });
+  };
 
   const clearFilters = () => {
+    startNavigation();
     setQuery("");
     setCategory("all");
-    setPage(1);
   };
 
   const {
@@ -161,7 +192,7 @@ export default function MenuItemsPage() {
     setSelectedFile,
     setCurrentDetailImage,
     setSelectedDetailFile,
-  } = useMenuItemEditor(categories, load);
+  } = useMenuItemEditor(categories, reload);
   const removeFood = async () => {
     if (!pendingDelete) return;
 
@@ -169,9 +200,7 @@ export default function MenuItemsPage() {
     try {
       await api.delete(`/food/remove/${pendingDelete.id}`);
       invalidateCatalogCache();
-      setFoods((current) =>
-        current.filter((food) => food.id !== pendingDelete.id),
-      );
+      await reload();
       toast.success("Ruokalaji poistettiin.");
       setPendingDelete(null);
     } catch (reason: unknown) {
@@ -192,26 +221,28 @@ export default function MenuItemsPage() {
         canCreate={categories.length > 0}
         onCreate={openCreate}
         onQueryChange={(value) => {
+          startNavigation();
           setQuery(value);
-          setPage(1);
         }}
         onCategoryChange={(value) => {
+          startNavigation();
           setCategory(value);
-          setPage(1);
         }}
       />
 
       <MenuItemsList
         status={status}
         error={error}
-        totalCount={foods.length}
-        filteredCount={filteredFoods.length}
-        visibleFoods={visibleFoods}
+        totalCount={data?.totalCount ?? 0}
+        filteredCount={filteredCount}
+        visibleFoods={data?.results ?? []}
         canCreate={categories.length > 0}
         pagination={{ page: currentPage, pageCount, firstResult, lastResult }}
-        onPageChange={setPage}
+        onPageChange={(nextPage) => {
+          if (nextPage !== currentPage) startNavigation(nextPage);
+        }}
         onCreate={openCreate}
-        onRetry={() => void load()}
+        onRetry={() => void reload()}
         onClearFilters={clearFilters}
         onEdit={openEdit}
         onDelete={setPendingDelete}

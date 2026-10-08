@@ -149,9 +149,10 @@ function Pagination({
   pageCount: number;
   onPageChange: (page: number) => void;
 }) {
+  const firstPage = Math.max(1, Math.min(page - 1, pageCount - 3));
   const visiblePages = Array.from(
     { length: Math.min(4, pageCount) },
-    (_, index) => index + 1,
+    (_, index) => firstPage + index,
   );
 
   return (
@@ -166,6 +167,11 @@ function Pagination({
       >
         <ChevronLeft aria-hidden="true" />
       </Button>
+      {firstPage > 1 && (
+        <span aria-hidden="true" className="px-1 text-muted-foreground">
+          …
+        </span>
+      )}
       {visiblePages.map((pageNumber) => (
         <Button
           type="button"
@@ -182,7 +188,7 @@ function Pagination({
           {pageNumber}
         </Button>
       ))}
-      {pageCount > 4 && (
+      {visiblePages.at(-1)! < pageCount && (
         <span aria-hidden="true" className="px-1 text-muted-foreground">
           …
         </span>

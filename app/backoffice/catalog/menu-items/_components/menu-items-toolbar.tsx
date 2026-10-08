@@ -63,6 +63,7 @@ export function MenuItemsToolbar({
           />
           <Input
             value={query}
+            maxLength={200}
             onChange={(event) => {
               onQueryChange(event.target.value);
             }}
