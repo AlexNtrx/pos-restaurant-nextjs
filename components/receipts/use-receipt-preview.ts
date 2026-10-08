@@ -1,6 +1,8 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import api from "@/lib/api";
+import { isAxiosError } from "axios";
+import { getBlobApiErrorMessage } from "@/lib/api-error";
 
 export function useReceiptPreview() {
   const [url, setUrl] = useState("");
@@ -23,7 +25,16 @@ export function useReceiptPreview() {
     payload: Record<string, unknown>,
     errorMessage = "Virheellinen kuittivastaus",
   ) => {
-    const response = await api.post(path, payload, { responseType: "blob" });
+    const response = await api
+      .post(path, payload, { responseType: "blob" })
+      .catch(async (error: unknown) => {
+        if (isAxiosError(error))
+          error.message = await getBlobApiErrorMessage(
+            error,
+            "Kuittia ei voitu ladata. Yritä uudelleen.",
+          );
+        throw error;
+      });
     if (
       !String(response.headers["content-type"] || "").includes(
         "application/pdf",

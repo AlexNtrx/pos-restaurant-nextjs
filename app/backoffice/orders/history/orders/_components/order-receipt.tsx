@@ -5,7 +5,7 @@ import { ReceiptText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ReceiptPreview from "@/components/receipts/receipt-preview";
 import api from "@/lib/api";
-import { getApiErrorMessage } from "@/lib/api-error";
+import { getBlobApiErrorMessage } from "@/lib/api-error";
 import type { StaffOrderDetail } from "@/lib/orders/contracts";
 import { currency } from "../_lib/presentation";
 
@@ -65,13 +65,11 @@ export function OrderReceipt({
       previewUrl.current = URL.createObjectURL(response.data);
       setBillUrl(previewUrl.current);
     } catch (cause) {
-      if (!controller.signal.aborted)
-        setError(
-          getApiErrorMessage(
-            cause,
-            "Kuittia ei voitu ladata. Yritä uudelleen.",
-          ),
-        );
+      const message = await getBlobApiErrorMessage(
+        cause,
+        "Kuittia ei voitu ladata. Yritä uudelleen.",
+      );
+      if (!controller.signal.aborted) setError(message);
     } finally {
       if (!controller.signal.aborted) {
         request.current = null;
