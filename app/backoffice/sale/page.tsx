@@ -130,7 +130,7 @@ export default function CounterSalePage() {
   const { table, setTable } = legacyCart;
   const draftScope: DraftScope =
     serviceType === "TAKEAWAY" ? "TAKEAWAY" : table;
-  const draftCart = useCounterDraft(draftScope, showCartError);
+  const draftCart = useCounterDraft(draftScope, showCartError, foods);
   const {
     sentOrders,
     sentView,
@@ -162,8 +162,10 @@ export default function CounterSalePage() {
   const cartBusy =
     activeCart.cartBusy ||
     (serviceType === "DINE_IN" && legacyCart.loadedTable !== table) ||
-    !activeCartLoaded ||
-    (draftMode && !draftCart.quoteReady);
+    !activeCartLoaded;
+  // EN: Missing prices block payment, while draft edits remain available to remove stale products.
+  // FI: Puuttuvat hinnat estävät maksun, mutta luonnosta voi muokata vanhentuneiden tuotteiden poistamiseksi.
+  const draftUnpriced = draftMode && !draftCart.quoteReady;
   const refreshCart = (requestedTable = table) =>
     draftMode
       ? draftCart.refreshCart()
@@ -201,6 +203,8 @@ export default function CounterSalePage() {
     table,
     serviceType,
     summary,
+    // EN: Recover the saved request even if today's catalog can no longer price its products.
+    // FI: Palauta tallennettu pyyntö, vaikka nykyinen ruokalista ei enää voisi hinnoitella sen tuotteita.
     cartBusy,
     checkoutBusy,
     setCheckoutBusy,
@@ -232,7 +236,8 @@ export default function CounterSalePage() {
     draftCart,
     refreshCart,
   });
-  const draftMutationBusy = cartBusy || draftLocked;
+  const draftMutationBusy =
+    cartBusy || draftLocked || (draftMode && draftCart.loadFailed);
   useEffect(() => {
     const timer = window.setTimeout(() => {
       try {
@@ -398,7 +403,7 @@ export default function CounterSalePage() {
 
   // Coordinates print bill before pay behavior for this module.
   const printBillBeforePay = async () => {
-    if (receiptBusy || checkoutBusy || cartBusy) return;
+    if (receiptBusy || checkoutBusy || cartBusy || draftUnpriced) return;
     try {
       setReceiptBusy(true);
       await showReceipt(
@@ -539,6 +544,16 @@ export default function CounterSalePage() {
               "Tallennettu lähetys on virheellinen. Tarkista sen tila ennen uutta yritystä."}
           </p>
         )}
+        {draftPending && (
+          <p
+            role="status"
+            className="mt-4 rounded-md border border-border p-3 text-sm"
+          >
+            {draftPending.kind === "kitchen"
+              ? "Luonnos on lukittu aiemman keittiölähetyksen epäselvän tuloksen vuoksi. Valitse Tarkista aiempi lähetys."
+              : "Luonnos on lukittu aiemman maksun epäselvän tuloksen vuoksi. Valitse Tarkista aiempi maksu ja yritä uudelleen alkuperäisillä maksutiedoilla."}
+          </p>
+        )}
         {pendingCounterPayments.length > 0 || otherPendingScopes.length > 0 ? (
           <section
             className="space-y-2 rounded-lg border border-border p-4"
@@ -627,21 +642,33 @@ export default function CounterSalePage() {
         <div className="mt-7 flex min-h-0 flex-1 flex-col overflow-y-auto">
           {draftMode &&
           draftCart.loadedScope === draftScope &&
-          (draftCart.loadFailed ||
-            (draftCart.units.length > 0 && !draftCart.quoteReady)) ? (
+          (draftCart.loadFailed || draftCart.quoteError) ? (
             <div
               role="alert"
               className="mb-4 rounded-md border border-destructive p-3 text-sm"
             >
               <p>
-                The saved draft could not be priced. Retry or clear it before
-                continuing.
+                {draftCart.quoteError ??
+                  "Tallennettua luonnosta ei voitu ladata. Yritä uudelleen tai tyhjennä luonnos."}{" "}
+                {!draftCart.loadFailed && !draftLocked && (
+                  <>
+                    Voit lisätä ja poistaa tuotteita. Maksaminen edellyttää
+                    vahvistettua hintaa.
+                  </>
+                )}
+                {draftLocked && (
+                  <>
+                    {" "}
+                    Tarkista aiemman pyynnön tulos ennen tuotteiden
+                    muokkaamista.
+                  </>
+                )}
               </p>
               <div className="mt-2 flex gap-2">
                 <Button
                   type="button"
                   variant="outline"
-                  disabled={checkoutBusy}
+                  disabled={checkoutBusy || cartBusy || draftLocked}
                   onClick={() => void draftCart.refreshCart()}
                 >
                   Retry quote
@@ -649,7 +676,7 @@ export default function CounterSalePage() {
                 <Button
                   type="button"
                   variant="outline"
-                  disabled={checkoutBusy || draftLocked}
+                  disabled={checkoutBusy || cartBusy || draftLocked}
                   onClick={async () => {
                     const confirmed = await requestConfirmation({
                       title: "Clear saved draft?",
@@ -693,6 +720,7 @@ export default function CounterSalePage() {
               cartBusy={draftMutationBusy}
               customizationBusy={customizationBusy}
               checkoutBusy={checkoutBusy}
+              unpriced={draftUnpriced}
               onQuantityChange={(id, quantity) => void updateQty(id, quantity)}
               onRemove={(id) => void removeSaleTempDetail(id)}
               onCustomize={(item) => void openModalEdit(item)}
@@ -750,10 +778,16 @@ export default function CounterSalePage() {
           <div className="mt-5 flex items-center justify-between">
             <strong className="text-lg">Maksettava</strong>
             <strong className="text-2xl text-olive" data-testid="cart-total">
-              {summary.total.toLocaleString("fi-FI", {
-                minimumFractionDigits: 2,
-              })}{" "}
-              €
+              {draftUnpriced && draftCart.units.length > 0 ? (
+                "—"
+              ) : (
+                <>
+                  {summary.total.toLocaleString("fi-FI", {
+                    minimumFractionDigits: 2,
+                  })}{" "}
+                  €
+                </>
+              )}
             </strong>
           </div>
           {summary.total > 0 ||
@@ -767,6 +801,7 @@ export default function CounterSalePage() {
                   checkoutBusy ||
                   receiptBusy ||
                   (cartBusy && !draftPending) ||
+                  (draftUnpriced && !draftPending) ||
                   invalidDraftAttempt ||
                   (draftMode && draftPending?.kind === "kitchen")
                 }
@@ -776,21 +811,24 @@ export default function CounterSalePage() {
                 }}
                 className="mt-6 w-full"
               >
-                Maksa ja lähetä keittiöön <ChevronRight aria-hidden="true" />
+                {draftPending && draftPending.kind !== "kitchen"
+                  ? "Tarkista aiempi maksu"
+                  : "Maksa ja lähetä keittiöön"}{" "}
+                <ChevronRight aria-hidden="true" />
               </Button>
-              {draftMode && draftPending?.kind === "kitchen" ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="lg"
-                  disabled={checkoutBusy || receiptBusy || cartBusy}
-                  onClick={() => void recoverKitchenAttempt()}
-                  className="mt-2 w-full"
-                >
-                  Tarkista aiempi lähetys
-                </Button>
-              ) : null}
             </>
+          ) : null}
+          {draftMode && draftPending?.kind === "kitchen" ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              disabled={checkoutBusy || receiptBusy || cartBusy}
+              onClick={() => void recoverKitchenAttempt()}
+              className="mt-2 w-full"
+            >
+              Tarkista aiempi lähetys
+            </Button>
           ) : null}
           <div className="mt-3 grid grid-cols-2 gap-2">
             <Button

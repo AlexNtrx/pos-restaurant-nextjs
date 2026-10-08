@@ -8,6 +8,7 @@ type CartSidebarProps = {
   cartBusy: boolean;
   customizationBusy: boolean;
   checkoutBusy: boolean;
+  unpriced?: boolean;
   onQuantityChange: (id: number, quantity: number) => void;
   onRemove: (id: number) => void;
   onCustomize: (item: SaleTemp) => void;
@@ -18,6 +19,7 @@ export default function CartSidebar({
   cartBusy,
   customizationBusy,
   checkoutBusy,
+  unpriced = false,
   onQuantityChange,
   onRemove,
   onCustomize,
@@ -32,18 +34,30 @@ export default function CartSidebar({
                 {item.Food.name}
               </p>
               <p className="m-0 mt-1 text-xs text-muted-foreground">
-                {item.qty} ×{" "}
-                {item.Food.price.toLocaleString("fi-FI", {
-                  minimumFractionDigits: 2,
-                })}{" "}
-                €
+                {unpriced ? (
+                  `${item.qty} kpl · Hinta vahvistamatta`
+                ) : (
+                  <>
+                    {item.qty} ×{" "}
+                    {item.Food.price.toLocaleString("fi-FI", {
+                      minimumFractionDigits: 2,
+                    })}{" "}
+                    €
+                  </>
+                )}
               </p>
             </div>
             <strong className="shrink-0 text-sm font-semibold">
-              {item.pricing.total.toLocaleString("fi-FI", {
-                minimumFractionDigits: 2,
-              })}{" "}
-              €
+              {unpriced ? (
+                "—"
+              ) : (
+                <>
+                  {item.pricing.total.toLocaleString("fi-FI", {
+                    minimumFractionDigits: 2,
+                  })}{" "}
+                  €
+                </>
+              )}
             </strong>
           </div>
           <div className="mt-3 flex items-center justify-between gap-2">
@@ -78,7 +92,9 @@ export default function CartSidebar({
                 variant="ghost"
                 size="icon-sm"
                 aria-label="Customize"
-                disabled={cartBusy || customizationBusy || checkoutBusy}
+                disabled={
+                  unpriced || cartBusy || customizationBusy || checkoutBusy
+                }
                 onClick={() => onCustomize(item)}
               >
                 <Settings2 aria-hidden="true" />

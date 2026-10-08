@@ -554,6 +554,255 @@ describe("POS safety net", () => {
     interval.mockRestore();
   });
 
+  it("lets table 1 recover an unavailable saved product without locking edits or clearing table 2", async () => {
+    process.env.NEXT_PUBLIC_ORD02_DRAFT_ENABLED = "true";
+    const oldUnit = { id: 1, foodId: 999, foodSizeId: null, tasteId: null };
+    const otherDraft = JSON.stringify([{ ...oldUnit, foodId: 1 }]);
+    localStorage.setItem("counter-draft:v1:7:1", JSON.stringify([oldUnit]));
+    localStorage.setItem("counter-draft:v1:7:2", otherDraft);
+    api.post.mockImplementation(
+      (
+        path: string,
+        payload: { items: Array<{ foodId: number; quantity: number }> },
+      ) => {
+        if (path !== "/counterOrder/quote")
+          return Promise.resolve({ data: {} });
+        if (payload.items.some((item) => item.foodId === 999))
+          return Promise.reject({
+            isAxiosError: true,
+            response: {
+              status: 409,
+              data: { error: "Food is unavailable", code: "FOOD_UNAVAILABLE" },
+            },
+          });
+        const quantity = payload.items.reduce(
+          (total, item) => total + item.quantity,
+          0,
+        );
+        return Promise.resolve({
+          data: {
+            results: {
+              subtotal: quantity * 25,
+              modifierTotal: 0,
+              total: quantity * 25,
+              items: payload.items.map((item) => ({
+                ...item,
+                foodName: food.name,
+                unitBasePrice: 25,
+                lineTotal: item.quantity * 25,
+                modifiers: [],
+              })),
+            },
+          },
+        });
+      },
+    );
+    render(<SalePage />);
+    expect(await screen.findByText("Tuote #999")).toBeTruthy();
+    await screen.findByText(/Jokin luonnoksen tuote ei ole enää saatavilla/);
+    const addButton = screen.getByAltText(food.name).closest("button")!;
+    await waitFor(() => expect(addButton.disabled).toBe(false));
+    expect(screen.queryByRole("button", { name: /^Pay$/ })).toBeNull();
+    fireEvent.click(addButton);
+    await waitFor(() => {
+      const draft = JSON.parse(localStorage.getItem("counter-draft:v1:7:1")!);
+      expect(draft.map((unit: { foodId: number }) => unit.foodId)).toEqual([
+        999, 1,
+      ]);
+      expect(screen.getAllByText(/Hinta vahvistamatta/)).toHaveLength(2);
+    });
+    expect(screen.queryByRole("button", { name: /^Pay$/ })).toBeNull();
+    const oldRow = screen.getByText("Tuote #999").closest("article")!;
+    fireEvent.click(within(oldRow).getByRole("button", { name: "Remove" }));
+    fireEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", {
+        name: "Remove item",
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("cart-total").textContent).toContain("25,00"),
+    );
+    expect(screen.queryByText("Tuote #999")).toBeNull();
+    expect(screen.queryByText(/Hinta vahvistamatta/)).toBeNull();
+    expect(
+      (screen.getByRole("button", { name: /^Pay$/ }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    expect(
+      JSON.parse(localStorage.getItem("counter-draft:v1:7:1")!).map(
+        (unit: { foodId: number }) => unit.foodId,
+      ),
+    ).toEqual([1]);
+    expect(localStorage.getItem("counter-draft:v1:7:2")).toBe(otherDraft);
+    expect(
+      api.post.mock.calls.some(([path]) => path === "/counterOrder/checkout"),
+    ).toBe(false);
+  });
+
+  it.each([
+    ["FOOD_UNAVAILABLE", false],
+    ["IDEMPOTENCY_CONFLICT", true],
+  ])(
+    "recovers an unpriced draft payment while preserving uncertain results: %s",
+    async (code, remainsLocked) => {
+      process.env.NEXT_PUBLIC_ORD02_DRAFT_ENABLED = "true";
+      const units = [
+        { id: 1, foodId: 1, foodSizeId: null, tasteId: null },
+        { id: 2, foodId: 5, foodSizeId: null, tasteId: null },
+      ];
+      const savedDraft = JSON.stringify(units);
+      const payload = {
+        tableNo: 1,
+        items: units.map(({ foodId, foodSizeId, tasteId }) => ({
+          foodId,
+          foodSizeId,
+          tasteId,
+          quantity: 1,
+        })),
+        payType: "bank",
+        expectedTotal: 50,
+        idempotencyKey: "edge-old-payment",
+      };
+      const attempt = JSON.stringify({
+        kind: "checkout",
+        payload,
+        quotedTotal: 50,
+      });
+      localStorage.setItem("counter-draft:v1:7:1", savedDraft);
+      localStorage.setItem("counter-draft:v1:7:1:attempt", attempt);
+      api.post.mockImplementation((path: string) =>
+        Promise.reject({
+          isAxiosError: true,
+          response: {
+            status: 409,
+            data: {
+              code: path === "/counterOrder/quote" ? "FOOD_UNAVAILABLE" : code,
+            },
+          },
+        }),
+      );
+      render(<SalePage />);
+      await screen.findByText("Tuote #5");
+      await screen.findByText(/Luonnos on lukittu aiemman maksun/);
+      await screen.findByText(/Tarkista aiemman pyynnön tulos ennen/);
+      expect(screen.queryByText(/Voit lisätä ja poistaa tuotteita/)).toBeNull();
+      const oldRow = screen.getByText("Tuote #5").closest("article")!;
+      expect(
+        (
+          within(oldRow).getByRole("button", {
+            name: "Remove",
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(true);
+      expect(
+        api.post.mock.calls.filter(
+          ([path]) => path === "/counterOrder/checkout",
+        ),
+      ).toHaveLength(0);
+      const retry = screen.getByRole("button", { name: /^Pay$/ });
+      expect(retry.textContent).toContain("Tarkista aiempi maksu");
+      expect((retry as HTMLButtonElement).disabled).toBe(false);
+      fireEvent.click(retry);
+      expect(
+        (
+          screen.getByRole("button", {
+            name: /bank transfer/i,
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(true);
+      fireEvent.click(
+        screen.getByRole("button", { name: /complete payment/i }),
+      );
+      await waitFor(() =>
+        expect(api.post).toHaveBeenCalledWith(
+          "/counterOrder/checkout",
+          payload,
+        ),
+      );
+      await waitFor(() => {
+        expect(localStorage.getItem("counter-draft:v1:7:1:attempt")).toBe(
+          remainsLocked ? attempt : null,
+        );
+        expect(
+          (
+            within(oldRow).getByRole("button", {
+              name: "Remove",
+              hidden: true,
+            }) as HTMLButtonElement
+          ).disabled,
+        ).toBe(remainsLocked);
+      });
+      expect(localStorage.getItem("counter-draft:v1:7:1")).toBe(savedDraft);
+      expect(
+        api.post.mock.calls.filter(
+          ([path]) => path === "/counterOrder/checkout",
+        ),
+      ).toHaveLength(1);
+      expect(screen.queryByRole("dialog") !== null).toBe(remainsLocked);
+    },
+  );
+
+  it("can recover an old kitchen request even when its saved product cannot be quoted", async () => {
+    process.env.NEXT_PUBLIC_ORD02_DRAFT_ENABLED = "true";
+    const savedDraft = JSON.stringify([
+      { id: 1, foodId: 5, foodSizeId: null, tasteId: null },
+    ]);
+    const payload = {
+      tableNo: 1,
+      items: [{ foodId: 5, quantity: 1 }],
+      idempotencyKey: "old-unpriced-kitchen",
+    };
+    localStorage.setItem("counter-draft:v1:7:1", savedDraft);
+    localStorage.setItem(
+      "counter-draft:v1:7:1:attempt",
+      JSON.stringify({ kind: "kitchen", payload }),
+    );
+    api.post.mockImplementation((path: string) =>
+      Promise.reject({
+        isAxiosError: true,
+        response: {
+          status: 409,
+          data: {
+            code:
+              path === "/counterOrder/quote"
+                ? "FOOD_UNAVAILABLE"
+                : "PAYMENT_REQUIRED",
+          },
+        },
+      }),
+    );
+    render(<SalePage />);
+    await screen.findByText(/Jokin luonnoksen tuote ei ole enää saatavilla/);
+    const recover = await screen.findByRole("button", {
+      name: "Tarkista aiempi lähetys",
+    });
+    await waitFor(() =>
+      expect((recover as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(recover);
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/counterOrder/submit", payload),
+    );
+    await waitFor(() => {
+      expect(localStorage.getItem("counter-draft:v1:7:1:attempt")).toBeNull();
+      expect(
+        (
+          screen
+            .getByText("Tuote #5")
+            .closest("article")!
+            .querySelector('button[aria-label="Remove"]') as HTMLButtonElement
+        ).disabled,
+      ).toBe(false);
+    });
+    expect(localStorage.getItem("counter-draft:v1:7:1")).toBe(savedDraft);
+    expect(
+      api.post.mock.calls.filter(([path]) => path === "/counterOrder/submit"),
+    ).toHaveLength(1);
+    expect(
+      api.post.mock.calls.some(([path]) => path === "/counterOrder/checkout"),
+    ).toBe(false);
+  });
+
   it("keeps a new Counter draft through reload and pays with its selected taste", async () => {
     process.env.NEXT_PUBLIC_ORD02_DRAFT_ENABLED = "true";
     localStorage.setItem("test-token", "token");

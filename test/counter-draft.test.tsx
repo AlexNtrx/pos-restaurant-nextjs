@@ -149,3 +149,118 @@ it("ignores failed mutations from a previous scope, including returning to the s
   expect(view.result.current.cartBusy).toBe(false);
   expect(onError).not.toHaveBeenCalled();
 });
+
+it("preserves malformed saved data until the cashier explicitly discards it", async () => {
+  const key = "counter-draft:v1:7:1";
+  localStorage.setItem(key, "broken json");
+  const onError = vi.fn();
+  const view = renderHook(() => useCounterDraft(1, onError));
+  await waitFor(() => expect(view.result.current.loadFailed).toBe(true));
+  await act(async () => {
+    await view.result.current.addItem(1);
+    await view.result.current.refreshCart();
+  });
+  expect(localStorage.getItem(key)).toBe("broken json");
+  expect(view.result.current.quoteReady).toBe(false);
+  expect(post).not.toHaveBeenCalled();
+  act(() => view.result.current.discardDraft());
+  expect(localStorage.getItem(key)).toBeNull();
+  expect(view.result.current.loadFailed).toBe(false);
+  expect(view.result.current.quoteReady).toBe(true);
+});
+
+it("keeps the latest quote when editing interrupts the initial saved-draft read", async () => {
+  localStorage.setItem(
+    "counter-draft:v1:7:1",
+    JSON.stringify([{ id: 1, foodId: 1, foodSizeId: null, tasteId: null }]),
+  );
+  let rejectInitial!: (error: Error) => void;
+  post.mockImplementationOnce(
+    () =>
+      new Promise((_, reject) => {
+        rejectInitial = reject;
+      }),
+  );
+  const onError = vi.fn();
+  const view = renderHook(() => useCounterDraft(1, onError));
+  await waitFor(() => expect(view.result.current.loadedScope).toBe(1));
+  post.mockResolvedValueOnce({
+    data: {
+      results: {
+        subtotal: 50,
+        modifierTotal: 0,
+        total: 50,
+        items: [1, 2].map((foodId) => ({
+          foodId,
+          foodName: `Meal ${foodId}`,
+          quantity: 1,
+          unitBasePrice: 25,
+          lineTotal: 25,
+          modifiers: [],
+        })),
+      },
+    },
+  });
+  await act(async () => {
+    await view.result.current.addItem(2);
+  });
+  await act(async () => {
+    rejectInitial(new Error("Old quote aborted"));
+  });
+  expect(view.result.current.units.map((unit) => unit.foodId)).toEqual([1, 2]);
+  expect(view.result.current.summary.total).toBe(50);
+  expect(view.result.current.quoteReady).toBe(true);
+  expect(view.result.current.quoteError).toBeNull();
+  expect(onError).not.toHaveBeenCalled();
+});
+
+it("does not restore a discarded draft when an earlier refresh resolves", async () => {
+  localStorage.setItem(
+    "counter-draft:v1:7:1",
+    JSON.stringify([{ id: 1, foodId: 1, foodSizeId: null, tasteId: null }]),
+  );
+  const response = {
+    data: {
+      results: {
+        subtotal: 25,
+        modifierTotal: 0,
+        total: 25,
+        items: [
+          {
+            foodId: 1,
+            foodName: "Meal",
+            quantity: 1,
+            unitBasePrice: 25,
+            lineTotal: 25,
+            modifiers: [],
+          },
+        ],
+      },
+    },
+  };
+  post.mockResolvedValueOnce(response);
+  const onError = vi.fn();
+  const view = renderHook(() => useCounterDraft(1, onError));
+  await waitFor(() => expect(view.result.current.quoteReady).toBe(true));
+  let resolve!: (value: typeof response) => void;
+  post.mockImplementationOnce(
+    () =>
+      new Promise((done) => {
+        resolve = done;
+      }),
+  );
+  let refresh!: Promise<unknown>;
+  act(() => {
+    refresh = view.result.current.refreshCart();
+  });
+  act(() => view.result.current.discardDraft());
+  await act(async () => {
+    resolve(response);
+    await refresh;
+  });
+  expect(view.result.current.units).toEqual([]);
+  expect(view.result.current.items).toEqual([]);
+  expect(view.result.current.summary.total).toBe(0);
+  expect(view.result.current.quoteReady).toBe(true);
+  expect(localStorage.getItem("counter-draft:v1:7:1")).toBeNull();
+});

@@ -258,6 +258,7 @@ export default function useCounterCheckout({
       if (hasFinalHttpResponse(e) && draftAttemptKey(draftScope) === ownerKey) {
         clearDraftAttempt(ownerKey);
         checkoutAttemptRef.current = null;
+        setCheckoutOpen(false);
         await refreshCart();
       }
       toast.error("Checkout failed", {
