@@ -511,7 +511,17 @@ export default function WaiterWorkspace({ children }: { children: ReactNode }) {
           {error || queueError}
         </p>
       )}
-      {(pending || invalidPending) && (
+      {/* EN: A saved attempt enables recovery; it does not mean the outcome is uncertain while sending.
+          FI: Tallennettu yritys mahdollistaa palautuksen; tulos ei ole epävarma lähetyksen ollessa käynnissä. */}
+      {saving && !success && (
+        <p
+          role="status"
+          className="rounded-md border border-border p-3 text-sm"
+        >
+          Tilausta lähetetään. Odota vahvistusta.
+        </p>
+      )}
+      {!saving && (pending || invalidPending) && (
         <p role="alert" className="rounded-md border border-border p-3 text-sm">
           {invalidPending
             ? "Tallennettu tilaus on virheellinen. Tarkista tilanne ennen uuden tilauksen lähettämistä."

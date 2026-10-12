@@ -197,17 +197,82 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-it("recovers an unknown order after reload with the original session, price, items and key", async () => {
-  mocks.sendOrder
-    .mockRejectedValueOnce({ response: { status: 500 } })
-    .mockResolvedValueOnce({ id: 33 });
+it("shows sending while opening the table and awaiting confirmation without an uncertain-outcome warning", async () => {
+  let openTable!: (sessionId: number) => void;
+  let confirmOrder!: (order: { id: number }) => void;
+  mocks.openTable.mockReturnValueOnce(
+    new Promise<number>((resolve) => {
+      openTable = resolve;
+    }),
+  );
+  mocks.sendOrder.mockReturnValueOnce(
+    new Promise<{ id: number }>((resolve) => {
+      confirmOrder = resolve;
+    }),
+  );
   const user = userEvent.setup();
   const view = render(waiterPage());
   await screen.findByLabelText("Tuote");
   await user.selectOptions(screen.getByLabelText("Tuote"), "5");
   await user.click(screen.getByRole("button", { name: "Lisää tilaukseen" }));
   await user.click(screen.getByRole("button", { name: "Lähetä keittiöön" }));
-  await screen.findAllByRole("alert");
+  expect(screen.getByRole("status").textContent).toContain(
+    "Tilausta lähetetään.",
+  );
+  expect(screen.queryByText(/lähetyksen tulos on epävarma/)).toBeNull();
+  expect(mocks.sendOrder).not.toHaveBeenCalled();
+  await act(async () => openTable(11));
+  await waitFor(() => expect(mocks.sendOrder).toHaveBeenCalledTimes(1));
+  const saved = JSON.parse(
+    localStorage.getItem("pending-request:v1:7:waiter-order")!,
+  );
+  expect(saved.idempotencyKey).toBe(mocks.sendOrder.mock.calls[0][2]);
+  expect(
+    (screen.getByRole("button", { name: "Lähetetään…" }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+  view.rerender(waiterPage(true));
+  expect(screen.getByRole("status").textContent).toContain(
+    "Tilausta lähetetään.",
+  );
+  expect(screen.queryByText(/lähetyksen tulos on epävarma/)).toBeNull();
+  expect(
+    screen.queryByRole("link", { name: "Avaa tilauksen palautus" }),
+  ).toBeNull();
+  let refreshQueue!: (orders: StaffOrder[]) => void;
+  mocks.loadQueues.mockReturnValueOnce(
+    new Promise<StaffOrder[]>((resolve) => {
+      refreshQueue = resolve;
+    }),
+  );
+  await act(async () => confirmOrder({ id: 33 }));
+  await screen.findByText("Tilaus #33 lähetettiin keittiöön.");
+  expect(
+    screen.queryByText("Tilausta lähetetään. Odota vahvistusta."),
+  ).toBeNull();
+  expect(localStorage.getItem("pending-request:v1:7:waiter-order")).toBeNull();
+  await act(async () => refreshQueue([incoming, ready]));
+});
+
+it("recovers an unknown order after reload with the original session, price, items and key", async () => {
+  let confirmRetry!: (order: { id: number }) => void;
+  mocks.sendOrder
+    .mockRejectedValueOnce({ response: { status: 500 } })
+    .mockReturnValueOnce(
+      new Promise<{ id: number }>((resolve) => {
+        confirmRetry = resolve;
+      }),
+    );
+  const user = userEvent.setup();
+  const view = render(waiterPage());
+  await screen.findByLabelText("Tuote");
+  await user.selectOptions(screen.getByLabelText("Tuote"), "5");
+  await user.click(screen.getByRole("button", { name: "Lisää tilaukseen" }));
+  await user.click(screen.getByRole("button", { name: "Lähetä keittiöön" }));
+  await screen.findByText(/lähetyksen tulos on epävarma/);
+  expect(
+    screen.queryByText("Tilausta lähetetään. Odota vahvistusta."),
+  ).toBeNull();
   const original = mocks.sendOrder.mock.calls[0];
   expect(screen.queryByText("Tilaus #33 lähetettiin keittiöön.")).toBeNull();
   view.unmount();
@@ -237,7 +302,17 @@ it("recovers an unknown order after reload with the original session, price, ite
       }) as HTMLButtonElement
     ).disabled,
   ).toBe(true);
+  expect(screen.getByText(/lähetyksen tulos on epävarma/)).toBeTruthy();
   await user.click(retry);
+  expect(screen.getByRole("status").textContent).toContain(
+    "Tilausta lähetetään.",
+  );
+  expect(screen.queryByText(/lähetyksen tulos on epävarma/)).toBeNull();
+  expect(
+    (screen.getByRole("button", { name: "Lähetetään…" }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+  await act(async () => confirmRetry({ id: 33 }));
   await screen.findByText("Tilaus #33 lähetettiin keittiöön.");
   expect(mocks.sendOrder.mock.calls[1]).toEqual(original);
   expect(mocks.openTable).toHaveBeenCalledTimes(1);
@@ -487,11 +562,12 @@ it("keeps an in-flight order across navigation and retries only the exact origin
   await waitFor(() => expect(mocks.sendOrder).toHaveBeenCalledTimes(1));
   const sent = mocks.sendOrder.mock.calls[0];
   view.rerender(waiterPage(true));
+  expect(screen.getByRole("status").textContent).toContain(
+    "Tilausta lähetetään.",
+  );
   expect(
-    screen
-      .getByRole("link", { name: "Avaa tilauksen palautus" })
-      .getAttribute("href"),
-  ).toBe("/backoffice/waiter");
+    screen.queryByRole("link", { name: "Avaa tilauksen palautus" }),
+  ).toBeNull();
   view.rerender(waiterPage());
   expect((screen.getByLabelText("Tuote") as HTMLSelectElement).disabled).toBe(
     true,
@@ -505,6 +581,11 @@ it("keeps an in-flight order across navigation and retries only the exact origin
   ).toBe(true);
   await act(async () => reject({ response: { status: 500 } }));
   view.rerender(waiterPage(true));
+  expect(
+    screen
+      .getByRole("link", { name: "Avaa tilauksen palautus" })
+      .getAttribute("href"),
+  ).toBe("/backoffice/waiter");
   view.unmount();
   render(waiterPage(true));
   await screen.findByRole("link", { name: "Avaa tilauksen palautus" });
