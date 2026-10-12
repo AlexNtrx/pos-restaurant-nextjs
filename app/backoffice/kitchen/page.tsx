@@ -268,7 +268,7 @@ export default function KitchenPage() {
           <Button
             variant="ghost"
             size="icon-sm"
-            className="text-[#e7e5de] hover:bg-[#3a3b36] hover:text-white"
+            className="size-11 text-[#e7e5de] hover:bg-[#3a3b36] hover:text-white"
             aria-label="Hae tilauksia"
             aria-expanded={searchOpen}
             onClick={() => setSearchOpen((open) => !open)}
@@ -280,7 +280,7 @@ export default function KitchenPage() {
               asChild
               variant="ghost"
               size="icon-sm"
-              className="text-[#e7e5de] hover:bg-[#3a3b36] hover:text-white"
+              className="size-11 text-[#e7e5de] hover:bg-[#3a3b36] hover:text-white"
             >
               <Link
                 href="/backoffice/settings/tables"
@@ -293,7 +293,7 @@ export default function KitchenPage() {
           {level === "kitchen" && (
             <Button
               variant="ghost"
-              className="text-[#e7e5de] hover:bg-[#3a3b36] hover:text-white"
+              className="h-auto min-h-11 text-[#e7e5de] hover:bg-[#3a3b36] hover:text-white"
               onClick={() => {
                 clearAuthSession();
                 router.replace("/signin");
@@ -308,7 +308,7 @@ export default function KitchenPage() {
             Hae tilausta
             <input
               autoFocus
-              className="mt-1 h-10 w-full rounded-md border border-[#706f5e] bg-[#fbfaf7] px-3 text-sm text-[#1f201d] sm:max-w-96"
+              className="mt-1 h-auto min-h-11 w-full rounded-md border border-[#706f5e] bg-[#fbfaf7] px-3 text-sm text-[#1f201d] sm:max-w-96"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Numero, pöytä tai ruoka"
@@ -336,7 +336,12 @@ export default function KitchenPage() {
                 ? `Yhteys katkesi. Näytetään viimeksi ladatut tiedot. ${error}`
                 : "Tiedot voivat olla vanhentuneita. Tarkista yhteys."}
             </p>
-            <Button variant="outline" size="sm" onClick={() => void sync()}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-auto min-h-11"
+              onClick={() => void sync()}
+            >
               Yritä uudelleen
             </Button>
           </div>
@@ -353,7 +358,9 @@ export default function KitchenPage() {
             title="Keittiön tilauksia ei voitu ladata"
             description={error}
             action={
-              <Button onClick={() => void sync()}>Yritä uudelleen</Button>
+              <Button className="h-auto min-h-11" onClick={() => void sync()}>
+                Yritä uudelleen
+              </Button>
             }
           />
         ) : (
@@ -439,10 +446,14 @@ export default function KitchenPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={savingId !== null}>
+            <AlertDialogCancel
+              className="h-auto min-h-11"
+              disabled={savingId !== null}
+            >
               Takaisin
             </AlertDialogCancel>
             <AlertDialogAction
+              className="h-auto min-h-11"
               disabled={savingId !== null}
               onClick={(event) => {
                 event.preventDefault();

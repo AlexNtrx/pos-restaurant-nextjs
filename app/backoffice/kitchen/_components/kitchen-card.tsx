@@ -94,7 +94,7 @@ export function KitchenCard({
       <div className="px-4 pb-3">
         {order.status === "CONFIRMED" ? (
           <Button
-            className="h-9 w-full rounded-[5px] bg-[#e7e5de] text-[12px] text-[#514f49] hover:bg-[#d8d4cc]"
+            className="h-auto min-h-11 w-full rounded-[5px] bg-[#e7e5de] text-[12px] text-[#514f49] hover:bg-[#d8d4cc]"
             disabled={saving}
             onClick={() => onAction("PREPARING")}
           >
@@ -102,7 +102,7 @@ export function KitchenCard({
           </Button>
         ) : order.status === "PREPARING" ? (
           <Button
-            className="h-9 w-full rounded-[5px] bg-[#e7e5de] text-[12px] text-[#514f49] hover:bg-[#d8d4cc]"
+            className="h-auto min-h-11 w-full rounded-[5px] bg-[#e7e5de] text-[12px] text-[#514f49] hover:bg-[#d8d4cc]"
             disabled={saving}
             onClick={() => onAction("READY")}
           >
@@ -110,7 +110,7 @@ export function KitchenCard({
           </Button>
         ) : canServe ? (
           <Button
-            className="h-9 w-full rounded-[5px] bg-[#e4e5e2] text-[12px] text-[#514f49] hover:bg-[#d8d4cc]"
+            className="h-auto min-h-11 w-full rounded-[5px] bg-[#e4e5e2] text-[12px] text-[#514f49] hover:bg-[#d8d4cc]"
             disabled={saving}
             onClick={() => onAction("SERVED")}
           >
