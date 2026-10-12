@@ -488,10 +488,10 @@ export function DailySalesReportView({
             {period}
           </p>
           <p className="m-0 text-[11px] text-muted-foreground xl:hidden">
-            UTC · EUR
+            Europe/Helsinki · EUR
           </p>
           <p className="m-0 hidden text-[11px] text-muted-foreground xl:block">
-            Raportin aikavyöhyke: UTC · Valuutta: EUR
+            Raportin aikavyöhyke: Europe/Helsinki · Valuutta: EUR
           </p>
         </div>
       </header>
@@ -625,8 +625,9 @@ export function DailySalesReportView({
 
             <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
               Myynti ja palautukset kohdistuvat alkuperäiseen myyntipäivään
-              (UTC), eivät rahan palautuspäivään. Perutut tilaukset kohdistuvat
-              peruutuspäivään (UTC). Peruutussummia ei vähennetä myynnistä
+              (Europe/Helsinki), eivät rahan palautuspäivään. Tämä ei ole
+              kassavirtaraportti. Perutut tilaukset kohdistuvat peruutuspäivään
+              (Europe/Helsinki). Peruutussummia ei vähennetä myynnistä
               uudelleen.
             </p>
 
@@ -643,8 +644,8 @@ export function DailySalesReportView({
         )}
       </div>
 
-      <p className="mt-[18px] mb-0 text-[10px] text-muted-foreground md:hidden">
-        UTC · EUR
+      <p className="mt-[18px] mb-0 text-[10px] text-muted-foreground">
+        Europe/Helsinki · Päivä vaihtuu klo 00.00 · EUR
       </p>
     </div>
   );

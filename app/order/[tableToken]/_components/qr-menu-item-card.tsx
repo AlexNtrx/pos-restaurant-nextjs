@@ -1,4 +1,5 @@
 "use client";
+import { moneySum } from "@/lib/money";
 
 import type { ChangeEventHandler } from "react";
 import FoodPhoto from "@/components/catalog/food-photo";
@@ -73,7 +74,7 @@ export function QrMenuItemCard({
           </div>
           <div className="flex flex-wrap items-center justify-between gap-1">
             <span className="text-sm font-semibold">
-              {qrMoney(food.price + (selectedSize?.moneyAdded ?? 0))}
+              {qrMoney(moneySum([food.price, selectedSize?.moneyAdded ?? 0]))}
             </span>
             <Button
               variant="outline"

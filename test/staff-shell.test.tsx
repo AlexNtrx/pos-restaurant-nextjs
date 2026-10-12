@@ -12,6 +12,7 @@ import {
 } from "@/lib/access-control";
 
 const replace = vi.fn();
+const navigation = vi.hoisted(() => ({ pathname: "/backoffice/dashboard" }));
 vi.mock("@/lib/api", () => ({
   default: {
     get: vi.fn(async () => ({ data: { result: { mode: "DISABLED" } } })),
@@ -19,7 +20,7 @@ vi.mock("@/lib/api", () => ({
 }));
 
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/backoffice/dashboard",
+  usePathname: () => navigation.pathname,
   useRouter: () => ({ replace }),
 }));
 
@@ -33,9 +34,145 @@ afterEach(() => {
   cleanup();
   localStorage.clear();
   replace.mockClear();
+  navigation.pathname = "/backoffice/dashboard";
 });
 
 describe("TW-03 staff shell and navigation", () => {
+  it.each([
+    ["/backoffice/waiter", "Ota pöytätilaus"],
+    ["/backoffice/waiter/tracking", "Tilausten seuranta"],
+  ])(
+    "connects waiter tasks from %s without duplicate sidebar destinations",
+    (pathname, activeLabel) => {
+      navigation.pathname = pathname;
+      render(
+        <StaffShell name="Aino" userLevel="waiter">
+          Content
+        </StaffShell>,
+      );
+      const workspace = screen.getByRole("navigation", {
+        name: "Tarjoilijan näkymät",
+      });
+      expect(
+        within(workspace)
+          .getAllByRole("link")
+          .map((link) => link.getAttribute("href")),
+      ).toEqual(["/backoffice/waiter", "/backoffice/waiter/tracking"]);
+      expect(
+        within(workspace)
+          .getByRole("link", { name: activeLabel })
+          .getAttribute("aria-current"),
+      ).toBe("page");
+      expect(
+        within(workspace)
+          .getAllByRole("link")
+          .filter((link) => link.getAttribute("aria-current") === "page"),
+      ).toHaveLength(1);
+      const sidebar = screen.getAllByRole("navigation", { name: "Työtilat" });
+      for (const navigation of sidebar) {
+        expect(within(navigation).getAllByRole("link")).toHaveLength(1);
+        expect(
+          within(navigation)
+            .getByRole("link", { name: "Tarjoilija" })
+            .getAttribute("aria-current"),
+        ).toBe("page");
+      }
+    },
+  );
+
+  it("preserves staff access to both waiter pages and denies kitchen access", () => {
+    for (const path of ["/backoffice/waiter", "/backoffice/waiter/tracking"]) {
+      for (const level of ["admin", "kassa", "waiter"] as const)
+        expect(canAccessBackofficePath(path, level)).toBe(true);
+      expect(canAccessBackofficePath(path, "kitchen")).toBe(false);
+    }
+    expect(getBackofficeLanding("waiter")).toBe("/backoffice/waiter");
+  });
+
+  it.each([
+    ["/backoffice/orders/new", "Uusi tilaus"],
+    ["/backoffice/sale", "Uusi tilaus"],
+    ["/backoffice/orders/sent", "Keittiöön lähetetyt"],
+    ["/backoffice/orders/tables", "Pöytien maksut"],
+  ])(
+    "connects cashier tasks from %s with the correct active destination",
+    (pathname, activeLabel) => {
+      navigation.pathname = pathname;
+      render(
+        <StaffShell name="Aino" userLevel="kassa">
+          Content
+        </StaffShell>,
+      );
+
+      const workspace = screen.getByRole("navigation", {
+        name: "Kassan näkymät",
+      });
+      const links = within(workspace).getAllByRole("link");
+      expect(links.map((link) => link.getAttribute("href"))).toEqual([
+        "/backoffice/orders/new",
+        "/backoffice/orders/sent",
+        "/backoffice/orders/tables",
+      ]);
+      expect(
+        within(workspace)
+          .getByRole("link", { name: activeLabel })
+          .getAttribute("aria-current"),
+      ).toBe("page");
+      expect(
+        links.filter((link) => link.getAttribute("aria-current") === "page"),
+      ).toHaveLength(1);
+      expect(
+        screen.queryByRole("link", { name: "Saapuvat tilaukset" }),
+      ).toBeNull();
+      expect(screen.queryByRole("link", { name: "Kuukausimyynti" })).toBeNull();
+    },
+  );
+
+  it.each([
+    ["/backoffice/reports/daily-sales", "Päivämyynti"],
+    ["/backoffice/reports/monthly-sales", "Kuukausimyynti"],
+  ])("connects reports from %s for admins", (pathname, activeLabel) => {
+    navigation.pathname = pathname;
+    render(
+      <StaffShell name="Ada" userLevel="admin">
+        Content
+      </StaffShell>,
+    );
+    const workspace = screen.getByRole("navigation", {
+      name: "Raporttien näkymät",
+    });
+    expect(within(workspace).getAllByRole("link")).toHaveLength(2);
+    expect(
+      within(workspace)
+        .getByRole("link", { name: activeLabel })
+        .getAttribute("aria-current"),
+    ).toBe("page");
+  });
+
+  it.each([
+    ["waiter", "/backoffice/sale"],
+    ["kitchen", "/backoffice/orders/inbox"],
+    ["kassa", "/backoffice/reports/daily-sales"],
+    ["admin", "/backoffice/orders/history/orders"],
+    ["admin", "/backoffice/catalog/menu-items"],
+  ] as const)(
+    "keeps workspace links scoped for %s at %s",
+    (userLevel, pathname) => {
+      navigation.pathname = pathname;
+      render(
+        <StaffShell name="Staff" userLevel={userLevel}>
+          Content
+        </StaffShell>,
+      );
+      expect(
+        screen.queryByRole("navigation", { name: "Kassan näkymät" }),
+      ).toBeNull();
+      expect(
+        screen.queryByRole("navigation", { name: "Raporttien näkymät" }),
+      ).toBeNull();
+    },
+  );
+
   it("lands kitchen staff on Keittiö and denies every other backoffice destination", () => {
     expect(getBackofficeLanding("kitchen")).toBe("/backoffice/kitchen");
     expect(
@@ -49,6 +186,7 @@ describe("TW-03 staff shell and navigation", () => {
       "sale",
       "orders/new",
       "orders/inbox",
+      "orders/sent",
       "waiter",
       "service-calls",
       "staff",
@@ -74,9 +212,19 @@ describe("TW-03 staff shell and navigation", () => {
       true,
     );
     expect(canAccessBackofficePath("/backoffice/sale", "kassa")).toBe(true);
-    expect(canAccessBackofficePath("/backoffice/orders/inbox", "kassa")).toBe(
+    expect(canAccessBackofficePath("/backoffice/orders/sent", "kassa")).toBe(
       true,
     );
+    expect(canAccessBackofficePath("/backoffice/orders/sent", "admin")).toBe(
+      true,
+    );
+    expect(canAccessBackofficePath("/backoffice/orders/sent", "waiter")).toBe(
+      false,
+    );
+    for (const level of ["admin", "kassa", "waiter", "kitchen"] as const)
+      expect(canAccessBackofficePath("/backoffice/orders/inbox", level)).toBe(
+        false,
+      );
     expect(canAccessBackofficePath("/backoffice/user", "kassa")).toBe(false);
     expect(
       canAccessBackofficePath("/backoffice/settings/tables", "kassa"),
@@ -189,7 +337,7 @@ describe("TW-03 staff shell and navigation", () => {
     expect(screen.getAllByText("Tilaaminen käytössä").length).toBeGreaterThan(
       0,
     );
-    expect(screen.getAllByText("Yhteys kunnossa").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Palvelin vastasi").length).toBeGreaterThan(0);
     expect(screen.queryByText("Ruokalistan tuotteet")).toBeNull();
     expect(screen.queryByText("Tulossa")).toBeNull();
     expect(screen.getAllByLabelText("Kirjaudu ulos").length).toBeGreaterThan(0);

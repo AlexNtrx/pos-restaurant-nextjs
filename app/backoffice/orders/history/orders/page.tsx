@@ -1,9 +1,12 @@
 "use client";
 
-import dayjs from "dayjs";
-import timezone from "dayjs/plugin/timezone";
-import utc from "dayjs/plugin/utc";
 import { useCallback, useEffect, useRef, useState } from "react";
+
+import {
+  RESTAURANT_TIME_ZONE,
+  restaurantToday,
+  restaurantDateRange,
+} from "@/lib/restaurant-calendar";
 
 import { Button } from "@/components/ui/button";
 import { OrderRecordsList } from "./_components/order-records-list";
@@ -17,12 +20,8 @@ import { getApiErrorMessage, isPermissionDeniedError } from "@/lib/api-error";
 import { fetchOrderDetail, fetchOrderHistoryPage } from "@/lib/orders/client";
 import { type StaffOrder, type StaffOrderDetail } from "@/lib/orders/contracts";
 
-dayjs.extend(utc);
-dayjs.extend(timezone);
-
-const zone = "Europe/Helsinki";
 export default function OrderRecordsPage() {
-  const today = dayjs().tz(zone).format("YYYY-MM-DD");
+  const today = restaurantToday();
   const [fromDate, setFromDate] = useState(today);
   const [toDate, setToDate] = useState(today);
   const [channel, setChannel] = useState<"ALL" | "COUNTER" | "QR" | "STAFF">(
@@ -88,15 +87,7 @@ export default function OrderRecordsPage() {
         // FI: Helsingin kalenteripäivät muunnetaan yksinomaisen ylärajan UTC-väliksi ennen kuin palvelin suodattaa submittedAt-kentän.
         const result = await fetchOrderHistoryPage(
           {
-            submittedFrom: dayjs
-              .tz(fromDate, "YYYY-MM-DD", zone)
-              .startOf("day")
-              .toISOString(),
-            submittedBefore: dayjs
-              .tz(toDate, "YYYY-MM-DD", zone)
-              .add(1, "day")
-              .startOf("day")
-              .toISOString(),
+            ...restaurantDateRange(fromDate, toDate),
             ...(channel === "ALL" ? {} : { channel }),
             ...(tableSessionId === undefined ? {} : { tableSessionId }),
           },
@@ -324,9 +315,9 @@ export default function OrderRecordsPage() {
           </nav>
         )}
       <p className="text-[11px] text-muted-foreground">
-        Aikavyöhyke: {zone}. Päivämääräväli perustuu tilauksen lähetysaikaan.
-        Kuitit perustuvat alkuperäisiin maksutietoihin. Tilaussummat eivät ole
-        myyntituloja.
+        Aikavyöhyke: {RESTAURANT_TIME_ZONE}. Päivä vaihtuu klo 00.00.
+        Päivämääräväli perustuu tilauksen lähetysaikaan. Kuitit perustuvat
+        alkuperäisiin maksutietoihin. Tilaussummat eivät ole myyntituloja.
       </p>
       <OrderRecordDetail
         selectedId={selectedId}

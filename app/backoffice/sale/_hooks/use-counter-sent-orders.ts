@@ -11,11 +11,11 @@ import {
 import type { StaffOrderDetail } from "@/lib/orders/contracts";
 import type { DraftScope } from "./use-counter-draft";
 import type { SentOrderView } from "../_components/counter-sent-orders-list";
-const errorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : "Unexpected error";
 
 export default function useCounterSentOrders(draftScope: DraftScope) {
   const [sentOrders, setSentOrders] = useState<SentCounterOrder[]>([]);
+  const [sentLoading, setSentLoading] = useState(true);
+  const [sentListError, setSentListError] = useState("");
   const [sentView, setSentView] = useState<SentOrderView>("active");
   const [selectedSentOrderId, setSelectedSentOrderId] = useState<number | null>(
     null,
@@ -32,9 +32,12 @@ export default function useCounterSentOrders(draftScope: DraftScope) {
       const requestId = ++pendingRequestId.current;
       if (scope !== "TAKEAWAY" && (!Number.isSafeInteger(scope) || scope < 1)) {
         setSentOrders([]);
+        setSentLoading(false);
+        setSentListError("Valitse kelvollinen pöytänumero.");
         return;
       }
       try {
+        setSentLoading(true);
         const response = await api.get("/counterOrder/sent", {
           signal,
           params:
@@ -44,8 +47,10 @@ export default function useCounterSentOrders(draftScope: DraftScope) {
         });
         const parsed = parseSentCounterOrders(response.data);
         if (!parsed) throw new Error("Invalid sent orders response");
-        if (!signal.aborted && requestId === pendingRequestId.current)
+        if (!signal.aborted && requestId === pendingRequestId.current) {
           setSentOrders(parsed);
+          setSentListError("");
+        }
       } catch (error: unknown) {
         if (!signal.aborted && requestId === pendingRequestId.current) {
           if (
@@ -55,11 +60,17 @@ export default function useCounterSentOrders(draftScope: DraftScope) {
             setSentOrders([]);
             setSentForbidden(true);
           }
-          toast.error("Unable to load sent orders", {
-            description: errorMessage(error),
-          });
+          setSentListError(
+            getApiErrorMessage(
+              error,
+              "Tilauksia ei voitu ladata. Yritä päivittää lista.",
+            ),
+          );
           throw error;
         }
+      } finally {
+        if (!signal.aborted && requestId === pendingRequestId.current)
+          setSentLoading(false);
       }
     },
     [],
@@ -137,6 +148,8 @@ export default function useCounterSentOrders(draftScope: DraftScope) {
   };
   return {
     sentOrders,
+    sentLoading,
+    sentListError,
     sentView,
     selectedSentOrderId,
     sentOrderDetail,

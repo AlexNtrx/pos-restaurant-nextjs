@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { moneySum, moneyMultiply } from "@/lib/money";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { isMutationRejected } from "@/lib/mutation-outcome";
@@ -26,6 +27,7 @@ export function QrCartView({ token, menu }: { token: string; menu: QrMenu }) {
     readQrPending(token),
   );
   const [busy, setBusy] = useState(false);
+  const [confirmedOrderId, setConfirmedOrderId] = useState<number | null>(null);
   const inFlight = useRef(false);
   const [error, setError] = useState("");
   const rows = cart.map((item, index) => {
@@ -41,9 +43,10 @@ export function QrCartView({ token, menu }: { token: string; menu: QrMenu }) {
       food,
       size,
       taste,
-      total:
-        (food?.price || 0) * item.quantity +
-        (size?.moneyAdded || 0) * item.quantity,
+      total: moneyMultiply(
+        moneySum([food?.price ?? 0, size?.moneyAdded ?? 0]),
+        item.quantity,
+      ),
     };
   });
   const missing = rows.some(
@@ -52,8 +55,9 @@ export function QrCartView({ token, menu }: { token: string; menu: QrMenu }) {
       (row.item.foodSizeId && !row.size) ||
       (row.item.tasteId && !row.taste),
   );
-  const total = rows.reduce((sum, row) => sum + row.total, 0);
+  const total = moneySum(rows.map((row) => row.total));
   const change = (index: number, quantity: number) => {
+    if (inFlight.current || pending || confirmedOrderId) return;
     const next = cart.flatMap((item, itemIndex) =>
       itemIndex !== index
         ? [item]
@@ -68,6 +72,7 @@ export function QrCartView({ token, menu }: { token: string; menu: QrMenu }) {
   const submit = async () => {
     if (
       inFlight.current ||
+      (confirmedOrderId && !error) ||
       (!pending && (missing || menu.state !== "ORDERING"))
     )
       return;
@@ -79,21 +84,36 @@ export function QrCartView({ token, menu }: { token: string; menu: QrMenu }) {
     };
     setBusy(true);
     setError("");
+    let requestSent = false;
+    let receivedOrderId = confirmedOrderId;
     try {
       if (!pending) {
         writeQrPending(token, attempt);
         setPending(attempt);
       }
+      requestSent = true;
       const result = await submitQrOrder(token, attempt);
+      receivedOrderId = result.orderId;
+      setConfirmedOrderId(result.orderId);
       writeLastQrOrder(token, result.orderId);
       writeQrCart(token, []);
       writeQrPending(token, null);
       router.replace(pathFor(token, `/confirmation?orderId=${result.orderId}`));
     } catch (failure) {
-      setError(qrErrorText(failure));
+      // EN: A confirmed Order remains successful even if local cleanup fails; recovery still replays its exact request.
+      // FI: Vahvistettu tilaus pysyy onnistuneena, vaikka paikallinen siivous epäonnistuu; palautus toistaa saman pyynnön.
+      setError(
+        receivedOrderId
+          ? "Tilauksen vahvistusta ei voitu viimeistellä tällä laitteella. Yritä samaa tilausta uudelleen tai pyydä henkilökuntaa tarkistamaan tilaus."
+          : !requestSent
+            ? "Tilausta ei lähetetty, koska sitä ei voitu tallentaa tälle laitteelle. Yritä uudelleen tai pyydä henkilökunnalta apua."
+            : isMutationRejected(failure)
+              ? `Tilausta ei hyväksytty. ${qrErrorText(failure)}`
+              : qrErrorText(failure),
+      );
       // EN: A definitive HTTP rejection can be corrected; an unknown network outcome must retry unchanged.
       // FI: Varma HTTP-hylkäys voidaan korjata; epäselvä verkkotulos on yritettävä uudelleen muuttumattomana.
-      if (isMutationRejected(failure)) {
+      if (!receivedOrderId && isMutationRejected(failure)) {
         writeQrPending(token, null);
         setPending(null);
       }
@@ -107,6 +127,7 @@ export function QrCartView({ token, menu }: { token: string; menu: QrMenu }) {
       <Button
         variant="secondary"
         className="mb-5 min-h-11 bg-gray-200 px-4 text-gray-900 hover:bg-gray-300"
+        disabled={busy || confirmedOrderId !== null}
         onClick={() => router.push(pathFor(token))}
       >
         ← Ruokalista
@@ -145,7 +166,7 @@ export function QrCartView({ token, menu }: { token: string; menu: QrMenu }) {
                 Huomautus keittiölle: {row.item.note}
               </p>
             )}
-            {!pending && (
+            {!pending && !busy && !confirmedOrderId && (
               <div className="mt-3 flex items-center gap-3">
                 <Button
                   variant="outline"
@@ -177,14 +198,24 @@ export function QrCartView({ token, menu }: { token: string; menu: QrMenu }) {
           </article>
         ))}
       </div>
-      {missing && (
+      {missing && !pending && !confirmedOrderId && (
         <p role="alert" className="mt-4 text-sm text-destructive">
           Jokin tuote tai valinta ei ole enää saatavilla. Poista se
           ostoskorista.
         </p>
       )}
-      {pending && (
-        <p className="mt-4 text-sm text-olive">
+      {busy && (
+        <p role="status" className="mt-4 text-sm text-olive">
+          Lähetetään tilausta… Odota vahvistusta.
+        </p>
+      )}
+      {!busy && confirmedOrderId && (
+        <p role="status" className="mt-4 text-sm text-olive">
+          Tilaus #{confirmedOrderId} vastaanotettu.
+        </p>
+      )}
+      {pending && !busy && !confirmedOrderId && (
+        <p role="status" className="mt-4 text-sm text-olive">
           Edellisen lähetyksen tulos on epäselvä. Yritä samaa tilausta
           uudelleen; älä muuta ostoskoria.
         </p>
@@ -237,15 +268,18 @@ export function QrCartView({ token, menu }: { token: string; menu: QrMenu }) {
         className="mt-6 h-12 w-full"
         disabled={
           busy ||
+          (confirmedOrderId !== null && !error) ||
           (!pending && (!cart.length || missing || menu.state !== "ORDERING"))
         }
         onClick={submit}
       >
         {busy
           ? "Lähetetään…"
-          : pending
-            ? "Yritä lähettää sama tilaus uudelleen"
-            : "Lähetä tilaus"}
+          : confirmedOrderId && !error
+            ? "Tilaus vastaanotettu"
+            : pending
+              ? "Yritä lähettää sama tilaus uudelleen"
+              : "Lähetä tilaus"}
       </Button>
       {menu.state !== "ORDERING" && (
         <p className="mt-3 text-sm text-olive">

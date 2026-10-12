@@ -1,3 +1,4 @@
+import { isEuroAmount } from "@/lib/money";
 import type useCounterDraft from "../_hooks/use-counter-draft";
 import type { DraftScope } from "../_hooks/use-counter-draft";
 import { readAuthSession } from "@/lib/auth-session";
@@ -54,14 +55,16 @@ export const readDraftAttempt = (
           parsed.payload.serviceType === "TAKEAWAY") ||
       typeof parsed.payload.idempotencyKey !== "string" ||
       !parsed.payload.idempotencyKey ||
+      (parsed.payload.expectedTotal !== undefined &&
+        !isEuroAmount(parsed.payload.expectedTotal)) ||
       (parsed.kind !== "kitchen" &&
         (!["cash", "bank"].includes(String(parsed.payload.payType)) ||
           (parsed.payload.inputMoney !== undefined &&
-            (!Number.isSafeInteger(parsed.payload.inputMoney) ||
+            (!isEuroAmount(parsed.payload.inputMoney) ||
               Number(parsed.payload.inputMoney) < 0)))) ||
       (parsed.kind !== "legacy" && !Array.isArray(parsed.payload.items)) ||
       (parsed.kind === "legacy" &&
-        (scope === "TAKEAWAY" || !Number.isSafeInteger(parsed.quotedTotal)))
+        (scope === "TAKEAWAY" || !isEuroAmount(parsed.quotedTotal)))
     )
       return null;
     return parsed as DraftPendingAttempt;

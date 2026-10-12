@@ -96,9 +96,8 @@ export function CatalogManagementEditor({
           {kind === "size-options" && (
             <FormField id="size-money-added" label="Hinnanlisä" required>
               <Input
-                type="number"
-                min="0"
-                step="1"
+                type="text"
+                inputMode="decimal"
                 value={moneyAdded}
                 onChange={(event) => setMoneyAdded(event.target.value)}
               />

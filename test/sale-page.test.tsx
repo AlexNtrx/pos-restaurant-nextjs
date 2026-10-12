@@ -26,6 +26,8 @@ vi.mock("@/app/config", () => ({
   default: { apiServer: "http://example.test", token: "test-token" },
 }));
 import SalePage from "@/app/backoffice/sale/page";
+import NewOrderPage from "@/app/backoffice/orders/new/page";
+import SentOrdersPage from "@/app/backoffice/orders/sent/page";
 import CounterOrderCheckout from "@/app/backoffice/sale/_components/counter-order-checkout";
 
 const food = { id: 1, name: "Test meal", img: "test-meal.jpg", price: 25 };
@@ -122,7 +124,9 @@ describe("POS safety net", () => {
       throw new Error("Receipt unavailable");
     });
     render(<SalePage />);
-    const pay = await screen.findByRole("button", { name: /^pay$/i });
+    const pay = await screen.findByRole("button", {
+      name: /^(Maksa ja lähetä keittiöön|Tarkista aiempi maksu)$/i,
+    });
     await waitFor(() =>
       expect((pay as HTMLButtonElement).disabled).toBe(false),
     );
@@ -130,11 +134,11 @@ describe("POS safety net", () => {
     expect(
       (
         screen.getByRole("button", {
-          name: /bank transfer/i,
+          name: /^Pankki$/i,
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
-    const complete = screen.getByRole("button", { name: /complete payment/i });
+    const complete = screen.getByRole("button", { name: /^Maksa$/i });
     expect((complete as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(complete);
     fireEvent.click(complete);
@@ -152,37 +156,45 @@ describe("POS safety net", () => {
     );
   });
 
-  it("shows an uncertain Counter Order payment even after that Order disappears from the active queue", async () => {
-    const payload = {
-      expectedVersion: 5,
-      payType: "bank",
-      idempotencyKey: "committed-order-payment",
-    };
-    localStorage.setItem(
-      "pending-request:v1:7:counter-order:81",
-      JSON.stringify({ order: servedCounterOrder, payload }),
-    );
-    api.post.mockResolvedValueOnce({
-      data: { billId: 401, amount: 80, inputMoney: 80, returnMoney: 0 },
-    });
-    render(<SalePage />);
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Tarkista maksu #81" }),
-    );
-    const complete = screen.getByRole("button", { name: /complete payment/i });
-    await waitFor(() =>
-      expect((complete as HTMLButtonElement).disabled).toBe(false),
-    );
-    fireEvent.click(complete);
-    await waitFor(() =>
-      expect(api.post).toHaveBeenCalledWith("/counterOrder/81/settle", payload),
-    );
-    expect(
-      api.post.mock.calls.filter(
-        ([path]) => path === "/counterOrder/81/settle",
-      ),
-    ).toHaveLength(1);
-  });
+  it.each([SalePage, SentOrdersPage])(
+    "recovers an uncertain Counter Order payment outside the active queue on %s",
+    async (Page) => {
+      const payload = {
+        expectedVersion: 5,
+        payType: "bank",
+        idempotencyKey: "committed-order-payment",
+      };
+      localStorage.setItem(
+        "pending-request:v1:7:counter-order:81",
+        JSON.stringify({ order: servedCounterOrder, payload }),
+      );
+      api.post.mockResolvedValueOnce({
+        data: { billId: 401, amount: 80, inputMoney: 80, returnMoney: 0 },
+      });
+      render(<Page />);
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Tarkista maksu #81" }),
+      );
+      const complete = screen.getByRole("button", {
+        name: /^Maksa$/i,
+      });
+      await waitFor(() =>
+        expect((complete as HTMLButtonElement).disabled).toBe(false),
+      );
+      fireEvent.click(complete);
+      await waitFor(() =>
+        expect(api.post).toHaveBeenCalledWith(
+          "/counterOrder/81/settle",
+          payload,
+        ),
+      );
+      expect(
+        api.post.mock.calls.filter(
+          ([path]) => path === "/counterOrder/81/settle",
+        ),
+      ).toHaveLength(1);
+    },
+  );
 
   it("waits for the legacy cart before editing dine-in but allows takeaway independently", async () => {
     process.env.NEXT_PUBLIC_ORD02_DRAFT_ENABLED = "true";
@@ -277,8 +289,8 @@ describe("POS safety net", () => {
     );
     URL.createObjectURL = vi.fn(() => "blob:older-bill");
     URL.revokeObjectURL = vi.fn();
-    render(<SalePage />);
-    const pay = await screen.findByRole("button", { name: "Pay Order #81" });
+    render(<SentOrdersPage />);
+    const pay = await screen.findByRole("button", { name: "Maksa tilaus #81" });
     await waitFor(() =>
       expect((pay as HTMLButtonElement).disabled).toBe(false),
     );
@@ -287,16 +299,16 @@ describe("POS safety net", () => {
       expect(
         (
           screen.getByRole("button", {
-            name: /bank transfer/i,
+            name: /^Pankki$/i,
           }) as HTMLButtonElement
         ).disabled,
       ).toBe(false),
     );
-    fireEvent.click(screen.getByRole("button", { name: /bank transfer/i }));
-    fireEvent.click(screen.getByRole("button", { name: /complete payment/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Pankki$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Maksa$/i }));
     await waitFor(() => expect(toast.warning).toHaveBeenCalled());
     fireEvent.click(
-      screen.getByRole("button", { name: "Print paid Order #82" }),
+      screen.getByRole("button", { name: "Tulosta kuitti: tilaus #82" }),
     );
     const preview = await screen.findByRole("dialog");
     fireEvent.click(
@@ -320,16 +332,174 @@ describe("POS safety net", () => {
     ).toHaveLength(1);
   });
 
-  it("loads the staff catalog and current table cart on mount", async () => {
-    render(<SalePage />);
-    await screen.findByText("Test meal");
-    expect(api.get).toHaveBeenCalledWith(
-      "/food/filter/all",
-      expect.any(Object),
-    );
-    expect(api.get).toHaveBeenCalledWith("/saleTemp/list/", {
-      params: { tableNo: 1 },
+  it.each([SalePage, NewOrderPage])(
+    "loads the catalog and cart directly on the canonical or legacy route: %s",
+    async (Page) => {
+      render(<Page />);
+      await screen.findByText("Test meal");
+      expect(api.get).toHaveBeenCalledWith(
+        "/food/filter/all",
+        expect.any(Object),
+      );
+      expect(api.get).toHaveBeenCalledWith("/saleTemp/list/", {
+        params: { tableNo: 1 },
+      });
+      expect(
+        screen.queryByRole("region", { name: "Lähetetyt tilaukset" }),
+      ).toBeNull();
+      expect(screen.queryByRole("region", { name: "Table orders" })).toBeNull();
+      expect(
+        api.get.mock.calls.some(
+          ([path]) =>
+            path === "/counterOrder/sent" ||
+            path === "/tables" ||
+            path === "/orders",
+        ),
+      ).toBe(false);
+    },
+  );
+
+  it.each([
+    ["DINE_IN", 1],
+    ["DINE_IN", 6],
+    ["TAKEAWAY", 1],
+    ["TAKEAWAY", 6],
+  ] as const)(
+    "restores an editable %s draft for table %s after visiting sent orders with independent filters",
+    async (serviceType, table) => {
+      process.env.NEXT_PUBLIC_ORD02_DRAFT_ENABLED = "true";
+      localStorage.setItem(
+        "counter-selection:v1:7",
+        JSON.stringify({ table, serviceType: "DINE_IN" }),
+      );
+      api.get.mockImplementation((path: string) => {
+        if (path === "/food/filter/all")
+          return Promise.resolve({ data: { results: [food] } });
+        if (path === "/saleTemp/list/")
+          return new Promise((resolve) =>
+            setTimeout(() => resolve({ data: cart }), 20),
+          );
+        return Promise.resolve({ data: { results: [] } });
+      });
+      api.post.mockImplementation(
+        async (path: string, payload: { items?: { quantity: number }[] }) => {
+          if (path !== "/counterOrder/quote")
+            throw new Error(`Unexpected POST ${path}`);
+          const quantity =
+            payload.items?.reduce((sum, item) => sum + item.quantity, 0) ?? 0;
+          return {
+            data: {
+              results: {
+                subtotal: quantity * 25,
+                modifierTotal: 0,
+                total: quantity * 25,
+                items: quantity
+                  ? [
+                      {
+                        foodId: 1,
+                        foodName: food.name,
+                        quantity,
+                        unitBasePrice: 25,
+                        lineTotal: quantity * 25,
+                        modifiers: [],
+                      },
+                    ]
+                  : [],
+              },
+            },
+          };
+        },
+      );
+      const sale = render(<SalePage />);
+      await screen.findByText("Test meal");
+      fireEvent.change(screen.getByLabelText("Pöytä"), {
+        target: { value: String(table) },
+      });
+      if (serviceType === "TAKEAWAY")
+        fireEvent.click(screen.getByRole("button", { name: "Mukaan" }));
+      const product = screen.getByRole("button", { name: /Test meal.*25/ });
+      await waitFor(() =>
+        expect((product as HTMLButtonElement).disabled).toBe(false),
+      );
+      fireEvent.click(product);
+      await waitFor(() =>
+        expect(screen.getByTestId("cart-total").textContent).toContain("25"),
+      );
+      const draftKey = `counter-draft:v1:7:${serviceType === "TAKEAWAY" ? "takeaway" : table}`;
+      const savedDraft = localStorage.getItem(draftKey);
+      sale.unmount();
+      const sent = render(<SentOrdersPage />);
+      await screen.findByLabelText("Pöytä");
+      fireEvent.change(screen.getByLabelText("Pöytä"), {
+        target: { value: "9" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Mukaan" }));
+      await waitFor(() =>
+        expect(api.get).toHaveBeenCalledWith(
+          "/counterOrder/sent",
+          expect.objectContaining({
+            params: { serviceType: "TAKEAWAY", view: "active" },
+          }),
+        ),
+      );
+      expect(localStorage.getItem(draftKey)).toBe(savedDraft);
+      sent.unmount();
+      render(<SalePage />);
+      await waitFor(() =>
+        expect(screen.getByTestId("cart-total").textContent).toContain("25"),
+      );
+      await waitFor(() => {
+        expect(
+          (
+            screen.getByRole("button", {
+              name: /Test meal.*25/,
+            }) as HTMLButtonElement
+          ).disabled,
+        ).toBe(false);
+        expect(
+          (
+            screen.getByRole("button", {
+              name: /Muokkaa valintoja/i,
+            }) as HTMLButtonElement
+          ).disabled,
+        ).toBe(false);
+        expect(
+          (
+            screen.getByRole("button", {
+              name: /^(Maksa ja lähetä keittiöön|Tarkista aiempi maksu)$/i,
+            }) as HTMLButtonElement
+          ).disabled,
+        ).toBe(false);
+      });
+      expect(localStorage.getItem(draftKey)).toBe(savedDraft);
+      expect(
+        screen
+          .getByRole("button", {
+            name: serviceType === "TAKEAWAY" ? "Mukaan" : "Paikan päällä",
+          })
+          .getAttribute("aria-pressed"),
+      ).toBe("true");
+      if (serviceType === "DINE_IN")
+        expect((screen.getByLabelText("Pöytä") as HTMLInputElement).value).toBe(
+          String(table),
+        );
+      else expect(screen.queryByLabelText("Pöytä")).toBeNull();
+    },
+  );
+
+  it("keeps a failed sent-order read distinct from an empty queue and recovers on refresh", async () => {
+    let failing = true;
+    api.get.mockImplementation(async (path: string) => {
+      if (path === "/counterOrder/sent" && failing) throw new Error("Offline");
+      return { data: { results: [] } };
     });
+    render(<SentOrdersPage />);
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screen.queryByText("Ei keskeneräisiä tilauksia.")).toBeNull();
+    failing = false;
+    fireEvent.click(screen.getByRole("button", { name: "Päivitä" }));
+    expect(await screen.findByText("Ei keskeneräisiä tilauksia.")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("opens sent order history and cancels only before preparation", async () => {
@@ -378,11 +548,11 @@ describe("POS safety net", () => {
       };
       return Promise.resolve({ data: { result: detail } });
     });
-    render(<SalePage />);
+    render(<SentOrdersPage />);
     fireEvent.click(
       await screen.findByRole(
         "button",
-        { name: "View Order #81" },
+        { name: "Näytä tilaus #81" },
         { timeout: 5_000 },
       ),
     );
@@ -408,7 +578,9 @@ describe("POS safety net", () => {
     expect(
       within(dialog).queryByRole("button", { name: "Peruuta tilaus" }),
     ).toBeNull();
-    expect(screen.queryByRole("button", { name: "Pay Order #81" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Maksa tilaus #81" }),
+    ).toBeNull();
   });
 
   it("shows ongoing sent orders by default and opens finished history when the active list is empty", async () => {
@@ -439,7 +611,7 @@ describe("POS safety net", () => {
         return Promise.resolve({ data: { results: [] } });
       },
     );
-    render(<SalePage />);
+    render(<SentOrdersPage />);
     expect(await screen.findByText("Ei keskeneräisiä tilauksia.")).toBeTruthy();
     expect(api.get).toHaveBeenCalledWith(
       "/counterOrder/sent",
@@ -449,10 +621,10 @@ describe("POS safety net", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Historia" }));
     expect(
-      await screen.findByRole("button", { name: "View Order #81" }),
+      await screen.findByRole("button", { name: "Näytä tilaus #81" }),
     ).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "Print paid Order #81" }),
+      screen.getByRole("button", { name: "Tulosta kuitti: tilaus #81" }),
     ).toBeTruthy();
     expect(api.get).toHaveBeenCalledWith(
       "/counterOrder/sent",
@@ -463,7 +635,7 @@ describe("POS safety net", () => {
     fireEvent.click(screen.getByRole("button", { name: "Käynnissä" }));
     await waitFor(() =>
       expect(
-        screen.queryByRole("button", { name: "View Order #81" }),
+        screen.queryByRole("button", { name: "Näytä tilaus #81" }),
       ).toBeNull(),
     );
   });
@@ -488,9 +660,9 @@ describe("POS safety net", () => {
           return Promise.resolve({ data: { result: detail } });
         return Promise.resolve({ data: { results: [] } });
       });
-      const view = render(<SalePage />);
+      const view = render(<SentOrdersPage />);
       fireEvent.click(
-        await screen.findByRole("button", { name: "View Order #81" }),
+        await screen.findByRole("button", { name: "Näytä tilaus #81" }),
       );
       const dialog = await screen.findByRole("dialog");
       expect(
@@ -528,10 +700,14 @@ describe("POS safety net", () => {
       return 0;
     });
 
-    render(<SalePage />);
-    await screen.findByText(/#81 · CONFIRMED/);
-    expect(screen.getByRole("button", { name: "Pay Order #81" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Print Order #81" }));
+    render(<SentOrdersPage />);
+    await screen.findByText(/#81 · Vahvistettu/);
+    expect(
+      screen.getByRole("button", { name: "Maksa tilaus #81" }),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Tulosta ennakkokuitti: tilaus #81" }),
+    );
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(
         "/counterOrder/81/prebill",
@@ -548,9 +724,9 @@ describe("POS safety net", () => {
     expect(refresh).toBeTypeOf("function");
     await act(async () => (refresh as () => void)());
     expect(
-      await screen.findByRole("button", { name: "Pay Order #81" }),
+      await screen.findByRole("button", { name: "Maksa tilaus #81" }),
     ).toBeTruthy();
-    expect(await screen.findByText(/#81 · PREPARING/)).toBeTruthy();
+    expect(await screen.findByText(/#81 · Valmistetaan/)).toBeTruthy();
     interval.mockRestore();
   });
 
@@ -602,7 +778,11 @@ describe("POS safety net", () => {
     await screen.findByText(/Jokin luonnoksen tuote ei ole enää saatavilla/);
     const addButton = screen.getByAltText(food.name).closest("button")!;
     await waitFor(() => expect(addButton.disabled).toBe(false));
-    expect(screen.queryByRole("button", { name: /^Pay$/ })).toBeNull();
+    expect(
+      screen.queryByRole("button", {
+        name: /^(Maksa ja lähetä keittiöön|Tarkista aiempi maksu)$/,
+      }),
+    ).toBeNull();
     fireEvent.click(addButton);
     await waitFor(() => {
       const draft = JSON.parse(localStorage.getItem("counter-draft:v1:7:1")!);
@@ -611,12 +791,18 @@ describe("POS safety net", () => {
       ]);
       expect(screen.getAllByText(/Hinta vahvistamatta/)).toHaveLength(2);
     });
-    expect(screen.queryByRole("button", { name: /^Pay$/ })).toBeNull();
+    expect(
+      screen.queryByRole("button", {
+        name: /^(Maksa ja lähetä keittiöön|Tarkista aiempi maksu)$/,
+      }),
+    ).toBeNull();
     const oldRow = screen.getByText("Tuote #999").closest("article")!;
-    fireEvent.click(within(oldRow).getByRole("button", { name: "Remove" }));
+    fireEvent.click(
+      within(oldRow).getByRole("button", { name: "Poista tuote" }),
+    );
     fireEvent.click(
       within(await screen.findByRole("alertdialog")).getByRole("button", {
-        name: "Remove item",
+        name: "Poista tuote",
       }),
     );
     await waitFor(() =>
@@ -625,8 +811,11 @@ describe("POS safety net", () => {
     expect(screen.queryByText("Tuote #999")).toBeNull();
     expect(screen.queryByText(/Hinta vahvistamatta/)).toBeNull();
     expect(
-      (screen.getByRole("button", { name: /^Pay$/ }) as HTMLButtonElement)
-        .disabled,
+      (
+        screen.getByRole("button", {
+          name: /^(Maksa ja lähetä keittiöön|Tarkista aiempi maksu)$/,
+        }) as HTMLButtonElement
+      ).disabled,
     ).toBe(false);
     expect(
       JSON.parse(localStorage.getItem("counter-draft:v1:7:1")!).map(
@@ -690,7 +879,7 @@ describe("POS safety net", () => {
       expect(
         (
           within(oldRow).getByRole("button", {
-            name: "Remove",
+            name: "Poista tuote",
           }) as HTMLButtonElement
         ).disabled,
       ).toBe(true);
@@ -699,20 +888,20 @@ describe("POS safety net", () => {
           ([path]) => path === "/counterOrder/checkout",
         ),
       ).toHaveLength(0);
-      const retry = screen.getByRole("button", { name: /^Pay$/ });
+      const retry = screen.getByRole("button", {
+        name: /^(Maksa ja lähetä keittiöön|Tarkista aiempi maksu)$/,
+      });
       expect(retry.textContent).toContain("Tarkista aiempi maksu");
       expect((retry as HTMLButtonElement).disabled).toBe(false);
       fireEvent.click(retry);
       expect(
         (
           screen.getByRole("button", {
-            name: /bank transfer/i,
+            name: /^Pankki$/i,
           }) as HTMLButtonElement
         ).disabled,
       ).toBe(true);
-      fireEvent.click(
-        screen.getByRole("button", { name: /complete payment/i }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: /^Maksa$/i }));
       await waitFor(() =>
         expect(api.post).toHaveBeenCalledWith(
           "/counterOrder/checkout",
@@ -726,7 +915,7 @@ describe("POS safety net", () => {
         expect(
           (
             within(oldRow).getByRole("button", {
-              name: "Remove",
+              name: "Poista tuote",
               hidden: true,
             }) as HTMLButtonElement
           ).disabled,
@@ -790,7 +979,9 @@ describe("POS safety net", () => {
           screen
             .getByText("Tuote #5")
             .closest("article")!
-            .querySelector('button[aria-label="Remove"]') as HTMLButtonElement
+            .querySelector(
+              'button[aria-label="Poista tuote"]',
+            ) as HTMLButtonElement
         ).disabled,
       ).toBe(false);
     });
@@ -804,6 +995,7 @@ describe("POS safety net", () => {
   });
 
   it("keeps a new Counter draft through reload and pays with its selected taste", async () => {
+    let finishTasteQuote: (() => void) | undefined;
     process.env.NEXT_PUBLIC_ORD02_DRAFT_ENABLED = "true";
     localStorage.setItem("test-token", "token");
     localStorage.setItem("next_name", "Cashier");
@@ -834,7 +1026,7 @@ describe("POS safety net", () => {
         if (path === "/counterOrder/quote") {
           const quantity =
             payload.items?.reduce((sum, item) => sum + item.quantity, 0) ?? 0;
-          return Promise.resolve({
+          const response = {
             data: {
               results: {
                 subtotal: quantity * 25,
@@ -851,7 +1043,15 @@ describe("POS safety net", () => {
                   })) ?? [],
               },
             },
-          });
+          };
+          if (
+            payload.items?.some((item) => item.tasteId === 3) &&
+            !finishTasteQuote
+          )
+            return new Promise((resolve) => {
+              finishTasteQuote = () => resolve(response);
+            });
+          return Promise.resolve(response);
         }
         if (path === "/counterOrder/checkout")
           return Promise.resolve({
@@ -881,7 +1081,9 @@ describe("POS safety net", () => {
     ).toHaveLength(1);
     cleanup();
     render(<SalePage />);
-    fireEvent.click(await screen.findByRole("button", { name: /customize/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Muokkaa valintoja/i }),
+    );
     fireEvent.click(await screen.findByRole("button", { name: "Spicy" }));
     await waitFor(() =>
       expect(
@@ -889,16 +1091,37 @@ describe("POS safety net", () => {
           .tasteId,
       ).toBe(3),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Tallenna" }));
+    expect(
+      (screen.getByRole("button", { name: "Valmis" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    await act(async () => finishTasteQuote!());
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Valmis" }).hasAttribute("disabled"),
+      ).toBe(false),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Valmis" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(
+      JSON.parse(localStorage.getItem("counter-draft:v1:7:1") ?? "[]")[0]
+        .tasteId,
+    ).toBe(3);
     expect(
       screen.queryByRole("button", { name: /^send to kitchen$/i }),
     ).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /^pay$/i }));
-    fireEvent.click(screen.getByRole("button", { name: /bank transfer/i }));
-    fireEvent.click(screen.getByRole("button", { name: /complete payment/i }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /^(Maksa ja lähetä keittiöön|Tarkista aiempi maksu)$/i,
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^Pankki$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Maksa$/i }));
     fireEvent.click(
       within(await screen.findByRole("alertdialog")).getByRole("button", {
-        name: /^confirm payment$/i,
+        name: /^Vahvista maksu$/i,
       }),
     );
     await waitFor(() =>
@@ -967,7 +1190,11 @@ describe("POS safety net", () => {
         localStorage.getItem("counter-draft:v1:7:takeaway"),
       ).not.toBeNull(),
     );
-    expect(screen.getByRole("button", { name: /^pay$/i })).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: /^(Maksa ja lähetä keittiöön|Tarkista aiempi maksu)$/i,
+      }),
+    ).toBeTruthy();
     expect(
       screen.queryByRole("button", { name: /^send to kitchen$/i }),
     ).toBeNull();
@@ -1026,16 +1253,18 @@ describe("POS safety net", () => {
     });
     render(<SalePage />);
     fireEvent.click(screen.getByRole("button", { name: "Mukaan" }));
-    const pay = await screen.findByRole("button", { name: /^pay$/i });
+    const pay = await screen.findByRole("button", {
+      name: /^(Maksa ja lähetä keittiöön|Tarkista aiempi maksu)$/i,
+    });
     await waitFor(() =>
       expect((pay as HTMLButtonElement).disabled).toBe(false),
     );
     fireEvent.click(pay);
-    fireEvent.click(screen.getByRole("button", { name: /bank transfer/i }));
-    fireEvent.click(screen.getByRole("button", { name: /complete payment/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Pankki$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Maksa$/i }));
     fireEvent.click(
       within(await screen.findByRole("alertdialog")).getByRole("button", {
-        name: /^confirm payment$/i,
+        name: /^Vahvista maksu$/i,
       }),
     );
     await waitFor(() =>
@@ -1105,16 +1334,18 @@ describe("POS safety net", () => {
     });
     vi.stubGlobal("crypto", { randomUUID: () => "draft-retry-key" });
     render(<SalePage />);
-    const pay = await screen.findByRole("button", { name: /^pay$/i });
+    const pay = await screen.findByRole("button", {
+      name: /^(Maksa ja lähetä keittiöön|Tarkista aiempi maksu)$/i,
+    });
     await waitFor(() =>
       expect((pay as HTMLButtonElement).disabled).toBe(false),
     );
     fireEvent.click(pay);
-    fireEvent.click(screen.getByRole("button", { name: /bank transfer/i }));
-    fireEvent.click(screen.getByRole("button", { name: /complete payment/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Pankki$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Maksa$/i }));
     fireEvent.click(
       within(await screen.findByRole("alertdialog")).getByRole("button", {
-        name: /^confirm payment$/i,
+        name: /^Vahvista maksu$/i,
       }),
     );
     await waitFor(() => expect(checkoutCalls).toBe(1));
@@ -1123,12 +1354,14 @@ describe("POS safety net", () => {
     );
     cleanup();
     render(<SalePage />);
-    const retry = await screen.findByRole("button", { name: /^pay$/i });
+    const retry = await screen.findByRole("button", {
+      name: /^(Maksa ja lähetä keittiöön|Tarkista aiempi maksu)$/i,
+    });
     await waitFor(() =>
       expect((retry as HTMLButtonElement).disabled).toBe(false),
     );
     fireEvent.click(retry);
-    fireEvent.click(screen.getByRole("button", { name: /complete payment/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Maksa$/i }));
     await waitFor(() => expect(checkoutCalls).toBe(2));
     const requests = api.post.mock.calls.filter(
       ([path]) => path === "/counterOrder/checkout",
@@ -1189,7 +1422,9 @@ describe("POS safety net", () => {
       return Promise.resolve({ data: {} });
     });
     render(<SalePage />);
-    const pay = await screen.findByRole("button", { name: /^pay$/i });
+    const pay = await screen.findByRole("button", {
+      name: /^(Maksa ja lähetä keittiöön|Tarkista aiempi maksu)$/i,
+    });
     const recover = await screen.findByRole("button", {
       name: "Tarkista aiempi lähetys",
     });
@@ -1207,7 +1442,7 @@ describe("POS safety net", () => {
     });
   });
 
-  it("pays a sent Order, keeps the new cart, and reprints its saved bill after a receipt failure", async () => {
+  it("pays a sent Order without reading or changing the new cart and reprints after a receipt failure", async () => {
     let paid = false;
     api.get.mockImplementation((path: string) => {
       if (path === "/food/filter/all")
@@ -1255,25 +1490,25 @@ describe("POS safety net", () => {
       return Promise.reject(new Error("receipt unavailable"));
     });
     vi.stubGlobal("crypto", { randomUUID: () => "served-payment-key" });
-    render(<SalePage />);
+    render(<SentOrdersPage />);
     expect(
-      await screen.findByRole("button", { name: "Pay Order #82" }),
+      await screen.findByRole("button", { name: "Maksa tilaus #82" }),
     ).toBeTruthy();
     fireEvent.click(
-      await screen.findByRole("button", { name: "Pay Order #81" }),
+      await screen.findByRole("button", { name: "Maksa tilaus #81" }),
     );
     expect(screen.getByText("Maksu · #81")).toBeTruthy();
     await waitFor(() =>
       expect(
         (
           screen.getByRole("button", {
-            name: /bank transfer/i,
+            name: /^Pankki$/i,
           }) as HTMLButtonElement
         ).disabled,
       ).toBe(false),
     );
-    fireEvent.click(screen.getByRole("button", { name: /bank transfer/i }));
-    fireEvent.click(screen.getByRole("button", { name: /complete payment/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Pankki$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Maksa$/i }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith("/counterOrder/81/settle", {
         expectedVersion: 5,
@@ -1287,10 +1522,9 @@ describe("POS safety net", () => {
         expect.any(Object),
       ),
     );
-    expect(screen.getByTestId("cart-total").textContent).toContain("25");
     expect(
       api.get.mock.calls.filter(([path]) => path === "/saleTemp/list/"),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
     expect(
       api.post.mock.calls.some(([path]) => path === "/saleTemp/endSale"),
     ).toBe(false);
@@ -1335,7 +1569,7 @@ describe("POS safety net", () => {
     fireEvent.change(screen.getByLabelText("Vastaanotettu"), {
       target: { value: "100" },
     });
-    const complete = screen.getByRole("button", { name: /complete payment/i });
+    const complete = screen.getByRole("button", { name: /^Maksa$/i });
     await waitFor(() =>
       expect((complete as HTMLButtonElement).disabled).toBe(false),
     );
@@ -1350,7 +1584,7 @@ describe("POS safety net", () => {
     expect(
       (
         screen.getByRole("button", {
-          name: /bank transfer/i,
+          name: /^Pankki$/i,
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
@@ -1371,7 +1605,7 @@ describe("POS safety net", () => {
         onRefresh={vi.fn().mockResolvedValue(undefined)}
       />,
     );
-    const retry = screen.getByRole("button", { name: /complete payment/i });
+    const retry = screen.getByRole("button", { name: /^Maksa$/i });
     await waitFor(() =>
       expect((retry as HTMLButtonElement).disabled).toBe(false),
     );
@@ -1408,13 +1642,13 @@ describe("POS safety net", () => {
       expect(
         (
           screen.getByRole("button", {
-            name: /bank transfer/i,
+            name: /^Pankki$/i,
           }) as HTMLButtonElement
         ).disabled,
       ).toBe(false),
     );
-    fireEvent.click(screen.getByRole("button", { name: /bank transfer/i }));
-    fireEvent.click(screen.getByRole("button", { name: /complete payment/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Pankki$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Maksa$/i }));
     await waitFor(() => expect(onRefresh).toHaveBeenCalledTimes(1));
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onPaid).not.toHaveBeenCalled();
@@ -1426,9 +1660,8 @@ describe("POS safety net", () => {
 
     const product = await screen.findByRole("button", { name: /test meal/i });
     expect(product.className).toContain("h-[202px]");
-    expect(product.className).toContain("w-[158px]");
+    expect(product.className).toContain("w-full");
     expect(product.className).toContain("xl:h-[220px]");
-    expect(product.className).toContain("xl:w-[181px]");
     expect(screen.queryByText("Valitse ja muokkaa")).toBeNull();
   });
 
@@ -1455,7 +1688,7 @@ describe("POS safety net", () => {
     resolveFoods!({ data: { results: [food] } });
     await screen.findByText("Test meal");
 
-    fireEvent.click(screen.getByRole("button", { name: /drinks/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Juomat/i }));
     expect(await screen.findByText("Ei tuotteita")).toBeTruthy();
     expect(
       screen.getByText("Valitussa tuoteryhmässä ei ole tuotteita."),
@@ -1501,7 +1734,7 @@ describe("POS safety net", () => {
         foodId: 1,
       }),
     );
-    fireEvent.click(screen.getByRole("button", { name: /drinks/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Juomat/i }));
     await waitFor(() =>
       expect(api.get).toHaveBeenCalledWith(
         "/food/filter/drink",
@@ -1603,11 +1836,16 @@ describe("POS safety net", () => {
     await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
     await waitFor(() =>
       expect(
-        (screen.getByRole("button", { name: /increase/i }) as HTMLButtonElement)
-          .disabled,
+        (
+          screen.getByRole("button", {
+            name: /Lisää määrää:/i,
+          }) as HTMLButtonElement
+        ).disabled,
       ).toBe(false),
     );
-    fireEvent.click(await screen.findByRole("button", { name: /increase/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Lisää määrää:/i }),
+    );
     await waitFor(() =>
       expect(api.put).toHaveBeenCalledWith("/saleTemp/updateQty", {
         qty: 2,
@@ -1641,9 +1879,11 @@ describe("POS safety net", () => {
       }),
     );
     render(<SalePage />);
-    fireEvent.click(await screen.findByRole("button", { name: /^remove$/i }));
     fireEvent.click(
-      await screen.findByRole("button", { name: /remove item/i }),
+      await screen.findByRole("button", { name: /^Poista tuote$/i }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Poista tuote/i }),
     );
 
     await waitFor(() =>
@@ -1674,10 +1914,12 @@ describe("POS safety net", () => {
     );
 
     render(<SalePage />);
-    fireEvent.click(await screen.findByRole("button", { name: /^remove$/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^Poista tuote$/i }),
+    );
 
-    expect(await screen.findByText("Remove this item?")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+    expect(await screen.findByText("Poistetaanko tuote?")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Peruuta/i }));
     expect(api.delete).not.toHaveBeenCalled();
   });
 
@@ -1701,12 +1943,12 @@ describe("POS safety net", () => {
     );
     render(<SalePage />);
     const clear = screen.getByRole("button", {
-      name: /^clear$/i,
+      name: /^Tyhjennä$/i,
     }) as HTMLButtonElement;
     await waitFor(() => expect(clear.disabled).toBe(false));
     fireEvent.click(clear);
     fireEvent.click(
-      await screen.findByRole("button", { name: /clear order/i }),
+      await screen.findByRole("button", { name: /Tyhjennä tilaus/i }),
     );
 
     await waitFor(() =>
@@ -1740,13 +1982,13 @@ describe("POS safety net", () => {
 
     render(<SalePage />);
     const clear = screen.getByRole("button", {
-      name: /^clear$/i,
+      name: /^Tyhjennä$/i,
     }) as HTMLButtonElement;
     await waitFor(() => expect(clear.disabled).toBe(false));
     fireEvent.click(clear);
 
-    expect(await screen.findByText("Clear this order?")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+    expect(await screen.findByText("Tyhjennetäänkö tilaus?")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Peruuta/i }));
     expect(api.delete).not.toHaveBeenCalled();
   });
 
@@ -1788,11 +2030,15 @@ describe("POS safety net", () => {
     URL.createObjectURL = vi.fn(() => "blob:test");
     render(<SalePage />);
     await screen.findByText("Test meal");
-    fireEvent.click(screen.getByRole("button", { name: /^pay$/i }));
-    fireEvent.click(screen.getByRole("button", { name: /bank transfer/i }));
-    fireEvent.click(screen.getByRole("button", { name: /complete payment/i }));
     fireEvent.click(
-      await screen.findByRole("button", { name: /^confirm payment$/i }),
+      screen.getByRole("button", {
+        name: /^(Maksa ja lähetä keittiöön|Tarkista aiempi maksu)$/i,
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^Pankki$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Maksa$/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^Vahvista maksu$/i }),
     );
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith("/saleTemp/endSale", {
@@ -1801,14 +2047,9 @@ describe("POS safety net", () => {
         idempotencyKey: "checkout-key",
       }),
     );
-    await waitFor(() =>
-      expect(api.get).toHaveBeenCalledWith(
-        "/counterOrder/sent",
-        expect.objectContaining({
-          params: { tableNo: 1, view: "active" },
-        }),
-      ),
-    );
+    expect(
+      api.get.mock.calls.some(([path]) => path === "/counterOrder/sent"),
+    ).toBe(false);
     expect(toast.success).toHaveBeenCalledWith("Tilaus lähetetty keittiöön");
   });
 
@@ -1833,7 +2074,11 @@ describe("POS safety net", () => {
       return Promise.resolve({ data: { results: [] } });
     });
     render(<SalePage />);
-    expect(await screen.findByRole("button", { name: /^pay$/i })).toBeTruthy();
+    expect(
+      await screen.findByRole("button", {
+        name: /^(Maksa ja lähetä keittiöön|Tarkista aiempi maksu)$/i,
+      }),
+    ).toBeTruthy();
     expect(
       screen.queryByRole("button", { name: /^send to kitchen$/i }),
     ).toBeNull();
@@ -1861,12 +2106,16 @@ describe("POS safety net", () => {
     vi.stubGlobal("crypto", { randomUUID: () => "retry-key" });
     render(<SalePage />);
     await screen.findByText("Test meal");
-    fireEvent.click(screen.getByRole("button", { name: /^pay$/i }));
-    fireEvent.click(screen.getByRole("button", { name: /bank transfer/i }));
-    const complete = screen.getByRole("button", { name: /complete payment/i });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /^(Maksa ja lähetä keittiöön|Tarkista aiempi maksu)$/i,
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^Pankki$/i }));
+    const complete = screen.getByRole("button", { name: /^Maksa$/i });
     fireEvent.click(complete);
     fireEvent.click(
-      await screen.findByRole("button", { name: /^confirm payment$/i }),
+      await screen.findByRole("button", { name: /^Vahvista maksu$/i }),
     );
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith("/saleTemp/endSale", {
@@ -1924,7 +2173,7 @@ describe("POS safety net", () => {
     });
     const view = render(<SalePage />);
     await screen.findByText("Test meal");
-    fireEvent.click(screen.getByRole("button", { name: /print pre-bill/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Tulosta esilasku/i }));
     await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
     view.unmount();
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:receipt");
@@ -1977,7 +2226,7 @@ describe("POS safety net", () => {
     await waitFor(() =>
       expect(screen.getByTestId("cart-total").textContent).toContain("25"),
     );
-    fireEvent.click(screen.getByRole("button", { name: /print pre-bill/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Tulosta esilasku/i }));
     expect(await screen.findByText("Esilasku valmis")).toBeTruthy();
     expect(screen.queryByText("Maksu hyväksytty")).toBeNull();
     expect(api.post).toHaveBeenCalledWith(
@@ -2144,10 +2393,14 @@ describe("POS safety net", () => {
     const detail = {
       id: 11,
       saleTempId: 7,
-      tasteId: null,
+      tasteId: null as number | null,
       foodSizeId: null,
       Food: food,
     };
+    api.put.mockImplementation(async () => {
+      detail.tasteId = 3;
+      return { data: {} };
+    });
     api.get.mockImplementation((path: string) => {
       if (path === "/food/filter/all")
         return Promise.resolve({ data: { results: [food] } });
@@ -2167,8 +2420,8 @@ describe("POS safety net", () => {
       return Promise.resolve({ data: { results: [] } });
     });
     render(<SalePage />);
-    await screen.findByRole("button", { name: /customize/i });
-    fireEvent.click(screen.getByRole("button", { name: /customize/i }));
+    await screen.findByRole("button", { name: /Muokkaa valintoja/i });
+    fireEvent.click(screen.getByRole("button", { name: /Muokkaa valintoja/i }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(
         "/saleTemp/generateSaleTempDetail",
@@ -2183,6 +2436,22 @@ describe("POS safety net", () => {
         tasteId: 3,
       }),
     );
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: "Spicy" })
+          .getAttribute("aria-pressed"),
+      ).toBe("true"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Valmis" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(api.put).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: /Muokkaa valintoja/i }));
+    expect(
+      (await screen.findByRole("button", { name: "Spicy" })).getAttribute(
+        "aria-pressed",
+      ),
+    ).toBe("true");
   });
 
   it("unselects a selected taste through the canonical endpoint", async () => {
@@ -2225,7 +2494,9 @@ describe("POS safety net", () => {
     });
 
     render(<SalePage />);
-    fireEvent.click(await screen.findByRole("button", { name: /customize/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Muokkaa valintoja/i }),
+    );
     fireEvent.click(await screen.findByRole("button", { name: "Spicy" }));
 
     await waitFor(() =>
@@ -2279,7 +2550,9 @@ describe("POS safety net", () => {
 
     render(<SalePage />);
     await screen.findByAltText("Test meal");
-    fireEvent.click(await screen.findByRole("button", { name: /customize/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Muokkaa valintoja/i }),
+    );
     fireEvent.click(await screen.findByRole("button", { name: /\+5 large/i }));
 
     await waitFor(() =>
@@ -2340,7 +2613,9 @@ describe("POS safety net", () => {
 
     render(<SalePage />);
     await screen.findByAltText("Test meal");
-    fireEvent.click(await screen.findByRole("button", { name: /customize/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Muokkaa valintoja/i }),
+    );
     fireEvent.click(await screen.findByRole("button", { name: /\+5 large/i }));
 
     await waitFor(() =>
@@ -2389,8 +2664,12 @@ describe("POS safety net", () => {
     });
 
     render(<SalePage />);
-    fireEvent.click(await screen.findByRole("button", { name: /customize/i }));
-    fireEvent.click(await screen.findByRole("button", { name: /^add$/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Muokkaa valintoja/i }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^Lisää annos$/i }),
+    );
 
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith("/saleTemp/createSaleTempDetail", {
@@ -2440,7 +2719,9 @@ describe("POS safety net", () => {
     });
 
     render(<SalePage />);
-    fireEvent.click(await screen.findByRole("button", { name: /customize/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Muokkaa valintoja/i }),
+    );
     await waitFor(() =>
       expect(
         screen
@@ -2504,7 +2785,9 @@ describe("POS safety net", () => {
     });
 
     render(<SalePage />);
-    fireEvent.click(await screen.findByRole("button", { name: /customize/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Muokkaa valintoja/i }),
+    );
     await waitFor(() =>
       expect(
         screen
@@ -2524,7 +2807,7 @@ describe("POS safety net", () => {
       expect(screen.queryByText("Muokkaa tilausta")).toBeNull(),
     );
     expect(
-      (screen.getByRole("button", { name: /^add$/i }) as HTMLButtonElement)
+      (screen.getByRole("button", { name: /^Lisää$/i }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
   });
@@ -2545,9 +2828,13 @@ describe("POS safety net", () => {
 
     render(<SalePage />);
     await screen.findByText("Test meal");
-    fireEvent.click(screen.getByRole("button", { name: /^pay$/i }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /^(Maksa ja lähetä keittiöön|Tarkista aiempi maksu)$/i,
+      }),
+    );
     const complete = screen.getByRole("button", {
-      name: /complete payment/i,
+      name: /^Maksa$/i,
     }) as HTMLButtonElement;
     expect(complete.disabled).toBe(true);
     fireEvent.click(complete);
@@ -2575,12 +2862,21 @@ describe("POS safety net", () => {
 
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(
-        "Something went wrong",
-        expect.objectContaining({ description: "Invalid cart response" }),
+        "Tietoja ei voitu ladata",
+        expect.objectContaining({
+          description:
+            "Toimintoa ei voitu suorittaa. Tarkista tilauksen nykyinen sisältö.",
+        }),
       ),
     );
-    expect(screen.queryByRole("button", { name: /^remove$/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /^pay$/i })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /^Poista tuote$/i }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", {
+        name: /^(Maksa ja lähetä keittiöön|Tarkista aiempi maksu)$/i,
+      }),
+    ).toBeNull();
   });
 
   it("prevents duplicate checkout submission while the server confirmation is pending", async () => {
@@ -2626,13 +2922,17 @@ describe("POS safety net", () => {
 
     render(<SalePage />);
     await screen.findByText("Test meal");
-    fireEvent.click(screen.getByRole("button", { name: /^pay$/i }));
-    fireEvent.click(screen.getByRole("button", { name: /bank transfer/i }));
-    const complete = screen.getByRole("button", { name: /complete payment/i });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /^(Maksa ja lähetä keittiöön|Tarkista aiempi maksu)$/i,
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^Pankki$/i }));
+    const complete = screen.getByRole("button", { name: /^Maksa$/i });
     fireEvent.click(complete);
     fireEvent.click(complete);
     fireEvent.click(
-      await screen.findByRole("button", { name: /^confirm payment$/i }),
+      await screen.findByRole("button", { name: /^Vahvista maksu$/i }),
     );
 
     await waitFor(() =>
@@ -2697,11 +2997,15 @@ describe("POS safety net", () => {
 
     render(<SalePage />);
     await screen.findByText("Test meal");
-    fireEvent.click(screen.getByRole("button", { name: /^pay$/i }));
-    fireEvent.click(screen.getByRole("button", { name: /bank transfer/i }));
-    fireEvent.click(screen.getByRole("button", { name: /complete payment/i }));
     fireEvent.click(
-      await screen.findByRole("button", { name: /^confirm payment$/i }),
+      screen.getByRole("button", {
+        name: /^(Maksa ja lähetä keittiöön|Tarkista aiempi maksu)$/i,
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^Pankki$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Maksa$/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^Vahvista maksu$/i }),
     );
 
     await waitFor(() =>
@@ -2757,11 +3061,15 @@ describe("POS safety net", () => {
 
     render(<SalePage />);
     await screen.findByText("Test meal");
-    fireEvent.click(screen.getByRole("button", { name: /^pay$/i }));
-    fireEvent.click(screen.getByRole("button", { name: /bank transfer/i }));
-    fireEvent.click(screen.getByRole("button", { name: /complete payment/i }));
     fireEvent.click(
-      await screen.findByRole("button", { name: /^confirm payment$/i }),
+      screen.getByRole("button", {
+        name: /^(Maksa ja lähetä keittiöön|Tarkista aiempi maksu)$/i,
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^Pankki$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Maksa$/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^Vahvista maksu$/i }),
     );
 
     await waitFor(() =>
@@ -2824,11 +3132,15 @@ describe("POS safety net", () => {
 
     render(<SalePage />);
     await screen.findByText("Test meal");
-    fireEvent.click(screen.getByRole("button", { name: /^pay$/i }));
-    fireEvent.click(screen.getByRole("button", { name: /bank transfer/i }));
-    fireEvent.click(screen.getByRole("button", { name: /complete payment/i }));
     fireEvent.click(
-      await screen.findByRole("button", { name: /^confirm payment$/i }),
+      screen.getByRole("button", {
+        name: /^(Maksa ja lähetä keittiöön|Tarkista aiempi maksu)$/i,
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^Pankki$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Maksa$/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^Vahvista maksu$/i }),
     );
     const reprint = await screen.findByRole("button", {
       name: /tulosta kuitti uudelleen #34/i,

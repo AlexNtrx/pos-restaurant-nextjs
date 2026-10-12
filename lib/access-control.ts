@@ -57,8 +57,8 @@ export const backofficeNavigation: readonly BackofficeNavigationGroup[] = [
         roles: allStaff,
       },
       {
-        href: "/backoffice/orders/inbox",
-        label: "Saapuvat tilaukset",
+        href: "/backoffice/orders/sent",
+        label: "Keittiöön lähetetyt",
         roles: allStaff,
       },
       {
@@ -74,6 +74,18 @@ export const backofficeNavigation: readonly BackofficeNavigationGroup[] = [
     label: "Tarjoilija",
     icon: "orders",
     roles: serviceStaff,
+    children: [
+      {
+        href: "/backoffice/waiter",
+        label: "Ota pöytätilaus",
+        roles: serviceStaff,
+      },
+      {
+        href: "/backoffice/waiter/tracking",
+        label: "Tilausten seuranta",
+        roles: serviceStaff,
+      },
+    ],
   },
   {
     id: "kitchen",

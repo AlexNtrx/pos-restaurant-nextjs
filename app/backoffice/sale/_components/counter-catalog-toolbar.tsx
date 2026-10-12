@@ -56,13 +56,7 @@ export function CounterCatalogToolbar({
             <button
               key={value}
               type="button"
-              aria-label={
-                value === "all"
-                  ? "All Items"
-                  : value === "food"
-                    ? "Food"
-                    : "Drinks"
-              }
+              aria-label={label}
               disabled={filtersDisabled}
               onClick={() => onFilterChange(value)}
               className={`relative h-11 min-w-[76px] shrink-0 text-left text-[13px] font-medium ${activeFilter === value ? "text-olive after:absolute after:inset-x-0 after:top-0 after:h-[3px] after:rounded-full after:bg-[#706f5e]" : "text-muted-foreground"}`}

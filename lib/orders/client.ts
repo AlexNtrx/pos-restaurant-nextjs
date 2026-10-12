@@ -1,3 +1,4 @@
+import { isEuroAmount } from "@/lib/money";
 import api from "@/lib/api";
 import type { OrderStatus, StaffOrder, StaffOrderDetail } from "./contracts";
 
@@ -110,7 +111,7 @@ export async function fetchOrderDetail(id: number): Promise<StaffOrderDetail> {
     receipt != null &&
     (!Number.isSafeInteger(receipt.billId) ||
       receipt.billId <= 0 ||
-      !Number.isSafeInteger(receipt.amount) ||
+      !isEuroAmount(receipt.amount) ||
       receipt.amount < 0 ||
       !Number.isSafeInteger(receipt.orderCount) ||
       receipt.orderCount < 1 ||

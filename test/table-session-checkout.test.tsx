@@ -6,6 +6,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { AxiosError } from "axios";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { get, post } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
@@ -60,6 +61,46 @@ afterEach(() => {
 });
 
 describe("PAY-01 table checkout", () => {
+  it("shows setup recovery after reloading Orders and clears only the rejected payment attempt", async () => {
+    post.mockRejectedValue(
+      Object.assign(new AxiosError("Request failed"), {
+        response: { status: 409, data: { code: "RECEIPT_SETUP_REQUIRED" } },
+      }),
+    );
+    const user = userEvent.setup();
+    const onSettled = vi.fn(async () => {});
+    render(
+      <TableSessionCheckout
+        sessionId={28}
+        tableNo={12}
+        onClose={vi.fn()}
+        onSettled={onSettled}
+      />,
+    );
+    const summary = await screen.findByRole("dialog", {
+      name: "Pöytä 12 · istunnon maksu",
+    });
+    await within(summary).findByText("#41", { exact: false });
+    await user.click(
+      within(summary).getByRole("button", { name: "Siirry maksuun" }),
+    );
+    const payment = await screen.findByRole("dialog", {
+      name: "Pöytä 12 · maksu",
+    });
+    await user.click(within(payment).getByRole("button", { name: "Pankki" }));
+    await user.click(within(payment).getByRole("button", { name: "Maksa" }));
+    const restored = await screen.findByRole("dialog", {
+      name: "Pöytä 12 · istunnon maksu",
+    });
+    expect(
+      await within(restored).findByText(/Kuitin tiedot ovat puutteelliset/),
+    ).toBeTruthy();
+    expect(within(restored).getByText(/Maksua ei tallennettu/)).toBeTruthy();
+    expect(localStorage.getItem("table-payment:v1:7:28")).toBeNull();
+    expect(get).toHaveBeenCalledTimes(3);
+    expect(onSettled).not.toHaveBeenCalled();
+    expect(post).toHaveBeenCalledTimes(1);
+  });
   it("reviews both served Orders and sends one versioned bank payment", async () => {
     const user = userEvent.setup();
     const onSettled = vi.fn(async () => {});
@@ -82,12 +123,8 @@ describe("PAY-01 table checkout", () => {
     const payment = await screen.findByRole("dialog", {
       name: "Pöytä 12 · maksu",
     });
-    await user.click(
-      within(payment).getByRole("button", { name: "Bank Transfer" }),
-    );
-    await user.click(
-      within(payment).getByRole("button", { name: "Complete Payment" }),
-    );
+    await user.click(within(payment).getByRole("button", { name: "Pankki" }));
+    await user.click(within(payment).getByRole("button", { name: "Maksa" }));
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith("/table-sessions/28/settle", {
         orders: [
@@ -156,13 +193,11 @@ describe("PAY-01 table checkout", () => {
     expect(
       (
         within(payment).getByRole("button", {
-          name: "Bank Transfer",
+          name: "Pankki",
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
-    await user.click(
-      within(payment).getByRole("button", { name: "Complete Payment" }),
-    );
+    await user.click(within(payment).getByRole("button", { name: "Maksa" }));
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith("/table-sessions/28/settle", {
         orders: saved.orders,

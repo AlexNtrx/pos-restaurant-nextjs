@@ -1,3 +1,4 @@
+import { isEuroAmount } from "@/lib/money";
 import { readAuthSession } from "@/lib/auth-session";
 export type Attempt = {
   tableNo: number;
@@ -61,10 +62,9 @@ export const validAttempt = (value: unknown): value is Attempt => {
     typeof attempt.idempotencyKey === "string" &&
     /^[0-9a-f-]{36}$/i.test(attempt.idempotencyKey) &&
     (attempt.payType === "cash" || attempt.payType === "bank") &&
-    Number.isSafeInteger(attempt.total) &&
+    isEuroAmount(attempt.total) &&
     Number(attempt.total) >= 0 &&
     (attempt.inputMoney === undefined ||
-      (Number.isSafeInteger(attempt.inputMoney) &&
-        Number(attempt.inputMoney) >= 0))
+      (isEuroAmount(attempt.inputMoney) && Number(attempt.inputMoney) >= 0))
   );
 };

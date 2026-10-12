@@ -1,4 +1,6 @@
 "use client";
+import { isEuroAmount, moneySum } from "@/lib/money";
+import { getApiErrorMessage } from "@/lib/api-error";
 
 import { isMutationRejected } from "@/lib/mutation-outcome";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -110,7 +112,7 @@ export default function TableSessionCheckout({
   }, [sessionId]);
 
   const active = orders.filter(payable);
-  const total = active.reduce((sum, order) => sum + order.total, 0);
+  const total = moneySum(active.map((order) => order.total));
   const allServed =
     active.length > 0 && active.every((order) => order.status === "SERVED");
   const displayTotal = pendingTotal ?? total;
@@ -144,8 +146,8 @@ export default function TableSessionCheckout({
           )
         )
           throw new Error("Kaikki tilaukset on tarjoiltava ennen maksua.");
-        const freshTotal = current.reduce((sum, order) => sum + order.total, 0);
-        if (!Number.isSafeInteger(freshTotal) || freshTotal !== total)
+        const freshTotal = moneySum(current.map((order) => order.total));
+        if (!isEuroAmount(freshTotal) || freshTotal !== total)
           throw new Error("Loppusumma muuttui. Päivitä pöydän tilaukset.");
         if (payType === "cash" && received < freshTotal)
           throw new Error("Vastaanotettu käteinen ei riitä.");
@@ -213,13 +215,16 @@ export default function TableSessionCheckout({
         setPendingTotal(null);
         setUncertain(false);
         setPhase("summary");
-        void load();
+        await load();
       } else if (attempt.current) {
         setUncertain(true);
       }
       setError(
         definite
-          ? "Maksu hylättiin. Tarkista tilausten tila ja päivitä tiedot."
+          ? getApiErrorMessage(
+              reason,
+              "Maksu hylättiin. Tarkista tilausten tila ja päivitä tiedot.",
+            )
           : attempt.current
             ? "Maksun tulos on epävarma. Yritä uudelleen samoilla tiedoilla."
             : reason instanceof Error
@@ -328,7 +333,7 @@ export default function TableSessionCheckout({
         onChangeReceivedAmount={setReceived}
         onReceivedAmountInput={(value) => {
           const amount = Number(value);
-          setReceived(Number.isSafeInteger(amount) && amount >= 0 ? amount : 0);
+          setReceived(isEuroAmount(amount) && amount >= 0 ? amount : 0);
         }}
         onCompletePayment={() => void pay()}
       />

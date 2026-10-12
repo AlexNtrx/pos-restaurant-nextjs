@@ -12,13 +12,18 @@ import {
 } from "@/components/ui/dialog";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
-import type { FoodCategory, FoodKind } from "@/lib/catalog-contracts";
+import type {
+  FoodCategory,
+  FoodKind,
+  TaxCategory,
+} from "@/lib/catalog-contracts";
 
 type MenuItemDraft = {
   foodTypeId: number | null;
   name: string;
   price: string;
   foodKind: FoodKind;
+  taxCategory: TaxCategory | null;
   remark: string;
 };
 type ImageField = {
@@ -110,9 +115,8 @@ export function MenuItemEditor({
           <FormField id="menu-item-price" label="Hinta" required>
             <Input
               disabled={saving}
-              type="number"
-              min="0"
-              step="1"
+              type="text"
+              inputMode="decimal"
               value={draft.price}
               onChange={(event) => onDraftChange.price(event.target.value)}
             />
@@ -128,6 +132,28 @@ export function MenuItemEditor({
             >
               <option value="food">Ruoka</option>
               <option value="drink">Juoma</option>
+            </select>
+          </FormField>
+          <FormField
+            id="menu-item-tax"
+            label="ALV-luokka (demo)"
+            description="Hinta sisältää ALV:n. Luokka koskee uusia tilauksia."
+          >
+            <select
+              disabled={saving}
+              className="min-h-11 w-full rounded-md border border-border bg-surface px-3"
+              value={draft.taxCategory ?? ""}
+              onChange={(event) =>
+                onDraftChange.taxCategory(
+                  (event.target.value || null) as TaxCategory | null,
+                )
+              }
+            >
+              <option value="">Ei määritetty</option>
+              <option value="FOOD_NON_ALCOHOLIC">
+                Ruoka ja alkoholiton juoma
+              </option>
+              <option value="ALCOHOL">Alkoholi</option>
             </select>
           </FormField>
           <FormField

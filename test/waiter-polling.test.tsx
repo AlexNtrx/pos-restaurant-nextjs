@@ -1,10 +1,22 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import WaiterPage from "@/app/backoffice/waiter/page";
+import WaiterTrackingPage from "@/app/backoffice/waiter/tracking/page";
+import WaiterLayout from "@/app/backoffice/waiter/layout";
 import type { StaffOrder } from "@/lib/orders/contracts";
 
 const { get } = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock("@/lib/api", () => ({ default: { get } }));
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/backoffice/waiter/tracking",
+}));
+
+function WaiterPage() {
+  return (
+    <WaiterLayout>
+      <WaiterTrackingPage />
+    </WaiterLayout>
+  );
+}
 
 const order: StaffOrder = {
   id: 31,
@@ -136,7 +148,9 @@ it("retains the active snapshot on connection failure and clears its stale notic
   get.mockRejectedValueOnce(new Error("Yhteys katkesi"));
   await tick(5_000);
   expect(screen.getByText("Pöytä 4 · Tilaus #31")).toBeTruthy();
-  expect(screen.getByRole("alert").textContent).toContain("Yhteys katkesi");
+  expect(screen.getByRole("alert").textContent).toContain(
+    "Tilausjonoa ei voitu päivittää.",
+  );
   await act(async () => window.dispatchEvent(new Event("online")));
   expect(screen.queryByRole("alert")).toBeNull();
   expect(screen.getByText("Pöytä 4 · Tilaus #31")).toBeTruthy();

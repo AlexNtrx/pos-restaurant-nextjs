@@ -37,6 +37,10 @@ export default function usePosCart({
     currentTableRef.current === tableNo;
 
   const setTable = useCallback((nextTable: number) => {
+    // EN: Restoring the same table must keep its cart read valid; no table change means no new load effect.
+    // FI: Saman pöydän palautuksen on säilytettävä ostoskorin haku kelvollisena; ilman pöydän vaihtoa latausefekti ei käynnisty uudelleen.
+    if (currentTableRef.current === nextTable) return;
+
     currentTableRef.current = nextTable;
     cartRequestId.current += 1;
     setLoadedTable(null);

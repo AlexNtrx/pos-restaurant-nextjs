@@ -8,6 +8,7 @@ import { getApiErrorMessage } from "@/lib/api-error";
 import { loadStaffTables, type StaffTable } from "@/lib/tables";
 import TableSessionCheckout from "@/components/payments/table-session-checkout";
 import { listPendingTablePayments } from "@/lib/payments/table-payment-attempt";
+import QrTableOrders from "../../sale/_components/qr-table-orders";
 
 // EN: Cashiers reach table settlement from Kassa without gaining table or QR administration.
 // FI: Kassatyöntekijät pääsevät pöydän maksuun Kassasta saamatta pöytä- tai QR-hallinnan oikeuksia.
@@ -21,6 +22,7 @@ export default function TablePaymentsPage() {
     tableNo: number;
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [detailTable, setDetailTable] = useState<number | null>(null);
   const [error, setError] = useState("");
   const load = useCallback(async () => {
     try {
@@ -50,7 +52,7 @@ export default function TablePaymentsPage() {
     <main className="space-y-5">
       <PageHeader
         title="Pöytien maksut"
-        description="Tarkista tarjoillut tilaukset ja maksa pöydän koko lasku."
+        description="Katso pöydän tilaukset tai tarkista ja maksa pöydän koko lasku."
         actions={
           <Button variant="outline" onClick={() => void load()}>
             Päivitä
@@ -77,16 +79,50 @@ export default function TablePaymentsPage() {
           .map((table) => (
             <li key={table.id} className="space-y-3 rounded-lg border p-4">
               <h2 className="font-semibold">Pöytä {table.tableNo}</h2>
-              <Button
-                onClick={() =>
-                  setSelected({
-                    sessionId: table.openSession!.id,
-                    tableNo: table.tableNo,
-                  })
-                }
-              >
-                Tarkista ja maksa
-              </Button>
+              <div className="flex flex-wrap gap-4">
+                <Button
+                  variant="outline"
+                  aria-expanded={detailTable === table.tableNo}
+                  aria-controls={`table-order-details-${table.tableNo}`}
+                  onClick={() =>
+                    setDetailTable(
+                      detailTable === table.tableNo ? null : table.tableNo,
+                    )
+                  }
+                >
+                  Näytä tilaukset · Pöytä {table.tableNo}
+                </Button>
+                <Button
+                  onClick={() =>
+                    setSelected({
+                      sessionId: table.openSession!.id,
+                      tableNo: table.tableNo,
+                    })
+                  }
+                >
+                  Tarkista ja maksa
+                </Button>
+              </div>
+              {detailTable === table.tableNo && (
+                <section
+                  id={`table-order-details-${table.tableNo}`}
+                  className="rounded-lg border p-4"
+                  aria-label={`Pöydän ${detailTable} tilausten tiedot`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h2 className="font-semibold">
+                      Pöytä {detailTable} · tilaukset
+                    </h2>
+                    <Button
+                      variant="ghost"
+                      onClick={() => setDetailTable(null)}
+                    >
+                      Sulje tiedot
+                    </Button>
+                  </div>
+                  <QrTableOrders key={detailTable} tableNo={detailTable} />
+                </section>
+              )}
             </li>
           ))}
       </ul>

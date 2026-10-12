@@ -1,4 +1,5 @@
 "use client";
+import { euroCents, centsEuros } from "@/lib/money";
 
 import { Plus } from "lucide-react";
 import {
@@ -175,7 +176,8 @@ export function CatalogManagementPage({ kind }: { kind: ManagementKind }) {
     event.preventDefault();
     const normalizedName = name.trim();
     const normalizedRemark = remark.trim();
-    const amount = Number(moneyAdded);
+    const cents = euroCents(moneyAdded);
+    const amount = cents === null ? null : centsEuros(cents);
     if (!normalizedName) {
       setFormError("Nimi on pakollinen.");
       return;
@@ -184,8 +186,10 @@ export function CatalogManagementPage({ kind }: { kind: ManagementKind }) {
       setFormError("Kategoria on pakollinen.");
       return;
     }
-    if (kind === "size-options" && (!Number.isInteger(amount) || amount < 0)) {
-      setFormError("Hinnanlisän on oltava kokonainen, vähintään 0.");
+    if (kind === "size-options" && (amount === null || amount > 10_000_000)) {
+      setFormError(
+        "Hinnanlisän on oltava 0–10 000 000 € ja siinä saa olla enintään kaksi desimaalia.",
+      );
       return;
     }
 

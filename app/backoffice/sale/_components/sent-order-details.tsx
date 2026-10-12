@@ -1,5 +1,6 @@
 "use client";
 
+import { staffOrderStatusLabels as labels } from "@/lib/orders/presentation";
 import { useState } from "react";
 
 import { OrderItemDetails } from "@/components/orders/order-item-details";
@@ -14,19 +15,8 @@ import {
 } from "@/components/ui/dialog";
 import { LoadingState } from "@/components/ui/states";
 import { StatusBadge } from "@/components/ui/status-badge";
-import type { OrderStatus, StaffOrderDetail } from "@/lib/orders/contracts";
+import type { StaffOrderDetail } from "@/lib/orders/contracts";
 
-const labels: Record<OrderStatus, string> = {
-  SUBMITTED: "Lähetetty",
-  CONFIRMED: "Vahvistettu",
-  REJECTED: "Hylätty",
-  PREPARING: "Valmistelussa",
-  READY: "Valmis",
-  SERVED: "Tarjoiltu",
-  PAID: "Maksettu",
-  COMPLETED: "Päätetty",
-  CANCELLED: "Peruttu",
-};
 const currency = new Intl.NumberFormat("fi-FI", {
   style: "currency",
   currency: "EUR",

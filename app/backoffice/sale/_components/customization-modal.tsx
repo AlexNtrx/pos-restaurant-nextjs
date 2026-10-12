@@ -36,6 +36,9 @@ type CustomizationModalProps = {
   ) => void;
 };
 
+const touchButtonClassName =
+  "min-h-11 xl:min-h-0 [@media(any-pointer:coarse)]:min-h-11";
+
 export default function CustomizationModal({
   open,
   onOpenChange,
@@ -65,7 +68,8 @@ export default function CustomizationModal({
             Muokkaa tilausta
           </DialogTitle>
           <DialogDescription>
-            Valitse maku ja koko. Hinta päivittyy heti.
+            Valitse maku ja koko. Muutokset tehdään heti ostoskoriin. Sulkeminen
+            ei peru niitä.
           </DialogDescription>
         </DialogHeader>
 
@@ -185,7 +189,7 @@ export default function CustomizationModal({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="mt-3 !border-transparent !bg-transparent !text-destructive hover:!bg-muted hover:!text-destructive"
+                    className={`${touchButtonClassName} mt-3 !border-transparent !bg-transparent !text-destructive hover:!bg-muted hover:!text-destructive`}
                     disabled={customizationBusy}
                     onClick={() => onRemoveDetail(item.id)}
                   >
@@ -203,8 +207,8 @@ export default function CustomizationModal({
         <Button
           type="button"
           variant="default"
-          className="w-fit"
-          aria-label="Add"
+          className={`${touchButtonClassName} w-fit`}
+          aria-label="Lisää annos"
           disabled={customizationBusy || saleTempId === 0}
           onClick={onCreateDetail}
         >
@@ -212,13 +216,12 @@ export default function CustomizationModal({
         </Button>
         <DialogFooter className="mt-2">
           <DialogClose asChild>
-            <Button type="button" variant="ghost">
-              Peruuta
-            </Button>
-          </DialogClose>
-          <DialogClose asChild>
-            <Button type="button" disabled={customizationBusy}>
-              Tallenna
+            <Button
+              type="button"
+              disabled={customizationBusy}
+              className={touchButtonClassName}
+            >
+              Valmis
             </Button>
           </DialogClose>
         </DialogFooter>

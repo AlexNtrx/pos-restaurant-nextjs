@@ -1,10 +1,17 @@
 "use client";
+import { euroCents, centsEuros } from "@/lib/money";
+
 import { useState, useRef, type FormEvent } from "react";
 import { toast } from "sonner";
 import api from "@/lib/api";
 import { invalidateCatalogCache } from "@/lib/catalog-reads";
 import { getApiErrorMessage } from "@/lib/api-error";
-import type { Food, FoodCategory, FoodKind } from "@/lib/catalog-contracts";
+import type {
+  Food,
+  FoodCategory,
+  FoodKind,
+  TaxCategory,
+} from "@/lib/catalog-contracts";
 // EN: The hook owns the complete edit and upload draft; stable file refs reset only on save or explicit reset.
 // FI: Hook hallitsee koko muokkaus- ja latausluonnosta; pysyvät tiedostoviitteet nollautuvat vain tallennuksessa tai erillisessä nollauksessa.
 export function useMenuItemEditor(
@@ -18,6 +25,7 @@ export function useMenuItemEditor(
   const [remark, setRemark] = useState("");
   const [price, setPrice] = useState("0");
   const [foodKind, setFoodKind] = useState<FoodKind>("food");
+  const [taxCategory, setTaxCategory] = useState<TaxCategory | null>(null);
   const [currentImage, setCurrentImage] = useState("");
   const [currentDetailImage, setCurrentDetailImage] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -42,6 +50,7 @@ export function useMenuItemEditor(
     setRemark("");
     setPrice("0");
     setFoodKind("food");
+    setTaxCategory(null);
     setCurrentImage("");
     setCurrentDetailImage("");
     setFormError("");
@@ -56,6 +65,7 @@ export function useMenuItemEditor(
     setRemark(food.remark);
     setPrice(String(food.price));
     setFoodKind(food.foodType);
+    setTaxCategory(food.taxCategory ?? null);
     setCurrentImage(food.img);
     setCurrentDetailImage(food.detailImg ?? "");
     setFormError("");
@@ -80,15 +90,16 @@ export function useMenuItemEditor(
   const saveFood = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const normalizedName = name.trim();
-    const numericPrice = Number(price);
+    const priceCents = euroCents(price);
+    const numericPrice = priceCents === null ? null : centsEuros(priceCents);
     if (
       !foodTypeId ||
       !normalizedName ||
-      !Number.isInteger(numericPrice) ||
-      numericPrice < 0
+      numericPrice === null ||
+      numericPrice > 10_000_000
     ) {
       setFormError(
-        "Kategoria, nimi ja kokonainen vähintään 0 oleva hinta ovat pakollisia.",
+        "Valitse kategoria ja nimi. Hinnan on oltava 0–10 000 000 € ja siinä saa olla enintään kaksi desimaalia.",
       );
       return;
     }
@@ -109,6 +120,7 @@ export function useMenuItemEditor(
         img,
         detailImg,
         foodType: foodKind,
+        taxCategory,
       };
       if (editingFood)
         await api.put("/food/update", { ...payload, id: editingFood.id });
@@ -135,6 +147,8 @@ export function useMenuItemEditor(
     remark,
     price,
     foodKind,
+    taxCategory,
+    setTaxCategory,
     currentImage,
     currentDetailImage,
     selectedFile,

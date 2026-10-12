@@ -9,6 +9,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { useState } from "react";
+import {
+  euroCents,
+  centsEuros,
+  isEuroAmount,
+  moneyDifference,
+  moneySum,
+} from "@/lib/money";
 
 type CheckoutModalProps = {
   open: boolean;
@@ -50,16 +58,51 @@ export default function CheckoutModal({
   allowZeroTotal = false,
   errorMessage,
 }: CheckoutModalProps) {
-  const change = payType === "bank" ? 0 : Math.max(0, receivedAmount - total);
-  const quickAmounts = [10, 20, 50, 100];
+  const [cashInput, setCashInput] = useState<{
+    text: string;
+    source: number;
+  } | null>(null);
+  const cashText =
+    cashInput?.source === receivedAmount
+      ? cashInput.text
+      : String(receivedAmount);
+  const cashCents = euroCents(cashText);
+  const validMoney = isEuroAmount(total) && isEuroAmount(receivedAmount);
+  let change = 0;
+  let validChange = true;
+  // EN: Even valid large inputs may yield change that cannot round-trip as an exact EUR JSON number.
+  // FI: Myös kelvolliset suuret syötteet voivat tuottaa vaihtorahan, joka ei säily tarkkana JSON-euromääränä.
+  if (payType === "cash" && validMoney) {
+    try {
+      change = Math.max(0, moneyDifference(receivedAmount, total));
+    } catch {
+      validChange = false;
+    }
+  }
+  const quickAmounts = [10, 20, 50, 100].map((amount) => {
+    // EN: Disable additions that cannot retain exact EUR cents rather than overflowing a payment input.
+    // FI: Estä lisäykset, jotka eivät säilytä tarkkoja eurosenttejä, jotta maksukenttä ei ylivuoda.
+    let next: number | null = null;
+    try {
+      next = moneySum([receivedAmount, amount]);
+    } catch {
+      next = null;
+    }
+    return { amount, next };
+  });
   return (
     <Dialog
       open={open}
-      onOpenChange={(next) =>
-        !checkoutBusy && !paymentDetailsLocked && onOpenChange(next)
-      }
+      onOpenChange={(next) => {
+        if (checkoutBusy || paymentDetailsLocked) return;
+        setCashInput(null);
+        onOpenChange(next);
+      }}
     >
-      <DialogContent showCloseButton={false} className="p-6 sm:max-w-[560px]">
+      <DialogContent
+        showCloseButton={false}
+        className="max-h-[calc(100dvh-2rem)] min-w-0 overflow-y-auto p-4 sm:max-w-[560px] sm:p-6"
+      >
         <DialogHeader className="gap-3">
           <DialogTitle className="font-sans !text-xl !leading-6">
             {title ?? `Maksu${orderId ? ` · #${orderId}` : ""}`}
@@ -75,13 +118,19 @@ export default function CheckoutModal({
             {errorMessage}
           </p>
         )}
+        {!validChange && (
+          <p role="alert" className="text-sm text-destructive">
+            Summa on liian suuri tarkalle vaihtorahalle. Korjaa vastaanotettu
+            summa.
+          </p>
+        )}
         <div>
           <p className="m-0 text-xs text-muted-foreground">Maksettava</p>
           <p className="m-0 mt-1 text-2xl font-semibold text-action">
             {euros(total)}
           </p>
         </div>
-        <fieldset>
+        <fieldset className="min-w-0">
           <legend className="mb-1.5 text-xs text-muted-foreground">
             Maksutapa
           </legend>
@@ -89,7 +138,7 @@ export default function CheckoutModal({
             <Button
               type="button"
               variant="outline"
-              aria-label="Cash"
+              aria-label="Käteinen"
               aria-pressed={payType === "cash"}
               className={
                 payType === "cash"
@@ -104,7 +153,7 @@ export default function CheckoutModal({
             <Button
               type="button"
               variant="outline"
-              aria-label="Bank Transfer"
+              aria-label="Pankki"
               aria-pressed={payType === "bank"}
               className={
                 payType === "bank"
@@ -126,34 +175,52 @@ export default function CheckoutModal({
             >
               Vastaanotettu
             </label>
-            <div className="mt-1 grid grid-cols-[minmax(120px,1fr)_auto] gap-3">
+            {/* EN: Stack cash controls on small screens so their minimum widths cannot expand the dialog. */}
+            {/* FI: Pinoa käteiskentät pienillä näytöillä, jotta niiden vähimmäisleveydet eivät laajenna ikkunaa. */}
+            <div className="mt-1 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-[minmax(120px,1fr)_auto]">
               <Input
                 id="pos-received"
-                type="number"
-                min="0"
-                step="1"
+                type="text"
+                inputMode="decimal"
                 className="h-11 text-base"
-                value={receivedAmount}
+                value={cashText}
+                aria-invalid={cashCents === null}
                 disabled={checkoutBusy || paymentDetailsLocked}
-                onChange={(event) => onReceivedAmountInput(event.target.value)}
+                onChange={(event) => {
+                  const text = event.target.value;
+                  const cents = euroCents(text);
+                  const source =
+                    cents === null ? receivedAmount : centsEuros(cents);
+                  setCashInput({ text, source });
+                  if (cents !== null) onReceivedAmountInput(String(source));
+                }}
               />
-              <div className="flex gap-2">
-                {quickAmounts.map((amount) => (
+              <div className="grid min-w-0 grid-cols-2 gap-4 sm:grid-cols-4">
+                {quickAmounts.map(({ amount, next }) => (
                   <Button
                     key={amount}
                     type="button"
                     variant="outline"
-                    disabled={checkoutBusy || paymentDetailsLocked}
-                    onClick={() =>
-                      onChangeReceivedAmount(receivedAmount + amount)
+                    disabled={
+                      checkoutBusy || paymentDetailsLocked || next === null
                     }
-                    className="!bg-[#f1efea]"
+                    onClick={() => {
+                      if (next === null) return;
+                      setCashInput(null);
+                      onChangeReceivedAmount(next);
+                    }}
+                    className="min-h-11 !bg-[#f1efea]"
                   >
                     {amount} €
                   </Button>
                 ))}
               </div>
             </div>
+            {cashCents === null && (
+              <p role="alert" className="mt-2 text-sm text-destructive">
+                Syötä euromäärä, jossa on enintään kaksi desimaalia.
+              </p>
+            )}
           </div>
         ) : null}
         <div>
@@ -167,11 +234,12 @@ export default function CheckoutModal({
             ? `Vähimmäissumma on ${euros(total)}. Tarkista käteinen ennen vahvistusta.`
             : "Kortti- tai tilisiirto vahvistetaan pankkimaksuna."}
         </p>
-        <DialogFooter className="mt-2">
+        <DialogFooter className="-mx-4 -mb-4 mt-2 gap-4 p-4 sm:-mx-6 sm:-mb-6 sm:p-6">
           <DialogClose asChild>
             <Button
               type="button"
               variant="ghost"
+              className="min-h-11"
               disabled={checkoutBusy || paymentDetailsLocked}
             >
               Peruuta
@@ -179,10 +247,14 @@ export default function CheckoutModal({
           </DialogClose>
           <Button
             type="button"
-            aria-label="Complete Payment"
+            aria-label="Maksa"
+            className="min-h-11"
             disabled={
               checkoutBusy ||
               receiptBusy ||
+              !validMoney ||
+              !validChange ||
+              (payType === "cash" && cashCents === null) ||
               total < 0 ||
               (total === 0 && orderId == null && !allowZeroTotal) ||
               (payType === "cash" && receivedAmount < total)

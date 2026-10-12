@@ -9,17 +9,7 @@ const dateTime = new Intl.DateTimeFormat("fi-FI", {
   dateStyle: "short",
   timeStyle: "short",
 });
-export const statusLabels: Record<OrderStatus, string> = {
-  SUBMITTED: "Odottaa",
-  CONFIRMED: "Vahvistettu",
-  REJECTED: "Hylätty",
-  PREPARING: "Valmistetaan",
-  READY: "Valmis keittiöstä",
-  SERVED: "Tarjoiltu",
-  PAID: "Maksettu",
-  COMPLETED: "Päätetty",
-  CANCELLED: "Peruttu",
-};
+export { staffOrderStatusLabels as statusLabels } from "@/lib/orders/presentation";
 export const lifecycleFields = [
   ["submittedAt", "Lähetetty"],
   ["confirmedAt", "Vahvistettu"],

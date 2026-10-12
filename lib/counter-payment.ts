@@ -1,3 +1,4 @@
+import { isEuroAmount } from "@/lib/money";
 import {
   parseSentCounterOrders,
   type SentCounterOrder,
@@ -30,7 +31,7 @@ export function parseCounterPayment(
     !payload.idempotencyKey ||
     !["cash", "bank"].includes(payload.payType) ||
     (payload.inputMoney !== undefined &&
-      (!Number.isSafeInteger(payload.inputMoney) || payload.inputMoney < 0))
+      (!isEuroAmount(payload.inputMoney) || payload.inputMoney < 0))
   )
     return null;
   return { order, payload };

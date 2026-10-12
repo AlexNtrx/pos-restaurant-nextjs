@@ -28,6 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { restaurantToday } from "@/lib/restaurant-calendar";
 import api from "@/lib/api";
 import { getApiErrorMessage, isPermissionDeniedError } from "@/lib/api-error";
 import {
@@ -55,12 +56,10 @@ const currencyFormatter = new Intl.NumberFormat("fi-FI", {
 });
 
 export function SalesReportPage() {
-  const now = new Date();
-  const years = Array.from(
-    { length: 5 },
-    (_, index) => now.getFullYear() - index,
-  );
-  const [year, setYear] = useState(String(now.getFullYear()));
+  const [today] = useState(restaurantToday);
+  const currentYear = Number(today.slice(0, 4));
+  const years = Array.from({ length: 5 }, (_, index) => currentYear - index);
+  const [year, setYear] = useState(String(currentYear));
   const [rows, setRows] = useState<MonthlySalesRow[]>([]);
   const [total, setTotal] = useState(0);
   const [status, setStatus] = useState<
@@ -207,7 +206,9 @@ export function SalesReportPage() {
         </Table>
       )}
       <p className="text-[11px] text-muted-foreground">
-        Aikavyöhyke: Europe/Helsinki · Valuutta: EUR
+        Aikavyöhyke: Europe/Helsinki · Päivä vaihtuu klo 00.00 · EUR.
+        Palautukset oikaisevat alkuperäistä myyntipäivää; tämä ei ole
+        kassavirtaraportti.
       </p>
     </div>
   );

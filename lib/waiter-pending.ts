@@ -1,3 +1,4 @@
+import { isEuroAmount } from "@/lib/money";
 import type { WaiterItem } from "@/lib/waiter-orders";
 
 export type WaiterPending = {
@@ -19,7 +20,7 @@ export function parseWaiterPending(value: unknown): WaiterPending | null {
     !positive(item.tableSessionId) ||
     typeof item.idempotencyKey !== "string" ||
     !item.idempotencyKey ||
-    !Number.isSafeInteger(item.expectedTotal) ||
+    !isEuroAmount(item.expectedTotal) ||
     Number(item.expectedTotal) < 0 ||
     !Array.isArray(item.items) ||
     !item.items.length ||

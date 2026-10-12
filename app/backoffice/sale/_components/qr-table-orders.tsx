@@ -17,7 +17,6 @@ import { getApiErrorMessage } from "@/lib/api-error";
 import { changeOrderStatus, fetchOrderPages } from "@/lib/orders/client";
 import { orderChannelLabel } from "@/lib/orders/labels";
 import { type StaffOrder } from "@/lib/orders/contracts";
-import TableSessionCheckout from "@/components/payments/table-session-checkout";
 
 type OpenTable = {
   tableNo: number;
@@ -30,6 +29,12 @@ type PendingAction = {
 
 const active = (order: StaffOrder) =>
   !["REJECTED", "CANCELLED", "PAID", "COMPLETED"].includes(order.status);
+// EN: Offer cancellation only before payment and preparation; the backend rechecks the transition and version.
+// FI: Näytä peruutus vain ennen maksua ja valmistusta; palvelin tarkistaa siirtymän ja version uudelleen.
+const canCancel = (order: StaffOrder) =>
+  order.paidAt === null &&
+  order.preparingAt === null &&
+  ["SUBMITTED", "CONFIRMED"].includes(order.status);
 const euros = (value: number) =>
   new Intl.NumberFormat("fi-FI", {
     style: "currency",
@@ -41,9 +46,6 @@ export default function QrTableOrders({ tableNo }: { tableNo: number }) {
   const [orders, setOrders] = useState<StaffOrder[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [checkoutSessionId, setCheckoutSessionId] = useState<number | null>(
-    null,
-  );
   const [action, setAction] = useState<PendingAction | null>(null);
   const [reason, setReason] = useState("");
   const requestId = useRef(0);
@@ -214,37 +216,20 @@ export default function QrTableOrders({ tableNo }: { tableNo: number }) {
                     </Button>
                   </>
                 )}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => setAction({ order, status: "CANCELLED" })}
-                >
-                  Peruuta
-                </Button>
+                {canCancel(order) && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => setAction({ order, status: "CANCELLED" })}
+                  >
+                    Peruuta
+                  </Button>
+                )}
               </div>
             </article>
           ))}
         </div>
-      )}
-      {sessionId && (
-        <Button
-          className="mt-3 w-full"
-          size="sm"
-          variant="outline"
-          onClick={() => setCheckoutSessionId(sessionId)}
-        >
-          Maksa pöytäistunto
-        </Button>
-      )}
-      {checkoutSessionId !== null && (
-        <TableSessionCheckout
-          key={checkoutSessionId}
-          sessionId={checkoutSessionId}
-          tableNo={tableNo}
-          onClose={() => setCheckoutSessionId(null)}
-          onSettled={refresh}
-        />
       )}
       <Dialog
         open={action !== null}

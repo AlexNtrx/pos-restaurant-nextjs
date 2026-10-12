@@ -43,7 +43,7 @@ describe("HIS-01 operational dashboard", () => {
     expect(screen.queryByText("Kuukauden myynti")).toBeNull();
     expect(screen.getByText(/#17/)).toBeTruthy();
     expect(screen.getByText("QR")).toBeTruthy();
-    expect(screen.getByText("Odottaa")).toBeTruthy();
+    expect(screen.getByText("Lähetetty")).toBeTruthy();
     expect(screen.getByText("25,00 €")).toBeTruthy();
     expect(api.get).toHaveBeenCalledWith(
       "/dashboard/operations",

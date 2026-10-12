@@ -93,6 +93,10 @@ describe("TW-05 CRUD dialogs", () => {
     const file = new File(["image"], "new-menu.webp", { type: "image/webp" });
     await user.upload(fileInput, file);
     await user.type(screen.getByLabelText(/^Nimi/), " updated");
+    await user.selectOptions(
+      screen.getByLabelText("ALV-luokka (demo)"),
+      "ALCOHOL",
+    );
     view.rerender(<MenuItemsPage />);
     expect(screen.getByLabelText("Ruokalistan kuva")).toBe(fileInput);
     expect(fileInput.files?.[0]).toBe(file);
@@ -113,6 +117,7 @@ describe("TW-05 CRUD dialogs", () => {
         img: "new-menu.webp",
         detailImg: "",
         foodType: "food",
+        taxCategory: "ALCOHOL",
       }),
     );
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -241,7 +246,7 @@ describe("TW-05 CRUD dialogs", () => {
   });
 
   it("locks restaurant fields through logo upload and save without discarding a failed draft", async () => {
-    api.get.mockResolvedValue({
+    const restaurantResponse = {
       data: {
         result: {
           id: 1,
@@ -255,7 +260,14 @@ describe("TW-05 CRUD dialogs", () => {
           taxCode: "TEST-1",
         },
       },
-    });
+    };
+    api.get.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === "/organization/tax-draft"
+          ? { data: { organizationConfigured: true, draft: null, version: 0 } }
+          : restaurantResponse,
+      ),
+    );
     let uploaded!: (value: { data: { fileName: string } }) => void;
     let failed!: (reason: Error) => void;
     api.post.mockImplementation((path: string) =>
@@ -388,6 +400,10 @@ describe("TW-05 CRUD dialogs", () => {
     await user.clear(price);
     await user.type(price, "4");
     await user.selectOptions(screen.getByLabelText(/^Tyyppi/), "drink");
+    await user.selectOptions(
+      screen.getByLabelText("ALV-luokka (demo)"),
+      "FOOD_NON_ALCOHOLIC",
+    );
     await user.upload(
       screen.getByLabelText("Ruokalistan kuva"),
       new File(["image"], "coffee.webp", { type: "image/webp" }),
@@ -413,6 +429,7 @@ describe("TW-05 CRUD dialogs", () => {
         img: "coffee.webp",
         detailImg: "details.jpg",
         foodType: "drink",
+        taxCategory: "FOOD_NON_ALCOHOLIC",
       }),
     );
   });

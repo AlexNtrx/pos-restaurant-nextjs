@@ -1,4 +1,5 @@
 "use client";
+import { moneySum, moneyMultiply } from "@/lib/money";
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -83,11 +84,13 @@ export function QrMenuView({
     const food = foodsById.get(item.foodId);
     const category = food ? categoriesById.get(food.foodTypeId) : undefined;
     const size = category?.foodSizes.find((row) => row.id === item.foodSizeId);
-    return (
-      sum +
-      (food?.price || 0) * item.quantity +
-      (size?.moneyAdded || 0) * item.quantity
-    );
+    return moneySum([
+      sum,
+      moneyMultiply(
+        moneySum([food?.price ?? 0, size?.moneyAdded ?? 0]),
+        item.quantity,
+      ),
+    ]);
   }, 0);
 
   // EN: The menu card and detail dialog share the same selected options, note and cart quantity.
@@ -176,7 +179,7 @@ export function QrMenuView({
       <h1 className="font-heading text-3xl font-semibold">Tilaa pöytään</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         {menu.state === "ORDERING"
-          ? "Valitse tuotteet ja lähetä tilaus henkilökunnalle."
+          ? "Valitse tuotteet ja lähetä tilaus suoraan keittiöön."
           : "Voit selata ruokalistaa. QR-tilaaminen ei ole juuri nyt käytettävissä."}
       </p>
       <label className="mt-5 block">

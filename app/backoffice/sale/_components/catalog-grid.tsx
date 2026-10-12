@@ -16,14 +16,16 @@ type CatalogGridProps = {
   onSelect: (foodId: number) => void;
 };
 
+// EN: Columns follow the menu container after the cart/sidebar take their space; cards may shrink below their preferred width.
+// FI: Sarakkeet seuraavat ruokalistan tilaa ostoskorin ja sivupalkin jälkeen; kortit voivat kaventua tavoiteleveyttään pienemmiksi.
 const productGridClassName =
-  "grid grid-cols-[repeat(2,158px)] gap-[12px] md:grid-cols-[repeat(3,158px)] xl:grid-cols-[repeat(4,181px)]";
+  "grid grid-cols-[repeat(2,minmax(0,158px))] gap-3 @min-[498px]:grid-cols-[repeat(3,minmax(0,158px))] xl:grid-cols-[repeat(2,minmax(0,181px))] xl:@min-[498px]:grid-cols-[repeat(3,minmax(0,181px))] xl:@min-[668px]:grid-cols-[repeat(4,minmax(0,181px))]";
 
 function ProductCardSkeleton() {
   return (
     <div
       aria-hidden="true"
-      className="h-[202px] w-[158px] overflow-hidden rounded-[10px] border border-border bg-surface xl:h-[220px] xl:w-[181px]"
+      className="h-[202px] w-full min-w-0 overflow-hidden rounded-[10px] border border-border bg-surface xl:h-[220px]"
     >
       <div className="h-[118px] bg-[#efece6] xl:h-[136px]" />
       <div className="flex h-[84px] flex-col gap-2 p-[12px]">
@@ -55,7 +57,7 @@ function CatalogMessage({
         <button
           type="button"
           onClick={onRetry}
-          className="mt-0.5 flex h-10 w-[140px] items-center justify-center rounded-lg bg-olive text-sm font-semibold text-primary-foreground hover:bg-[#656455] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none active:bg-[#5d5c4f]"
+          className="mt-0.5 flex h-11 w-[140px] items-center justify-center rounded-lg bg-olive text-sm font-semibold text-primary-foreground hover:bg-[#656455] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none active:bg-[#5d5c4f] xl:h-10 [@media(any-pointer:coarse)]:h-11"
         >
           Yritä uudelleen
         </button>
@@ -117,7 +119,7 @@ export default function CatalogGrid({
             key={food.id}
             disabled={disabled}
             onClick={() => onSelect(food.id)}
-            className="group h-[202px] w-[158px] overflow-hidden rounded-[10px] border border-border bg-surface p-0 text-left transition-[border-color,background-color] hover:border-action focus-visible:border-2 focus-visible:border-action focus-visible:ring-0 focus-visible:outline-none active:bg-[#efece6] disabled:cursor-wait xl:h-[220px] xl:w-[181px]"
+            className="group h-[202px] w-full min-w-0 overflow-hidden rounded-[10px] border border-border bg-surface p-0 text-left transition-[border-color,background-color] hover:border-action focus-visible:border-2 focus-visible:border-action focus-visible:ring-0 focus-visible:outline-none active:bg-[#efece6] disabled:cursor-wait xl:h-[220px]"
           >
             <FoodPhoto
               filename={food.img}

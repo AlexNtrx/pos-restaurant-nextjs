@@ -4,6 +4,7 @@ import config from "@/app/config";
 import { Button } from "@/components/ui/button";
 
 import { RestaurantForm } from "./_components/restaurant-form";
+import { TaxSettingsDraft } from "./_components/tax-settings-draft";
 import { PageHeader } from "@/components/ui/page-header";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 
@@ -89,6 +90,7 @@ export default function RestaurantSettingsPage() {
         setInvalidField={setInvalidField}
         save={save}
       />
+      <TaxSettingsDraft />
     </div>
   );
 }

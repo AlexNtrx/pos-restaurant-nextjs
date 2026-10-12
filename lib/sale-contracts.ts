@@ -1,3 +1,4 @@
+import { isEuroAmount } from "@/lib/money";
 export type Food = { id: number; name: string; img: string; price: number };
 export type Taste = { id: number; name: string };
 export type FoodSize = { id: number; name: string; moneyAdded: number };
@@ -56,7 +57,7 @@ export const parseFood = (value: unknown): Food | null => {
     !isFiniteNumber(value.id) ||
     typeof value.name !== "string" ||
     typeof value.img !== "string" ||
-    !isFiniteNumber(value.price)
+    !isEuroAmount(value.price)
   )
     return null;
   return { id: value.id, name: value.name, img: value.img, price: value.price };
@@ -81,9 +82,9 @@ export const parseCartResponse = (
     return null;
   const summary = value.summary;
   if (
-    !isFiniteNumber(summary.baseAmount) ||
-    !isFiniteNumber(summary.addedAmount) ||
-    !isFiniteNumber(summary.total)
+    !isEuroAmount(summary.baseAmount) ||
+    !isEuroAmount(summary.addedAmount) ||
+    !isEuroAmount(summary.total)
   )
     return null;
   const results: SaleTemp[] = [];
@@ -100,9 +101,9 @@ export const parseCartResponse = (
     const pricing = item.pricing;
     if (
       !food ||
-      !isFiniteNumber(pricing.baseAmount) ||
-      !isFiniteNumber(pricing.addedAmount) ||
-      !isFiniteNumber(pricing.total)
+      !isEuroAmount(pricing.baseAmount) ||
+      !isEuroAmount(pricing.addedAmount) ||
+      !isEuroAmount(pricing.total)
     )
       return null;
     results.push({
@@ -135,9 +136,9 @@ export const parseCheckoutResult = (value: unknown): CheckoutResult | null => {
   if (
     !isSafeInteger(billId) ||
     billId < 1 ||
-    !isSafeInteger(amount) ||
-    !isSafeInteger(inputMoney) ||
-    !isSafeInteger(returnMoney) ||
+    !isEuroAmount(amount) ||
+    !isEuroAmount(inputMoney) ||
+    !isEuroAmount(returnMoney) ||
     (pickupNo !== undefined && (!isSafeInteger(pickupNo) || pickupNo < 1))
   )
     return null;
@@ -176,7 +177,7 @@ export const parseSentCounterOrders = (
         "REJECTED",
         "CANCELLED",
       ].includes(raw.status) ||
-      !isSafeInteger(raw.total) ||
+      !isEuroAmount(raw.total) ||
       raw.total < 0 ||
       !isSafeInteger(raw.version) ||
       raw.version < 1 ||

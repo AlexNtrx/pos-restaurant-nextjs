@@ -1,4 +1,22 @@
 import { isAxiosError } from "axios";
+import {
+  localizedMessages,
+  messageTranslations,
+  responseMessage,
+} from "./api-error-messages";
+
+const localMessagePrefixes = [
+  "Palvelin palautti ",
+  "Käyttäjä vaihtui.",
+  "Kirjaudu uudelleen ",
+  "Tallennettu pyyntö ",
+  "Tallennettu maksupyyntö ",
+  "Maksupyyntö kuuluu ",
+  "Tilausluonnos on ",
+  "Loppusumma muuttui.",
+  "Vastaanotettu käteinen ",
+  "Pöytäistuntoa ei voitu ",
+];
 
 export function isPermissionDeniedError(error: unknown): boolean {
   return isAxiosError(error) && error.response?.status === 403;
@@ -6,15 +24,30 @@ export function isPermissionDeniedError(error: unknown): boolean {
 
 export function getApiErrorMessage(error: unknown, fallback: string): string {
   if (isAxiosError<{ message?: unknown; error?: unknown }>(error)) {
-    const message =
-      error.response?.data?.message ?? error.response?.data?.error;
-
-    if (typeof message === "string" && message.trim()) {
-      return message;
-    }
+    if (!error.response)
+      return `${fallback} Palvelimeen ei saada yhteyttä. Tarkista verkkoyhteys ja aiemman yrityksen tila.`;
+    // EN: Receipt decoding retains known localized guidance while leaving the original Blob response intact.
+    // FI: Kuitin purku säilyttää tunnetun käännetyn ohjeen ja alkuperäisen Blob-vastauksen ennallaan.
+    if (localizedMessages.has(error.message)) return error.message;
+    return responseMessage(
+      error.response.data,
+      error.response.status,
+      fallback,
+    );
   }
 
-  return error instanceof Error ? error.message : fallback;
+  // EN: Preserve known Finnish application validation/recovery messages; arbitrary transport and server diagnostics use the caller's safe fallback.
+  // FI: Säilytä tunnetut sovelluksen suomenkieliset tarkistus- ja palautumisviestit; mielivaltaiset yhteys- ja palvelindiagnoosit käyttävät kutsujan turvallista oletusviestiä.
+  if (error instanceof Error) {
+    const translated = messageTranslations.get(error.message);
+    if (translated) return translated;
+    if (
+      localizedMessages.has(error.message) ||
+      localMessagePrefixes.some((prefix) => error.message.startsWith(prefix))
+    )
+      return error.message;
+  }
+  return fallback;
 }
 
 // EN: PDF requests also receive JSON errors as Blobs; read a bounded body and never expose HTML error pages.
@@ -23,7 +56,8 @@ export async function getBlobApiErrorMessage(
   error: unknown,
   fallback: string,
 ): Promise<string> {
-  if (!isAxiosError(error)) return getApiErrorMessage(error, fallback);
+  if (!isAxiosError(error) || !error.response)
+    return getApiErrorMessage(error, fallback);
   let data: unknown = error.response?.data;
   if (typeof Blob !== "undefined" && data instanceof Blob) {
     if (data.size > 64 * 1024) return fallback;
@@ -33,10 +67,5 @@ export async function getBlobApiErrorMessage(
       return fallback;
     }
   }
-  if (!data || typeof data !== "object") return fallback;
-  const body = data as { error?: unknown; message?: unknown };
-  const message = body.message ?? body.error;
-  if (message === "Organization is not configured")
-    return "Ravintolan tiedot puuttuvat. Tallenna tiedot kohdassa Asetukset → Ravintolan tiedot ennen kuitin tulostamista.";
-  return typeof message === "string" && message.trim() ? message : fallback;
+  return responseMessage(data, error.response.status, fallback);
 }

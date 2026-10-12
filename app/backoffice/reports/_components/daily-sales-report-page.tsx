@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { restaurantToday } from "@/lib/restaurant-calendar";
 import api from "@/lib/api";
 import { getApiErrorMessage, isPermissionDeniedError } from "@/lib/api-error";
 import {
@@ -12,15 +13,15 @@ import {
 import { DailySalesReportView } from "./daily-sales-report-view";
 import { type DailySalesReportStatus } from "./daily-sales-report-types";
 
-const currentYear = new Date().getFullYear();
-
 export function DailySalesReportPage() {
+  const [today] = useState(restaurantToday);
+  const currentYear = Number(today.slice(0, 4));
   const years = useMemo(
     () => Array.from({ length: 5 }, (_, index) => currentYear - index),
-    [],
+    [currentYear],
   );
   const [year, setYear] = useState(String(currentYear));
-  const [month, setMonth] = useState(String(new Date().getMonth() + 1));
+  const [month, setMonth] = useState(String(Number(today.slice(5, 7))));
   const [rows, setRows] = useState<DailySalesBreakdownRow[]>([]);
   const [summary, setSummary] = useState<DailySalesBreakdown | null>(null);
   const [total, setTotal] = useState(0);

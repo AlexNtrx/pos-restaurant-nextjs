@@ -1,4 +1,10 @@
 "use client";
+import {
+  isEuroAmount,
+  moneySum,
+  moneyMultiply,
+  moneyDifference,
+} from "@/lib/money";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isAxiosError } from "axios";
@@ -118,9 +124,9 @@ const parseQuote = (value: unknown): Quote => {
   const quote = value as Record<string, unknown>;
   if (
     !Array.isArray(quote.items) ||
-    !Number.isSafeInteger(quote.subtotal) ||
-    !Number.isSafeInteger(quote.modifierTotal) ||
-    !Number.isSafeInteger(quote.total) ||
+    !isEuroAmount(quote.subtotal) ||
+    !isEuroAmount(quote.modifierTotal) ||
+    !isEuroAmount(quote.total) ||
     quote.items.some((item) => {
       if (!item || typeof item !== "object") return true;
       const line = item as Record<string, unknown>;
@@ -128,8 +134,8 @@ const parseQuote = (value: unknown): Quote => {
         !validId(line.foodId) ||
         typeof line.foodName !== "string" ||
         !validId(line.quantity) ||
-        !Number.isSafeInteger(line.unitBasePrice) ||
-        !Number.isSafeInteger(line.lineTotal) ||
+        !isEuroAmount(line.unitBasePrice) ||
+        !isEuroAmount(line.lineTotal) ||
         !Array.isArray(line.modifiers)
       );
     })
@@ -158,10 +164,13 @@ const displayItems = (units: DraftUnit[], quote: Quote): SaleTemp[] => {
       byFood.set(line.foodId, group);
     }
     group.qty += line.quantity;
-    group.pricing.baseAmount += line.unitBasePrice * line.quantity;
-    group.pricing.addedAmount +=
-      line.lineTotal - line.unitBasePrice * line.quantity;
-    group.pricing.total += line.lineTotal;
+    const base = moneyMultiply(line.unitBasePrice, line.quantity);
+    group.pricing.baseAmount = moneySum([group.pricing.baseAmount, base]);
+    group.pricing.addedAmount = moneySum([
+      group.pricing.addedAmount,
+      moneyDifference(line.lineTotal, base),
+    ]);
+    group.pricing.total = moneySum([group.pricing.total, line.lineTotal]);
   }
   for (const unit of units) {
     const group = byFood.get(unit.foodId);

@@ -1,4 +1,6 @@
 "use client";
+import { getApiErrorMessage } from "@/lib/api-error";
+import { isEuroAmount } from "@/lib/money";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, Printer, Trash2 } from "lucide-react";
@@ -20,7 +22,11 @@ import { Input } from "@/components/ui/input";
 import { readStaffCatalog } from "@/lib/catalog-reads";
 
 import useCounterCustomization from "./_hooks/use-counter-customization";
-import useCounterSentOrders from "./_hooks/use-counter-sent-orders";
+import useCounterReceipts from "./_hooks/use-counter-receipts";
+import {
+  readCounterSelection,
+  saveCounterSelection,
+} from "./_lib/counter-selection";
 
 import useCounterCheckout from "./_hooks/use-counter-checkout";
 import {
@@ -38,14 +44,10 @@ import usePosCart from "./_hooks/use-pos-cart";
 import useCounterDraft, { type DraftScope } from "./_hooks/use-counter-draft";
 import CatalogGrid, { type CatalogStatus } from "./_components/catalog-grid";
 import { CounterCatalogToolbar } from "./_components/counter-catalog-toolbar";
-import { CounterSentOrdersList } from "./_components/counter-sent-orders-list";
 import CartSidebar from "./_components/cart-sidebar";
 import CheckoutModal from "@/components/payments/checkout-modal";
 import CounterOrderCheckout from "./_components/counter-order-checkout";
-import SentOrderDetails from "./_components/sent-order-details";
-import QrTableOrders from "./_components/qr-table-orders";
 import CustomizationModal from "./_components/customization-modal";
-import { useReceiptPreview } from "@/components/receipts/use-receipt-preview";
 import ReceiptPreview from "@/components/receipts/receipt-preview";
 
 // EN: Section — Submission types and persisted draft attempts.
@@ -61,7 +63,10 @@ type ConfirmationConfig = {
 
 // Coordinates error message behavior for this module.
 const errorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : "Unexpected error";
+  getApiErrorMessage(
+    error,
+    "Toimintoa ei voitu suorittaa. Tarkista tilauksen nykyinen sisältö.",
+  );
 
 // Renders the POS sale page interface.
 // EN: Section — Counter POS page.
@@ -71,13 +76,17 @@ export default function CounterSalePage() {
   // FI: Osio — Sivun tila ja pyyntöviitteet.
   const [foods, setFoods] = useState<Food[]>([]);
   const {
-    url: billUrl,
-    load: loadReceipt,
-    close: closeReceipt,
-  } = useReceiptPreview();
-  const [receiptKind, setReceiptKind] = useState<"prebill" | "paid">("paid");
+    billUrl,
+    closeReceipt,
+    receiptKind,
+    receiptBillId,
+    receiptBusy,
+    setReceiptBusy,
+    showReceipt,
+    printBillAfterPay,
+    printPaidSentOrder,
+  } = useCounterReceipts();
   const [checkoutBusy, setCheckoutBusy] = useState(false);
-  const [receiptBusy, setReceiptBusy] = useState(false);
   const [activeFilter, setActiveFilter] = useState<"all" | "food" | "drink">(
     "all",
   );
@@ -96,7 +105,6 @@ export default function CounterSalePage() {
   const [payableOrder, setPayableOrder] = useState<SentCounterOrder | null>(
     null,
   );
-  const [receiptBillId, setReceiptBillId] = useState<number | null>(null);
   const tableNumberInputRef = useRef<HTMLInputElement>(null);
   // EN: Only the latest selected filter may publish its result, even when reads are shared.
   // FI: Vain viimeksi valittu suodatin saa näyttää tuloksensa myös jaetuissa hauissa.
@@ -120,9 +128,14 @@ export default function CounterSalePage() {
   }, [foods, searchQuery]);
   const showCartError = useCallback(
     (error: unknown, kind: "load" | "mutation") => {
-      toast.error(kind === "load" ? "Something went wrong" : "Error", {
-        description: errorMessage(error),
-      });
+      toast.error(
+        kind === "load"
+          ? "Tietoja ei voitu ladata"
+          : "Toimintoa ei voitu suorittaa",
+        {
+          description: errorMessage(error),
+        },
+      );
     },
     [],
   );
@@ -131,21 +144,6 @@ export default function CounterSalePage() {
   const draftScope: DraftScope =
     serviceType === "TAKEAWAY" ? "TAKEAWAY" : table;
   const draftCart = useCounterDraft(draftScope, showCartError, foods);
-  const {
-    sentOrders,
-    sentView,
-    selectedSentOrderId,
-    sentOrderDetail,
-    sentOrderError,
-    sentOrderCancelling,
-    refreshSentOrders,
-    loadSentOrderDetail,
-    closeSentOrderDetail,
-    cancelSentOrder,
-    invalidateSentOrders,
-    setSentOrders,
-    setSentView,
-  } = useCounterSentOrders(draftScope);
   const draftEnabled = process.env.NEXT_PUBLIC_ORD02_DRAFT_ENABLED !== "false";
   const draftMode =
     serviceType === "TAKEAWAY" ||
@@ -210,7 +208,6 @@ export default function CounterSalePage() {
     setCheckoutBusy,
     receiptBusy,
     refreshCart,
-    refreshSentOrders,
     requestConfirmation: (...args) => requestConfirmation(...args),
     printBillAfterPay: (...args) => printBillAfterPay(...args),
   });
@@ -253,7 +250,7 @@ export default function CounterSalePage() {
       }
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [sentOrders, checkoutBusy, draftScope]);
+  }, [checkoutBusy, draftScope]);
 
   // EN: Section — Sent orders: loading, details, cancellation and polling.
   // FI: Osio — Lähetetyt tilaukset: lataus, tiedot, peruutus ja säännöllinen päivitys.
@@ -292,7 +289,7 @@ export default function CounterSalePage() {
     } catch (e: unknown) {
       if (requestId !== catalogRequestId.current) return;
       setCatalogStatus("error");
-      toast.error("Something went wrong", {
+      toast.error("Tietoja ei voitu ladata", {
         description: errorMessage(e),
       });
     }
@@ -300,13 +297,20 @@ export default function CounterSalePage() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
+      const saved = readCounterSelection();
+      if (saved) {
+        setTable(saved.table);
+        setServiceType(saved.serviceType);
+      }
       void getFoods();
-      tableNumberInputRef.current?.focus();
+      // EN: Keep keyboard entry focused without scrolling past the cashier navigation on mobile.
+      // FI: Kohdista näppäimistösyöte vierittämättä mobiilissa kassan navigoinnin ohi.
+      tableNumberInputRef.current?.focus({ preventScroll: true });
     }, 0);
     return () => {
       window.clearTimeout(timer);
     };
-  }, []);
+  }, [setTable]);
   // Coordinates filter food behavior for this module.
   const filterFood = async (foodType: "all" | "food" | "drink") => {
     const requestId = ++catalogRequestId.current;
@@ -323,7 +327,7 @@ export default function CounterSalePage() {
     } catch (e: unknown) {
       if (requestId !== catalogRequestId.current) return;
       setCatalogStatus("error");
-      toast.error("Error", {
+      toast.error("Toimintoa ei voitu suorittaa", {
         description: errorMessage(e),
       });
     }
@@ -333,16 +337,16 @@ export default function CounterSalePage() {
     if (cartBusy || checkoutBusy || draftLocked) return;
     try {
       const confirmed = await requestConfirmation({
-        title: "Remove this item?",
-        description: "The item will be removed from the current order.",
-        confirmLabel: "Remove item",
+        title: "Poistetaanko tuote?",
+        description: "Tuote poistetaan nykyisestä tilauksesta.",
+        confirmLabel: "Poista tuote",
         destructive: true,
       });
       if (confirmed) {
         await removeItem(id);
       }
     } catch (e: unknown) {
-      toast.error("Error", {
+      toast.error("Toimintoa ei voitu suorittaa", {
         description: errorMessage(e),
       });
     }
@@ -352,16 +356,16 @@ export default function CounterSalePage() {
     if (cartBusy || checkoutBusy || draftLocked) return;
     try {
       const confirmed = await requestConfirmation({
-        title: "Clear this order?",
-        description: "All items will be removed from the current order.",
-        confirmLabel: "Clear order",
+        title: "Tyhjennetäänkö tilaus?",
+        description: "Kaikki tuotteet poistetaan nykyisestä tilauksesta.",
+        confirmLabel: "Tyhjennä tilaus",
         destructive: true,
       });
       if (confirmed) {
         await clearCart();
       }
     } catch (e: unknown) {
-      toast.error("Error", {
+      toast.error("Toimintoa ei voitu suorittaa", {
         description: errorMessage(e),
       });
     }
@@ -389,18 +393,6 @@ export default function CounterSalePage() {
   // FI: Kuitin tyyppi tulee kutsujalta; API-polut eivät luotettavasti erota maksamatonta esilaskua maksetusta kuitista.
   // EN: Section — Receipt loading and printing.
   // FI: Osio — Kuittien lataus ja tulostus.
-  const showReceipt = async (
-    path: string,
-    payload: Record<string, unknown>,
-    kind: "prebill" | "paid",
-  ) => {
-    await loadReceipt(path, payload);
-    setReceiptKind(kind);
-    // EN: Reprinting targets the displayed receipt, which may differ from the latest checkout.
-    // FI: Uudelleentulostus kohdistuu näytettyyn kuittiin, joka voi poiketa viimeisimmästä maksusta.
-    setReceiptBillId(kind === "paid" ? Number(payload.billId) : null);
-  };
-
   // Coordinates print bill before pay behavior for this module.
   const printBillBeforePay = async () => {
     if (receiptBusy || checkoutBusy || cartBusy || draftUnpriced) return;
@@ -411,47 +403,15 @@ export default function CounterSalePage() {
         draftMode ? draftCart.getIntent() : { tableNo: table },
         "prebill",
       );
-    } catch {
+    } catch (error) {
       toast.error("Esilaskua ei voitu avata", {
-        description: "Yritä avata esilasku uudelleen.",
+        description: getApiErrorMessage(
+          error,
+          "Yritä avata esilasku uudelleen.",
+        ),
       });
     } finally {
       setReceiptBusy(false);
-    }
-  };
-
-  // Coordinates print bill after pay behavior for this module.
-  const printBillAfterPay = async (billId: number) => {
-    if (receiptBusy) return;
-    try {
-      setReceiptBusy(true);
-      await showReceipt("/saleTemp/printBillAfterPay", { billId }, "paid");
-    } finally {
-      setReceiptBusy(false);
-    }
-  };
-
-  const printSentOrder = async (orderId: number) => {
-    if (receiptBusy || checkoutBusy || cartBusy) return;
-    try {
-      setReceiptBusy(true);
-      await showReceipt(`/counterOrder/${orderId}/prebill`, {}, "prebill");
-    } catch {
-      toast.error("Esilaskua ei voitu avata", {
-        description: "Yritä avata esilasku uudelleen.",
-      });
-    } finally {
-      setReceiptBusy(false);
-    }
-  };
-
-  const printPaidSentOrder = async (billId: number) => {
-    try {
-      await printBillAfterPay(billId);
-    } catch {
-      toast.error("Kuittia ei voitu avata", {
-        description: "Yritä avata kuitti uudelleen.",
-      });
     }
   };
 
@@ -461,27 +421,27 @@ export default function CounterSalePage() {
   // EN: Section — Table and service type selection.
   // FI: Osio — Pöydän ja palvelutyypin valinta.
   // Handles table change events and preserves existing side effects.
-  const handleTableChange = (value: string) => {
-    invalidateSentOrders();
-    closeSentOrderDetail();
+  const handleTableChange = (
+    value: string,
+    selectedServiceType = serviceType,
+  ) => {
     resetPayment();
-    setSentOrders([]);
-    setSentView("active");
 
     setTable(Number(value));
+    saveCounterSelection({
+      table: Number(value),
+      serviceType: selectedServiceType,
+    });
     setDraftPending(readDraftAttempt(Number(value)));
   };
 
   const handleServiceTypeChange = (next: "DINE_IN" | "TAKEAWAY") => {
     if (next === serviceType || checkoutBusy || receiptBusy) return;
-    invalidateSentOrders();
-    closeSentOrderDetail();
     resetPayment();
     setPayableOrder(null);
-    setSentOrders([]);
-    setSentView("active");
 
     setServiceType(next);
+    saveCounterSelection({ table, serviceType: next });
     setDraftPending(readDraftAttempt(next === "TAKEAWAY" ? "TAKEAWAY" : table));
   };
 
@@ -492,9 +452,9 @@ export default function CounterSalePage() {
     if (!lastCompletedBillId || receiptBusy || checkoutBusy) return;
     try {
       await printBillAfterPay(lastCompletedBillId);
-    } catch {
+    } catch (error) {
       toast.error("Kuittia ei voitu avata", {
-        description: "Yritä avata kuitti uudelleen.",
+        description: getApiErrorMessage(error, "Yritä avata kuitti uudelleen."),
       });
     }
   };
@@ -502,7 +462,7 @@ export default function CounterSalePage() {
   // EN: Section — Page layout and dialogs.
   // FI: Osio — Sivun asettelu ja valintaikkunat.
   return (
-    <div className="counter-pos min-h-dvh bg-canvas font-sans text-foreground md:grid md:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_400px]">
+    <div className="counter-pos min-h-dvh bg-canvas font-sans text-foreground md:grid md:min-h-[calc(100dvh-100px)] md:grid-cols-[minmax(0,1fr)_320px] xl:min-h-[calc(100dvh-116px)] xl:grid-cols-[minmax(0,1fr)_400px]">
       <section className="min-w-0 bg-canvas">
         <CounterCatalogToolbar
           availableCount={visibleFoods.length}
@@ -512,7 +472,7 @@ export default function CounterSalePage() {
           onSearchChange={setSearchQuery}
           onFilterChange={(value) => void filterFood(value)}
         />
-        <div className="p-7">
+        <div className="@container p-7">
           <CatalogGrid
             key={`${activeFilter}:${searchQuery}`}
             foods={visibleFoods}
@@ -529,7 +489,9 @@ export default function CounterSalePage() {
         </div>
       </section>
 
-      <aside className="flex min-h-[520px] flex-col bg-surface px-7 py-7 md:sticky md:top-0 md:h-dvh">
+      {/* EN: Reserve the workspace tabs' height so totals and payment remain reachable below the cart. */}
+      {/* FI: Varaa työtilan välilehtien korkeus, jotta summat ja maksu pysyvät saavutettavina ostoskorin alapuolella. */}
+      <aside className="flex min-h-[520px] flex-col bg-surface px-7 py-7 md:sticky md:top-0 md:h-[calc(100dvh-100px)] md:min-h-0 md:overflow-y-auto xl:h-[calc(100dvh-116px)]">
         <div className="flex items-center justify-between gap-3">
           <h2 className="m-0 text-[22px] leading-7 font-semibold">
             Nykyinen tilaus
@@ -580,7 +542,7 @@ export default function CounterSalePage() {
                   if (scope === "TAKEAWAY") handleServiceTypeChange("TAKEAWAY");
                   else {
                     handleServiceTypeChange("DINE_IN");
-                    handleTableChange(String(scope));
+                    handleTableChange(String(scope), "DINE_IN");
                   }
                 }}
               >
@@ -599,6 +561,7 @@ export default function CounterSalePage() {
               aria-pressed={serviceType === "DINE_IN"}
               disabled={checkoutBusy || receiptBusy}
               onClick={() => handleServiceTypeChange("DINE_IN")}
+              className="min-h-11 xl:min-h-0 [@media(any-pointer:coarse)]:min-h-11"
             >
               Paikan päällä
             </Button>
@@ -608,6 +571,7 @@ export default function CounterSalePage() {
               aria-pressed={serviceType === "TAKEAWAY"}
               disabled={checkoutBusy || receiptBusy}
               onClick={() => handleServiceTypeChange("TAKEAWAY")}
+              className="min-h-11 xl:min-h-0 [@media(any-pointer:coarse)]:min-h-11"
             >
               Mukaan
             </Button>
@@ -664,12 +628,13 @@ export default function CounterSalePage() {
                   </>
                 )}
               </p>
-              <div className="mt-2 flex gap-2">
+              <div className="mt-2 flex flex-wrap gap-2">
                 <Button
                   type="button"
                   variant="outline"
                   disabled={checkoutBusy || cartBusy || draftLocked}
                   onClick={() => void draftCart.refreshCart()}
+                  className="min-h-11 xl:min-h-0 [@media(any-pointer:coarse)]:min-h-11"
                 >
                   Retry quote
                 </Button>
@@ -677,12 +642,13 @@ export default function CounterSalePage() {
                   type="button"
                   variant="outline"
                   disabled={checkoutBusy || cartBusy || draftLocked}
+                  className="min-h-11 xl:min-h-0 [@media(any-pointer:coarse)]:min-h-11"
                   onClick={async () => {
                     const confirmed = await requestConfirmation({
-                      title: "Clear saved draft?",
+                      title: "Tyhjennetäänkö tallennettu luonnos?",
                       description:
-                        "The unsent items on this device will be removed.",
-                      confirmLabel: "Clear draft",
+                        "Lähettämättömät tuotteet poistetaan tältä laitteelta.",
+                      confirmLabel: "Tyhjennä luonnos",
                       destructive: true,
                     });
                     if (confirmed) draftCart.discardDraft();
@@ -701,7 +667,7 @@ export default function CounterSalePage() {
               type="button"
               variant="ghost"
               size="sm"
-              aria-label="Clear"
+              aria-label="Tyhjennä"
               disabled={
                 saleTemps.length === 0 ||
                 draftMutationBusy ||
@@ -709,7 +675,7 @@ export default function CounterSalePage() {
                 receiptBusy
               }
               onClick={() => void removeAllSaleTempDetail()}
-              className="text-destructive hover:text-destructive"
+              className="min-h-11 text-destructive hover:text-destructive xl:min-h-0 [@media(any-pointer:coarse)]:min-h-11"
             >
               <Trash2 aria-hidden="true" /> Tyhjennä
             </Button>
@@ -729,29 +695,6 @@ export default function CounterSalePage() {
             <div className="flex flex-1 items-center justify-center py-12 text-center text-sm text-muted-foreground">
               Valitse tuotteita ruokalistasta.
             </div>
-          )}
-          <CounterSentOrdersList
-            sentOrders={sentOrders}
-            sentView={sentView}
-            checkoutBusy={checkoutBusy}
-            receiptBusy={receiptBusy}
-            cartBusy={cartBusy}
-            onRefresh={() => void refreshSentOrders()}
-            onViewChange={(view) => {
-              if (view === sentView) return;
-              invalidateSentOrders();
-              closeSentOrderDetail();
-              setPayableOrder(null);
-              setSentOrders([]);
-              setSentView(view);
-            }}
-            onOpenOrder={(orderId) => void loadSentOrderDetail(orderId)}
-            onPayOrder={setPayableOrder}
-            onPrintPrebill={(orderId) => void printSentOrder(orderId)}
-            onPrintReceipt={(billId) => void printPaidSentOrder(billId)}
-          />
-          {serviceType === "DINE_IN" && (
-            <QrTableOrders key={table} tableNo={table} />
           )}
         </div>
         <div className="border-t border-border pt-5">
@@ -796,7 +739,6 @@ export default function CounterSalePage() {
               <Button
                 type="button"
                 size="lg"
-                aria-label="Pay"
                 disabled={
                   checkoutBusy ||
                   receiptBusy ||
@@ -830,32 +772,35 @@ export default function CounterSalePage() {
               Tarkista aiempi lähetys
             </Button>
           ) : null}
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              aria-label="Print Pre-bill"
-              disabled={summary.total <= 0 || checkoutBusy || receiptBusy}
-              onClick={() => void printBillBeforePay()}
-            >
-              <Printer aria-hidden="true" /> Esilasku
-            </Button>
-            {lastCompletedBillId ? (
+          <details className="mt-3">
+            <summary className="cursor-pointer rounded-md p-2 text-sm focus-visible:outline-2 focus-visible:outline-ring">
+              Kuitit ja esilasku
+            </summary>
+            <div className="mt-2 flex flex-wrap gap-2">
               <Button
                 type="button"
-                variant="outline"
+                variant="secondary"
                 size="sm"
-                aria-label={`Tulosta kuitti uudelleen #${lastCompletedBillId}`}
-                disabled={checkoutBusy || receiptBusy}
-                onClick={() => void reprintLastBill()}
+                aria-label="Tulosta esilasku"
+                disabled={summary.total <= 0 || checkoutBusy || receiptBusy}
+                onClick={() => void printBillBeforePay()}
               >
-                Tulosta #{lastCompletedBillId}
+                <Printer aria-hidden="true" /> Esilasku
               </Button>
-            ) : (
-              <span />
-            )}
-          </div>
+              {lastCompletedBillId ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  aria-label={`Tulosta kuitti uudelleen #${lastCompletedBillId}`}
+                  disabled={checkoutBusy || receiptBusy}
+                  onClick={() => void reprintLastBill()}
+                >
+                  Tulosta #{lastCompletedBillId}
+                </Button>
+              ) : null}
+            </div>
+          </details>
         </div>
       </aside>
 
@@ -866,7 +811,9 @@ export default function CounterSalePage() {
         saleTempDetails={saleTempDetails}
         tastes={tastes}
         sizes={sizes}
-        customizationBusy={customizationBusy}
+        // EN: Draft edits persist immediately and wait for a quote; keep the dialog locked until that request settles.
+        // FI: Luonnosmuutokset tallentuvat heti ja odottavat hinnoittelua; pidä ikkuna lukittuna pyynnön päättymiseen asti.
+        customizationBusy={customizationBusy || (draftMode && cartBusy)}
         checkoutBusy={checkoutBusy}
         onCreateDetail={() => void createSaleTempDetail()}
         onRemoveDetail={(saleTempDetailId) =>
@@ -883,7 +830,7 @@ export default function CounterSalePage() {
         }
       />
       {!customizationOpen ? (
-        <button type="button" aria-label="Add" className="sr-only" disabled />
+        <button type="button" aria-label="Lisää" className="sr-only" disabled />
       ) : null}
       {payableOrder ? (
         <CounterOrderCheckout
@@ -891,11 +838,9 @@ export default function CounterSalePage() {
           order={payableOrder}
           onClose={() => setPayableOrder(null)}
           onBusyChange={setCheckoutBusy}
-          onRefresh={() => refreshSentOrders()}
           onPaid={async (billId) => {
             setPayableOrder(null);
             setLastCompletedBillId(billId);
-            await refreshSentOrders();
             try {
               await printBillAfterPay(billId);
             } catch {
@@ -906,19 +851,6 @@ export default function CounterSalePage() {
           }}
         />
       ) : null}
-      <SentOrderDetails
-        key={selectedSentOrderId ?? "closed"}
-        orderId={selectedSentOrderId}
-        detail={sentOrderDetail}
-        error={sentOrderError}
-        cancelling={sentOrderCancelling}
-        onClose={closeSentOrderDetail}
-        onRetry={() => {
-          if (selectedSentOrderId !== null)
-            void loadSentOrderDetail(selectedSentOrderId);
-        }}
-        onCancel={(reason) => void cancelSentOrder(reason)}
-      />
       <CheckoutModal
         open={checkoutOpen}
         onOpenChange={setCheckoutOpen}
@@ -939,9 +871,7 @@ export default function CounterSalePage() {
         onReceivedAmountInput={(value) => {
           const nextAmount = Number(value);
           changeReceivedAmount(
-            Number.isSafeInteger(nextAmount) && nextAmount >= 0
-              ? nextAmount
-              : 0,
+            isEuroAmount(nextAmount) && nextAmount >= 0 ? nextAmount : 0,
           );
         }}
         onCompletePayment={() => void endSale()}
@@ -961,7 +891,7 @@ export default function CounterSalePage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => resolveConfirmation(false)}>
-              Cancel
+              Peruuta
             </AlertDialogCancel>
             <AlertDialogAction
               variant={confirmation?.destructive ? "destructive" : "default"}

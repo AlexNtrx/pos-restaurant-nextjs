@@ -7,6 +7,11 @@ vi.mock("@/lib/payments/table-payment-attempt", () => ({
   listPendingTablePayments: mocks.pending,
 }));
 vi.mock("@/lib/tables", () => ({ loadStaffTables: mocks.load }));
+vi.mock("@/app/backoffice/sale/_components/qr-table-orders", () => ({
+  default: ({ tableNo }: { tableNo: number }) => (
+    <div>Orders for table {tableNo}</div>
+  ),
+}));
 vi.mock("@/components/payments/table-session-checkout", () => ({
   default: ({ sessionId }: { sessionId: number }) => (
     <div>Pöydän maksu #{sessionId}</div>
@@ -21,9 +26,26 @@ beforeEach(() => {
   mocks.pending.mockReturnValue([]);
 });
 afterEach(cleanup);
+it("opens table orders on demand without loading every table's order stream", async () => {
+  const user = userEvent.setup();
+  render(<TablePaymentsPage />);
+  const details = await screen.findByRole("button", {
+    name: "Näytä tilaukset · Pöytä 4",
+  });
+  expect(screen.queryByText("Orders for table 4")).toBeNull();
+  await user.click(details);
+  expect(screen.getByText("Orders for table 4")).toBeTruthy();
+  expect(details.getAttribute("aria-expanded")).toBe("true");
+  await user.click(screen.getByRole("button", { name: "Sulje tiedot" }));
+  expect(screen.queryByText("Orders for table 4")).toBeNull();
+});
 it("opens existing table settlement from Kassa without QR or table administration", async () => {
   const user = userEvent.setup();
   render(<TablePaymentsPage />);
+  await user.click(
+    await screen.findByRole("button", { name: "Näytä tilaukset · Pöytä 4" }),
+  );
+  expect(screen.getByText("Orders for table 4")).toBeTruthy();
   await user.click(
     await screen.findByRole("button", { name: "Tarkista ja maksa" }),
   );

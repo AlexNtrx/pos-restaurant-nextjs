@@ -1,6 +1,8 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { staffOrderStatusLabels } from "@/lib/orders/presentation";
 import type { SentCounterOrder } from "@/lib/sale-contracts";
 export type SentOrderView = "active" | "history";
 type Props = {
@@ -9,6 +11,9 @@ type Props = {
   checkoutBusy: boolean;
   receiptBusy: boolean;
   cartBusy: boolean;
+  loading?: boolean;
+  error?: string;
+  filters: ReactNode;
   onRefresh: () => void;
   onViewChange: (view: SentOrderView) => void;
   onOpenOrder: (orderId: number) => void;
@@ -23,6 +28,9 @@ export function CounterSentOrdersList({
   checkoutBusy,
   receiptBusy,
   cartBusy,
+  loading = false,
+  error = "",
+  filters,
   onRefresh,
   onViewChange,
   onOpenOrder,
@@ -32,42 +40,53 @@ export function CounterSentOrdersList({
 }: Props) {
   return (
     <section
-      className="mt-6 border-t border-border pt-4"
-      aria-label="Sent orders"
+      className="overflow-hidden rounded-lg border border-border bg-surface"
+      aria-label="Lähetetyt tilaukset"
+      aria-busy={loading}
     >
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold">Keittiöön lähetetyt</h3>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          disabled={checkoutBusy}
-          onClick={onRefresh}
-        >
-          Päivitä
-        </Button>
-      </div>
-      <div
-        className="mt-3 flex gap-2"
-        role="group"
-        aria-label="Sent order view"
-      >
-        {(["active", "history"] as const).map((view) => (
+      {/* EN: Keep scope, view and refresh together; wrap the toolbar without shrinking touch targets. */}
+      {/* FI: Pidä rajaus, näkymä ja päivitys yhdessä; rivitä työkalupalkki pienentämättä kosketuskohteita. */}
+      <div className="flex flex-col gap-4 border-b border-border p-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between sm:p-5">
+        {filters}
+        <div className="flex items-center gap-3">
+          <div className="flex gap-2" role="group" aria-label="Tilausnäkymä">
+            {(["active", "history"] as const).map((view) => (
+              <Button
+                key={view}
+                type="button"
+                className="min-h-11"
+                variant={sentView === view ? "default" : "outline"}
+                aria-pressed={sentView === view}
+                disabled={checkoutBusy}
+                onClick={() => onViewChange(view)}
+              >
+                {view === "active" ? "Käynnissä" : "Historia"}
+              </Button>
+            ))}
+          </div>
           <Button
-            key={view}
             type="button"
-            size="sm"
-            variant={sentView === view ? "default" : "outline"}
-            aria-pressed={sentView === view}
+            variant="outline"
+            className="min-h-11"
             disabled={checkoutBusy}
-            onClick={() => onViewChange(view)}
+            onClick={onRefresh}
           >
-            {view === "active" ? "Käynnissä" : "Historia"}
+            Päivitä
           </Button>
-        ))}
+        </div>
       </div>
-      {sentOrders.length === 0 ? (
-        <p className="mt-3 text-xs text-muted-foreground">
+      {error && (
+        <p role="alert" className="p-4 text-sm text-destructive sm:p-5">
+          {error}
+        </p>
+      )}
+      {loading && (
+        <p role="status" className="p-6 text-sm text-muted-foreground">
+          Tilauksia ladataan…
+        </p>
+      )}
+      {!loading && !error && sentOrders.length === 0 ? (
+        <p className="flex min-h-40 items-center justify-center p-6 text-center text-sm text-muted-foreground">
           {sentView === "active"
             ? "Ei keskeneräisiä tilauksia."
             : "Ei päättyneitä tilauksia."}
@@ -76,35 +95,39 @@ export function CounterSentOrdersList({
       {sentOrders.map((order) => (
         <article
           key={order.id}
-          className="mt-3 rounded-md border border-border p-3 text-xs"
+          className="flex flex-col gap-3 border-b border-border p-4 text-sm last:border-b-0 sm:p-5 lg:flex-row lg:items-center lg:gap-6"
         >
           <button
             type="button"
-            className="w-full text-left hover:text-primary"
-            aria-label={`View Order #${order.id}`}
+            className="min-h-11 min-w-0 flex-1 rounded-sm text-left outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={`Näytä tilaus #${order.id}`}
+            disabled={checkoutBusy}
             onClick={() => onOpenOrder(order.id)}
           >
-            <span className="flex justify-between font-semibold">
-              <span>
+            <span className="flex flex-wrap justify-between gap-x-4 gap-y-1 font-semibold">
+              <span className="min-w-0 break-words">
                 {order.serviceType === "TAKEAWAY"
                   ? `Nouto #${order.id}`
                   : `#${order.id}`}{" "}
-                · {order.status}
+                ·{" "}
+                {staffOrderStatusLabels[
+                  order.status as keyof typeof staffOrderStatusLabels
+                ] ?? "Tila ei saatavilla"}
               </span>
-              <span>
+              <span className="shrink-0 tabular-nums">
                 {order.total.toLocaleString("fi-FI", {
                   minimumFractionDigits: 2,
                 })}{" "}
                 €
               </span>
             </span>
-            <span className="mt-1 block text-muted-foreground">
+            <span className="mt-1 block break-words text-muted-foreground">
               {order.Items.map(
                 (item) => `${item.quantity} × ${item.foodName}`,
               ).join(", ")}
             </span>
           </button>
-          <div className="mt-2 flex flex-wrap gap-2">
+          <div className="flex min-w-0 shrink-0 flex-wrap gap-2 lg:max-w-[45%]">
             {order.billSaleId === null &&
             !["REJECTED", "CANCELLED", "PAID", "COMPLETED"].includes(
               order.status,
@@ -113,7 +136,8 @@ export function CounterSentOrdersList({
                 <Button
                   type="button"
                   size="sm"
-                  aria-label={`Pay Order #${order.id}`}
+                  className="min-h-11"
+                  aria-label={`Maksa tilaus #${order.id}`}
                   disabled={checkoutBusy || receiptBusy || cartBusy}
                   onClick={() => onPayOrder(order)}
                 >
@@ -122,8 +146,9 @@ export function CounterSentOrdersList({
                 <Button
                   type="button"
                   size="sm"
+                  className="min-h-11"
                   variant="outline"
-                  aria-label={`Print Order #${order.id}`}
+                  aria-label={`Tulosta ennakkokuitti: tilaus #${order.id}`}
                   disabled={checkoutBusy || receiptBusy || cartBusy}
                   onClick={() => onPrintPrebill(order.id)}
                 >
@@ -134,8 +159,9 @@ export function CounterSentOrdersList({
               <Button
                 type="button"
                 size="sm"
+                className="min-h-11"
                 variant="outline"
-                aria-label={`Print paid Order #${order.id}`}
+                aria-label={`Tulosta kuitti: tilaus #${order.id}`}
                 disabled={checkoutBusy || receiptBusy}
                 onClick={() => onPrintReceipt(order.billSaleId!)}
               >

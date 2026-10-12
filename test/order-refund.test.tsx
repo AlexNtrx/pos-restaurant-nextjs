@@ -32,6 +32,26 @@ beforeEach(() => {
   vi.mocked(api.get).mockResolvedValue({ data: { result: null } });
 });
 afterEach(cleanup);
+it("loads a fractional refund without rounding and keeps explicit confirmation required", async () => {
+  vi.mocked(api.get).mockResolvedValue({
+    data: { result: { ...pending, amount: 40.2 } },
+  });
+  render(
+    <OrderRefund
+      order={{ ...order, status: "CANCELLED", total: 40.2 }}
+      onChanged={vi.fn()}
+    />,
+  );
+  await screen.findByText(/40,20/);
+  expect(
+    (
+      screen.getByRole("button", {
+        name: "Vahvista rahat palautetuiksi",
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+  expect(api.post).not.toHaveBeenCalled();
+});
 it("reuses the exact reservation after an uncertain response without claiming a refund succeeded", async () => {
   vi.mocked(api.post)
     .mockRejectedValueOnce(new Error("Connection failed"))

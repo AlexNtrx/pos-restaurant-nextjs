@@ -12,7 +12,10 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 function reportFixture(year: number, month: number, amounts: number[]) {
   const results = Array.from(
@@ -58,6 +61,21 @@ const displayedDate = (day: number) =>
   );
 
 describe("Päivämyynti report", () => {
+  it("initializes the selected period from Helsinki at the year boundary", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-12-31T22:30:00Z"));
+    api.post.mockImplementation(async (_path, { year, month }) => ({
+      data: reportFixture(year, month, []),
+    }));
+    render(<DailySalesReportPage />);
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/report/dailySales", {
+        year: 2027,
+        month: 1,
+      }),
+    );
+    expect(screen.getByText(/Päivä vaihtuu klo 00.00/)).toBeTruthy();
+  });
   it("shows the report breakdown and hides empty rows by default", async () => {
     api.post.mockImplementation(async (_path, { year, month }) => ({
       data: reportFixture(year, month, [100, 0, 300]),

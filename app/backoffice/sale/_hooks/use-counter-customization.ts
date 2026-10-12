@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
+import { getApiErrorMessage } from "@/lib/api-error";
 import api from "@/lib/api";
 import type {
   Taste,
@@ -11,7 +12,10 @@ import type useCounterDraft from "./use-counter-draft";
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 const errorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : "Unexpected error";
+  getApiErrorMessage(
+    error,
+    "Valintoja ei voitu päivittää. Tarkista tilauksen nykyiset valinnat.",
+  );
 
 export default function useCounterCustomization({
   checkoutBusy,
@@ -55,7 +59,7 @@ export default function useCounterCustomization({
         setSaleTempDetails(draftCart.detailsFor(item.Food.id));
       } catch (error) {
         setCustomizationOpen(false);
-        toast.error("Unable to load options", {
+        toast.error("Valintoja ei voitu ladata", {
           description: errorMessage(error),
         });
       } finally {
@@ -88,7 +92,7 @@ export default function useCounterCustomization({
       setTastes(foodType.tastes as Taste[]);
       setSizes(foodType.foodSizes as FoodSize[]);
     } catch (e: unknown) {
-      toast.error("Error", {
+      toast.error("Valintoja ei voitu päivittää", {
         description: errorMessage(e),
       });
     }
@@ -104,7 +108,7 @@ export default function useCounterCustomization({
       await refreshCart();
       await fetchDataSaleTempInfo(saleTempId);
     } catch (e: unknown) {
-      toast.error("Error", {
+      toast.error("Valintoja ei voitu päivittää", {
         description: errorMessage(e),
       });
     } finally {
@@ -133,7 +137,7 @@ export default function useCounterCustomization({
       await api.put("/saleTemp/selectTaste", payload);
       await fetchDataSaleTempInfo(saleTempId);
     } catch (e: unknown) {
-      toast.error("Error", {
+      toast.error("Valintoja ei voitu päivittää", {
         description: errorMessage(e),
       });
     } finally {
@@ -160,7 +164,7 @@ export default function useCounterCustomization({
       await api.put("/saleTemp/unSelectTaste", payload);
       await fetchDataSaleTempInfo(saleTempId);
     } catch (e: unknown) {
-      toast.error("Error", {
+      toast.error("Valintoja ei voitu päivittää", {
         description: errorMessage(e),
       });
     } finally {
@@ -190,7 +194,7 @@ export default function useCounterCustomization({
       await fetchDataSaleTempInfo(saleTempId);
       await refreshCart();
     } catch (e: unknown) {
-      toast.error("Error", {
+      toast.error("Valintoja ei voitu päivittää", {
         description: errorMessage(e),
       });
     } finally {
@@ -214,7 +218,7 @@ export default function useCounterCustomization({
       await refreshCart();
       await fetchDataSaleTempInfo(saleTempId);
     } catch (e: unknown) {
-      toast.error("Error", {
+      toast.error("Valintoja ei voitu päivittää", {
         description: errorMessage(e),
       });
     } finally {
@@ -250,7 +254,7 @@ export default function useCounterCustomization({
         await fetchDataSaleTempInfo(saleTempId);
       }
     } catch (e: unknown) {
-      toast.error("Error", {
+      toast.error("Valintoja ei voitu päivittää", {
         description: errorMessage(e),
       });
     } finally {

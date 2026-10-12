@@ -44,14 +44,14 @@ function isUserLevelResponse(data: unknown): data is { level: UserLevel } {
 // Loads verification error for the current workflow.
 function getVerificationError(error: unknown) {
   if (isAxiosError(error) && !error.response) {
-    return "Cannot connect to the API server. Your stored session was retained.";
+    return "Palvelimeen ei saada yhteyttä. Tarkista verkkoyhteys ja yritä uudelleen. Tallennettu istunto säilytettiin.";
   }
 
   if (error instanceof Error) {
-    return error.message;
+    return "Istuntoa ei voitu tarkistaa. Yritä uudelleen. Tallennettu istunto säilytettiin.";
   }
 
-  return "An unexpected error occurred while verifying your session.";
+  return "Istuntoa ei voitu tarkistaa. Yritä uudelleen. Tallennettu istunto säilytettiin.";
   // Renders the session boundary interface.
 }
 

@@ -3,6 +3,7 @@ import api from "@/lib/api";
 import { readStaffCatalog } from "@/lib/catalog-reads";
 import { changeOrderStatus, fetchOrderPages } from "@/lib/orders/client";
 import { type StaffOrder } from "@/lib/orders/contracts";
+import { hasValidMenuMoney } from "@/lib/catalog-contracts";
 
 export type WaiterCategory = {
   id: number;
@@ -28,7 +29,9 @@ export async function loadWaiterSetup(signal?: AbortSignal) {
       (data) => {
         const result = (data as { result?: { categories?: WaiterCategory[] } })
           ?.result;
-        return Array.isArray(result?.categories) ? result.categories : null;
+        return hasValidMenuMoney(result?.categories)
+          ? result!.categories!
+          : null;
       },
       signal,
     ),

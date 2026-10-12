@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { getApiErrorMessage } from "@/lib/api-error";
 import api from "@/lib/api";
 import { parseCheckoutResult } from "@/lib/sale-contracts";
 import { pendingRequestKey, assertPendingOwner } from "@/lib/pending-request";
@@ -13,8 +14,6 @@ import {
   type CheckoutAttempt,
   type DraftPendingAttempt,
 } from "../_lib/counter-attempt";
-const errorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : "Unexpected error";
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 const hasFinalHttpResponse = isMutationRejected;
@@ -45,7 +44,7 @@ export default function useCounterCheckout({
   setCheckoutBusy: (busy: boolean) => void;
   receiptBusy: boolean;
   refreshCart: () => Promise<{ summary: { total: number } } | null | undefined>;
-  refreshSentOrders: () => Promise<void>;
+  refreshSentOrders?: () => Promise<void>;
   requestConfirmation: (config: {
     title: string;
     description: string;
@@ -175,9 +174,9 @@ export default function useCounterCheckout({
         if (!refreshedCart || refreshedCart.summary.total <= 0) return;
 
         const confirmed = await requestConfirmation({
-          title: "Confirm payment",
-          description: `Server total: ${refreshedCart.summary.total.toLocaleString("th-TH")}`,
-          confirmLabel: "Confirm payment",
+          title: "Vahvista maksu",
+          description: `Maksettava: ${refreshedCart.summary.total.toLocaleString("fi-FI", { style: "currency", currency: "EUR" })}`,
+          confirmLabel: "Vahvista maksu",
         });
         if (!confirmed) return;
 
@@ -233,7 +232,7 @@ export default function useCounterCheckout({
           checkoutAttemptRef.current = null;
         } else {
           toast.warning(
-            "Sale completed, but the local draft could not be cleared. Retry payment to recover it.",
+            "Maksu tallennettiin, mutta tämän laitteen luonnosta ei voitu tyhjentää. Tarkista aiempi maksu samalla yrityksellä.",
           );
         }
       } else {
@@ -241,7 +240,7 @@ export default function useCounterCheckout({
         checkoutAttemptRef.current = null;
         await refreshCart();
       }
-      await refreshSentOrders();
+      await refreshSentOrders?.();
       if (serviceType === "TAKEAWAY" && completed.pickupNo)
         toast.success(`Nouto #${completed.pickupNo} lähetetty keittiöön`);
       else if (serviceType === "DINE_IN")
@@ -261,9 +260,19 @@ export default function useCounterCheckout({
         setCheckoutOpen(false);
         await refreshCart();
       }
-      toast.error("Checkout failed", {
-        description: errorMessage(e),
-      });
+      toast.error(
+        hasFinalHttpResponse(e)
+          ? "Maksua ei hyväksytty"
+          : "Maksun tilaa ei voitu vahvistaa",
+        {
+          description: getApiErrorMessage(
+            e,
+            hasFinalHttpResponse(e)
+              ? "Tarkista maksutiedot ennen jatkamista."
+              : "Älä aloita uutta maksua. Tarkista aiempi maksu samalla yrityksellä.",
+          ),
+        },
+      );
     } finally {
       checkoutInFlight.current = false;
       setCheckoutBusy(false);
@@ -288,17 +297,20 @@ export default function useCounterCheckout({
       if (cleared) clearDraftAttempt();
       else
         toast.warning(
-          "Order found, but the local draft could not be cleared. Retry recovery.",
+          "Tilaus löytyi, mutta tämän laitteen luonnosta ei voitu tyhjentää. Tarkista aiempi tilaus samalla yrityksellä.",
         );
-      await refreshSentOrders();
+      await refreshSentOrders?.();
       toast.success("Aiemmin lähetetty tilaus löytyi");
     } catch (error: unknown) {
       if (hasFinalHttpResponse(error)) {
         clearDraftAttempt();
         await draftCart.refreshCart();
       }
-      toast.error("Unable to recover earlier order", {
-        description: errorMessage(error),
+      toast.error("Aiempaa tilausta ei voitu tarkistaa", {
+        description: getApiErrorMessage(
+          error,
+          "Tarkista aiempi tilaus samalla yrityksellä ennen uuden aloittamista.",
+        ),
       });
     } finally {
       setCheckoutBusy(false);

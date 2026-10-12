@@ -5,12 +5,33 @@ import {
   isMonthlySalesResponse,
 } from "../lib/report-contracts.ts";
 import {
+  hasValidMenuMoney,
   isFood,
   isFoodCategory,
   isFoodSize,
   isTaste,
   parseResults,
 } from "../lib/catalog-contracts.ts";
+
+test("menu estimates reject malformed prices before arithmetic while accepting fractional EUR", () => {
+  const categories = [
+    { food: [{ price: 12.9 }], foodSizes: [{ moneyAdded: 0.5 }] },
+  ];
+  assert.equal(hasValidMenuMoney(categories), true);
+  assert.equal(
+    hasValidMenuMoney([{ food: [{ price: 0.001 }], foodSizes: [] }]),
+    false,
+  );
+  assert.equal(
+    hasValidMenuMoney([{ food: [{ price: "12.90" }], foodSizes: [] }]),
+    false,
+  );
+  assert.equal(
+    hasValidMenuMoney([{ food: [], foodSizes: [{ moneyAdded: -0.5 }] }]),
+    false,
+  );
+  assert.equal(hasValidMenuMoney(null), false);
+});
 
 const validDaily = {
   results: Array.from({ length: 31 }, (_, index) => ({
@@ -71,7 +92,7 @@ test("daily report validator rejects malformed rows and totals", () => {
   }
 });
 
-test("monthly report validator accepts only ordered, finite, non-negative data", () => {
+test("monthly report validator accepts only ordered, exact and reconciled data", () => {
   assert.equal(isMonthlySalesResponse(validMonthly), true);
   assert.equal(
     isMonthlySalesResponse({ ...validMonthly, totalAmount: -1 }),
@@ -99,6 +120,29 @@ test("monthly report validator accepts only ordered, finite, non-negative data",
     }),
     false,
   );
+});
+
+test("fractional daily and signed monthly nets reconcile using cents", () => {
+  const daily = structuredClone(validDaily);
+  daily.results[0].amount = -0.2;
+  daily.results[0].breakdown.grossAmount = 0.1;
+  daily.results[0].breakdown.refundedAmount = 0.3;
+  daily.totalAmount = -0.2;
+  daily.summary.grossAmount = 0.1;
+  daily.summary.refundedAmount = 0.3;
+  assert.equal(isDailySalesBreakdownResponse(daily, 2026, 8), true);
+  daily.totalAmount = 0.1 - 0.3;
+  assert.equal(isDailySalesBreakdownResponse(daily, 2026, 8), false);
+  const monthly = {
+    results: validMonthly.results.map((row, index) => ({
+      ...row,
+      amount: index === 0 ? -0.2 : 0,
+    })),
+    totalAmount: -0.2,
+  };
+  assert.equal(isMonthlySalesResponse(monthly), true);
+  monthly.results[1].amount = 0.201;
+  assert.equal(isMonthlySalesResponse(monthly), false);
 });
 
 const category = { id: 1, name: "Main", remark: "" };

@@ -1,3 +1,4 @@
+import { isEuroAmount, moneySum, moneyDifference } from "./money.ts";
 export type DailySalesRow = { date: string; amount: number };
 export type MonthlySalesRow = { month: string; amount: number };
 export type DailySalesBreakdown = {
@@ -28,13 +29,6 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
 // Validates is finite number before it is used.
-const isFiniteNumber = (value: unknown): value is number =>
-  typeof value === "number" && Number.isFinite(value);
-
-// Validates is finite non negative number before it is used.
-const isFiniteNonNegativeNumber = (value: unknown): value is number =>
-  isFiniteNumber(value) && value >= 0;
-
 const breakdownFields = [
   "grossAmount",
   "refundedAmount",
@@ -48,13 +42,15 @@ const breakdownFields = [
 
 const isDailyBreakdown = (value: unknown): value is DailySalesBreakdown =>
   isRecord(value) &&
-  breakdownFields.every(
-    (field) => Number.isSafeInteger(value[field]) && Number(value[field]) >= 0,
+  breakdownFields.every((field) =>
+    field.endsWith("Count")
+      ? Number.isSafeInteger(value[field]) && Number(value[field]) >= 0
+      : isEuroAmount(value[field]),
   );
 
 // EN: The expanded report must reconcile every day and period; missing breakdowns are errors, never invented zero refunds.
 // FI: Laajennetun raportin jokaisen päivän ja jakson summien on täsmättävä; puuttuvat erittelyt ovat virheitä, eivät oletettuja nollapalautuksia.
-export const isDailySalesBreakdownResponse = (
+const validateDailySalesBreakdown = (
   value: unknown,
   year: number,
   month: number,
@@ -68,7 +64,7 @@ export const isDailySalesBreakdownResponse = (
     month > 12 ||
     !isRecord(value) ||
     !Array.isArray(value.results) ||
-    !Number.isSafeInteger(value.totalAmount) ||
+    !isEuroAmount(value.totalAmount, true) ||
     !isDailyBreakdown(value.summary)
   )
     return false;
@@ -86,23 +82,42 @@ export const isDailySalesBreakdownResponse = (
     if (
       !isRecord(row) ||
       row.date !== date ||
-      !Number.isSafeInteger(row.amount) ||
+      !isEuroAmount(row.amount, true) ||
       !isDailyBreakdown(row.breakdown) ||
-      row.amount !== row.breakdown.grossAmount - row.breakdown.refundedAmount
+      row.amount !==
+        moneyDifference(row.breakdown.grossAmount, row.breakdown.refundedAmount)
     )
       return false;
-    net += Number(row.amount);
-    for (const field of breakdownFields) totals[field] += row.breakdown[field];
+    net = moneySum([net, row.amount]);
+    for (const field of breakdownFields)
+      totals[field] = field.endsWith("Count")
+        ? totals[field] + row.breakdown[field]
+        : moneySum([totals[field], row.breakdown[field]]);
   }
   return (
-    Number.isSafeInteger(net) &&
+    isEuroAmount(net, true) &&
     net === value.totalAmount &&
     breakdownFields.every(
       (field) =>
-        Number.isSafeInteger(totals[field]) && totals[field] === summary[field],
+        (field.endsWith("Count")
+          ? Number.isSafeInteger(totals[field])
+          : isEuroAmount(totals[field])) && totals[field] === summary[field],
     ) &&
-    value.totalAmount === summary.grossAmount - summary.refundedAmount
+    value.totalAmount ===
+      moneyDifference(summary.grossAmount, summary.refundedAmount)
   );
+};
+
+export const isDailySalesBreakdownResponse = (
+  value: unknown,
+  year: number,
+  month: number,
+): value is DailySalesBreakdownResponse => {
+  try {
+    return validateDailySalesBreakdown(value, year, month);
+  } catch {
+    return false;
+  }
 };
 
 // Validates is monthly sales response before it is used.
@@ -111,17 +126,26 @@ export const isMonthlySalesResponse = (
 ): value is MonthlySalesResponse => {
   if (
     !isRecord(value) ||
-    !isFiniteNonNegativeNumber(value.totalAmount) ||
+    !isEuroAmount(value.totalAmount, true) ||
     !Array.isArray(value.results) ||
     value.results.length !== 12
   ) {
     return false;
   }
 
-  return value.results.every(
+  const valid = value.results.every(
     (item, index) =>
       isRecord(item) &&
       item.month === String(index + 1).padStart(2, "0") &&
-      isFiniteNonNegativeNumber(item.amount),
+      isEuroAmount(item.amount, true),
   );
+  if (!valid) return false;
+  try {
+    return (
+      moneySum(value.results.map((row) => row.amount as number)) ===
+      value.totalAmount
+    );
+  } catch {
+    return false;
+  }
 };

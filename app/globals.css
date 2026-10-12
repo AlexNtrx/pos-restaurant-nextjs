@@ -95,12 +95,6 @@ body {
   }
 }
 
-/* EN: Counter content is full-bleed inside the unchanged shared staff shell. */
-/* FI: Kassan sisältö ulottuu reunoihin muuttumattoman jaetun henkilökuntakehyksen sisällä. */
-body:has(.counter-pos) #main-content {
-  padding: 0 !important;
-}
-
 .daily-sales-report .daily-zero-control-header {
   display: none !important;
 }

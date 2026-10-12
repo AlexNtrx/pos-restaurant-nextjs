@@ -1,12 +1,15 @@
 import { Button } from "@/components/ui/button";
 import type { StaffOrder } from "@/lib/orders/contracts";
 import { canCancelOrder } from "../_lib/can-cancel-order";
+import { staffOrderStatusLabels } from "@/lib/orders/presentation";
 const orderStages = [
-  { status: "SUBMITTED", label: "Saapunut" },
-  { status: "CONFIRMED", label: "Vahvistettu" },
-  { status: "PREPARING", label: "Valmistelussa" },
+  { status: "SUBMITTED", label: staffOrderStatusLabels.SUBMITTED },
+  { status: "CONFIRMED", label: staffOrderStatusLabels.CONFIRMED },
+  { status: "PREPARING", label: staffOrderStatusLabels.PREPARING },
+  // EN: The kitchen-to-table progress step keeps its short contextual label; the order summary shows the full status.
+  // FI: Keittiöstä pöytään -etenemisvaihe säilyttää lyhyen kontekstikohtaisen nimen; tilauksen yhteenveto näyttää koko tilan.
   { status: "READY", label: "Valmis" },
-  { status: "SERVED", label: "Tarjoiltu" },
+  { status: "SERVED", label: staffOrderStatusLabels.SERVED },
 ] as const;
 
 export function OrderTracking({
@@ -51,11 +54,7 @@ export function OrderTracking({
                         ? "Tarjoilija"
                         : "Kassa"}
                     {" · "}
-                    {order.status === "SUBMITTED"
-                      ? "Odottaa vahvistusta"
-                      : orderStages.find(
-                          (stage) => stage.status === order.status,
-                        )?.label}
+                    {staffOrderStatusLabels[order.status]}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -63,6 +62,7 @@ export function OrderTracking({
                     <Button
                       type="button"
                       size="sm"
+                      className="min-h-11"
                       disabled={workingId !== null}
                       onClick={() => onServe(order)}
                     >
@@ -75,6 +75,7 @@ export function OrderTracking({
                     <Button
                       type="button"
                       size="sm"
+                      className="min-h-11"
                       variant="outline"
                       disabled={workingId !== null}
                       onClick={() => onCancel(order)}
@@ -98,7 +99,7 @@ export function OrderTracking({
                       aria-current={
                         stage.status === order.status ? "step" : undefined
                       }
-                      className={`rounded-md border px-1 py-2 ${
+                      className={`min-w-0 rounded-md border px-1 py-2 break-words ${
                         index === currentIndex
                           ? "border-primary bg-primary/10 font-semibold text-foreground"
                           : index < currentIndex

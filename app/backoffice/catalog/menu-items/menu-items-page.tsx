@@ -172,6 +172,8 @@ export default function MenuItemsPage() {
     remark,
     price,
     foodKind,
+    taxCategory,
+    setTaxCategory,
     currentImage,
     currentDetailImage,
     selectedFile,
@@ -253,12 +255,13 @@ export default function MenuItemsPage() {
         onOpenChange={setEditorOpen}
         editing={editingFood !== null}
         saving={isSaving}
-        draft={{ foodTypeId, name, price, foodKind, remark }}
+        draft={{ foodTypeId, name, price, foodKind, taxCategory, remark }}
         onDraftChange={{
           foodTypeId: setFoodTypeId,
           name: setName,
           price: setPrice,
           foodKind: setFoodKind,
+          taxCategory: setTaxCategory,
           remark: setRemark,
         }}
         categories={categories}

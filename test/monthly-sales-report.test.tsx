@@ -52,9 +52,23 @@ beforeEach(() => {
   vi.clearAllMocks();
   api.post.mockResolvedValue({ data: report });
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 describe("Kuukausimyynti report", () => {
+  it("selects Helsinki's year even while UTC is still in the previous year", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-12-31T22:30:00Z"));
+    render(<MonthlySalesRoute />);
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/report/sumMonthly", {
+        year: 2027,
+      }),
+    );
+    expect(screen.getByText(/kassavirtaraportti/)).toBeTruthy();
+  });
   it.each(["success", "failure"])(
     "ignores a stale year's %s after the selected report has loaded",
     async (outcome) => {

@@ -1,4 +1,6 @@
 "use client";
+import { getApiErrorMessage } from "@/lib/api-error";
+import { isEuroAmount } from "@/lib/money";
 
 import { useEffect, useRef, useState } from "react";
 import { isMutationRejected } from "@/lib/mutation-outcome";
@@ -26,7 +28,7 @@ type Props = {
   onClose: () => void;
   onPaid: (billId: number) => Promise<void>;
   onBusyChange: (busy: boolean) => void;
-  onRefresh: () => Promise<void>;
+  onRefresh?: () => Promise<void>;
 };
 
 export default function CounterOrderCheckout({
@@ -109,8 +111,8 @@ export default function CounterOrderCheckout({
         await onPaid(result.billId);
       } catch {
         onClose();
-        toast.warning("Sale completed", {
-          description: `Bill ${result.billId} was saved. Reopen its receipt from sale history.`,
+        toast.warning("Maksu vahvistettu", {
+          description: `Kuitti #${result.billId} on tallennettu. Avaa kuitti myyntihistoriasta.`,
         });
       }
     } catch (error: unknown) {
@@ -121,16 +123,19 @@ export default function CounterOrderCheckout({
         attempt.current = null;
         setUncertain(false);
         onClose();
-        await onRefresh();
+        await onRefresh?.();
       } else {
         setUncertain(attempt.current !== null);
       }
       toast.error(
-        rejected ? "Order payment rejected" : "Payment result unknown",
+        rejected ? "Maksua ei hyväksytty" : "Maksun tilaa ei voitu vahvistaa",
         {
-          description: rejected
-            ? "Refresh the order and check its status, version and payment details."
-            : "Retry this payment with the same details to retrieve its result.",
+          description: getApiErrorMessage(
+            error,
+            rejected
+              ? "Päivitä tilaus ja tarkista sen tila sekä maksutiedot."
+              : "Tarkista aiempi maksu samalla yrityksellä. Älä aloita uutta maksua.",
+          ),
         },
       );
     } finally {
@@ -161,7 +166,7 @@ export default function CounterOrderCheckout({
       onChangeReceivedAmount={setReceived}
       onReceivedAmountInput={(value) => {
         const amount = Number(value);
-        setReceived(Number.isSafeInteger(amount) && amount >= 0 ? amount : 0);
+        setReceived(isEuroAmount(amount) && amount >= 0 ? amount : 0);
       }}
       onCompletePayment={() => void pay()}
     />

@@ -1,4 +1,5 @@
 "use client";
+import { moneySum } from "@/lib/money";
 
 import FoodPhoto, { originalImageUrl } from "@/components/catalog/food-photo";
 import {
@@ -70,8 +71,10 @@ export function QrMenuItemDetails({
           <div className="flex items-center justify-between gap-3">
             <p className="min-w-0 font-semibold">
               {qrMoney(
-                detailsFood.price +
-                  (detailsSelection.selectedSize?.moneyAdded ?? 0),
+                moneySum([
+                  detailsFood.price,
+                  detailsSelection.selectedSize?.moneyAdded ?? 0,
+                ]),
               )}
             </p>
             {ordering && (

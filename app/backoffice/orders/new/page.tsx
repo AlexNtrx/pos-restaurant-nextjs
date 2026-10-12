@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import CounterSalePage from "../../sale/page";
 
-export default function NewOrderCompatibilityRoute() {
-  redirect("/backoffice/sale");
+export default function NewOrderPage() {
+  return <CounterSalePage />;
 }

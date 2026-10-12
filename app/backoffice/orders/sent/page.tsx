@@ -1,0 +1,220 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
+import ReceiptPreview from "@/components/receipts/receipt-preview";
+import {
+  listPendingCounterPayments,
+  type SavedCounterPayment,
+} from "@/lib/counter-payment";
+import type { SentCounterOrder } from "@/lib/sale-contracts";
+import useCounterSentOrders from "../../sale/_hooks/use-counter-sent-orders";
+import useCounterReceipts from "../../sale/_hooks/use-counter-receipts";
+import { CounterSentOrdersList } from "../../sale/_components/counter-sent-orders-list";
+import CounterOrderCheckout from "../../sale/_components/counter-order-checkout";
+import SentOrderDetails from "../../sale/_components/sent-order-details";
+import type { DraftScope } from "../../sale/_hooks/use-counter-draft";
+
+export default function SentOrdersPage() {
+  // EN: These filters are independent of the persisted, unsent cashier cart.
+  // FI: Nämä suodattimet ovat riippumattomia tallennetusta, lähettämättömästä kassan ostoskorista.
+  const [table, setTable] = useState(1);
+  const [serviceType, setServiceType] = useState<"DINE_IN" | "TAKEAWAY">(
+    "DINE_IN",
+  );
+  const scope: DraftScope = serviceType === "TAKEAWAY" ? "TAKEAWAY" : table;
+  const orders = useCounterSentOrders(scope);
+  const receipts = useCounterReceipts();
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [payableOrder, setPayableOrder] = useState<SentCounterOrder | null>(
+    null,
+  );
+  const [lastBillId, setLastBillId] = useState<number | null>(null);
+  const [pending, setPending] = useState<SavedCounterPayment[]>([]);
+  const [pendingError, setPendingError] = useState("");
+  const busy =
+    checkoutBusy || receipts.receiptBusy || orders.sentOrderCancelling;
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        setPending(listPendingCounterPayments());
+        setPendingError("");
+      } catch {
+        setPendingError(
+          "Tallennettuja maksuja ei voitu lukea. Tarkista maksujen tila ennen uutta yritystä.",
+        );
+      }
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [checkoutBusy]);
+
+  const resetList = () => {
+    orders.invalidateSentOrders();
+    orders.closeSentOrderDetail();
+    orders.setSentOrders([]);
+    setPayableOrder(null);
+  };
+
+  return (
+    <div className="min-w-0 max-w-6xl space-y-5">
+      <PageHeader title="Keittiöön lähetetyt" />
+      {pendingError && (
+        <p role="alert" className="text-destructive">
+          {pendingError}
+        </p>
+      )}
+      {pending.length > 0 && (
+        <section
+          aria-label="Epäselvät tilausmaksut"
+          className="space-y-2 rounded-lg border p-4"
+        >
+          <p>
+            Tarkista aiemman maksun tulos alkuperäisillä tiedoilla ennen uutta
+            yritystä.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {pending.map((saved) => (
+              <Button
+                key={saved.order.id}
+                disabled={busy}
+                onClick={() => setPayableOrder(saved.order)}
+              >
+                Tarkista maksu #{saved.order.id}
+              </Button>
+            ))}
+          </div>
+        </section>
+      )}
+      {lastBillId !== null && (
+        <div
+          role="status"
+          className="flex flex-wrap items-center gap-3 rounded-lg border p-3"
+        >
+          <span>Maksu tallennettu · kuitti #{lastBillId}</span>
+          <Button
+            variant="outline"
+            disabled={busy}
+            onClick={() => void receipts.printPaidSentOrder(lastBillId)}
+          >
+            Tulosta kuitti uudelleen #{lastBillId}
+          </Button>
+        </div>
+      )}
+      <CounterSentOrdersList
+        filters={
+          <div className="flex flex-wrap items-end gap-4">
+            <div
+              role="group"
+              aria-label="Tilaustapa"
+              className="flex flex-wrap gap-2"
+            >
+              {(["DINE_IN", "TAKEAWAY"] as const).map((type) => (
+                <Button
+                  className="min-h-11"
+                  key={type}
+                  variant={serviceType === type ? "default" : "outline"}
+                  aria-pressed={serviceType === type}
+                  disabled={busy}
+                  onClick={() => {
+                    if (serviceType === type) return;
+                    resetList();
+                    orders.setSentView("active");
+                    setServiceType(type);
+                  }}
+                >
+                  {type === "DINE_IN" ? "Paikan päällä" : "Mukaan"}
+                </Button>
+              ))}
+            </div>
+            {serviceType === "DINE_IN" && (
+              <div className="w-32">
+                <label htmlFor="sent-table" className="text-sm">
+                  Pöytä
+                </label>
+                <Input
+                  className="h-11"
+                  id="sent-table"
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={Number.isFinite(table) ? table : ""}
+                  disabled={busy}
+                  onChange={(event) => {
+                    resetList();
+                    orders.setSentView("active");
+                    setTable(Number(event.target.value));
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        }
+        sentOrders={orders.sentOrders}
+        sentView={orders.sentView}
+        checkoutBusy={busy}
+        receiptBusy={receipts.receiptBusy}
+        cartBusy={orders.sentLoading}
+        loading={orders.sentLoading}
+        error={orders.sentListError}
+        onRefresh={() => void orders.refreshSentOrders()}
+        onViewChange={(view) => {
+          if (view === orders.sentView) return;
+          resetList();
+          orders.setSentView(view);
+        }}
+        onOpenOrder={(id) => void orders.loadSentOrderDetail(id)}
+        onPayOrder={setPayableOrder}
+        onPrintPrebill={(id) => void receipts.printSentOrder(id)}
+        onPrintReceipt={(id) => void receipts.printPaidSentOrder(id)}
+      />
+      {payableOrder && (
+        <CounterOrderCheckout
+          key={payableOrder.id}
+          order={payableOrder}
+          onClose={() => setPayableOrder(null)}
+          onBusyChange={setCheckoutBusy}
+          onRefresh={orders.refreshSentOrders}
+          onPaid={async (billId) => {
+            setPayableOrder(null);
+            setLastBillId(billId);
+            await orders.refreshSentOrders();
+            try {
+              await receipts.printBillAfterPay(billId);
+            } catch {
+              toast.warning("Maksu tallennettu", {
+                description: `Kuitti #${billId} tallennettiin. Yritä avata kuitti uudelleen.`,
+              });
+            }
+          }}
+        />
+      )}
+      <SentOrderDetails
+        key={orders.selectedSentOrderId ?? "closed"}
+        orderId={orders.selectedSentOrderId}
+        detail={orders.sentOrderDetail}
+        error={orders.sentOrderError}
+        cancelling={orders.sentOrderCancelling}
+        onClose={orders.closeSentOrderDetail}
+        onRetry={() => {
+          if (orders.selectedSentOrderId !== null)
+            void orders.loadSentOrderDetail(orders.selectedSentOrderId);
+        }}
+        onCancel={(reason) => void orders.cancelSentOrder(reason)}
+      />
+      <ReceiptPreview
+        billUrl={receipts.billUrl}
+        kind={receipts.receiptKind}
+        onClose={receipts.closeReceipt}
+        lastCompletedBillId={receipts.receiptBillId}
+        onReprint={() => {
+          if (receipts.receiptBillId !== null)
+            void receipts.printPaidSentOrder(receipts.receiptBillId);
+        }}
+      />
+    </div>
+  );
+}

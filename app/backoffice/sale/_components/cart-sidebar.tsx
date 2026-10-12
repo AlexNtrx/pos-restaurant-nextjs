@@ -14,6 +14,11 @@ type CartSidebarProps = {
   onCustomize: (item: SaleTemp) => void;
 };
 
+// EN: Keep compact mouse controls on desktop and larger targets on tablets or any touch-capable device.
+// FI: Säilytä tiiviit hiiriohjaimet työpöydällä ja suuremmat kosketuskohteet tableteilla tai kosketusta tukevilla laitteilla.
+const touchIconClassName =
+  "size-11 xl:size-8 [@media(any-pointer:coarse)]:size-11";
+
 export default function CartSidebar({
   items,
   cartBusy,
@@ -61,12 +66,13 @@ export default function CartSidebar({
             </strong>
           </div>
           <div className="mt-3 flex items-center justify-between gap-2">
-            <div className="flex h-8 items-center rounded-md border border-border bg-surface">
+            <div className="flex items-center rounded-md border border-border bg-surface">
               <Button
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                aria-label={`Decrease ${item.Food.name}`}
+                className={touchIconClassName}
+                aria-label={`Vähennä määrää: ${item.Food.name}`}
                 disabled={item.qty <= 1 || cartBusy || checkoutBusy}
                 onClick={() => onQuantityChange(item.id, item.qty - 1)}
               >
@@ -79,7 +85,8 @@ export default function CartSidebar({
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                aria-label={`Increase ${item.Food.name}`}
+                className={touchIconClassName}
+                aria-label={`Lisää määrää: ${item.Food.name}`}
                 disabled={cartBusy || checkoutBusy}
                 onClick={() => onQuantityChange(item.id, item.qty + 1)}
               >
@@ -91,7 +98,8 @@ export default function CartSidebar({
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                aria-label="Customize"
+                className={touchIconClassName}
+                aria-label="Muokkaa valintoja"
                 disabled={
                   unpriced || cartBusy || customizationBusy || checkoutBusy
                 }
@@ -103,10 +111,10 @@ export default function CartSidebar({
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                aria-label="Remove"
+                aria-label="Poista tuote"
                 disabled={cartBusy || checkoutBusy}
                 onClick={() => onRemove(item.id)}
-                className="text-destructive hover:text-destructive"
+                className={`${touchIconClassName} text-destructive hover:text-destructive`}
               >
                 <Trash2 aria-hidden="true" />
               </Button>

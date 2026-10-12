@@ -1,3 +1,4 @@
+import { isEuroAmount } from "@/lib/money";
 import "client-only";
 import type { QrCartItem, QrPending } from "./contracts";
 const storageKey = (token: string, name: string) => `qr02:${token}:${name}`;
@@ -47,7 +48,7 @@ export const readQrPending = (token: string): QrPending | null => {
     typeof parsed.idempotencyKey === "string" &&
     !!parsed.idempotencyKey &&
     "expectedTotal" in parsed &&
-    Number.isSafeInteger(parsed.expectedTotal) &&
+    isEuroAmount(parsed.expectedTotal) &&
     Number(parsed.expectedTotal) >= 0 &&
     "items" in parsed &&
     Array.isArray(parsed.items) &&

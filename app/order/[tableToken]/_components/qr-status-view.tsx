@@ -95,7 +95,7 @@ export function QrStatusView({
   const terminalError = ["REJECTED", "CANCELLED"].includes(order.status);
   const statusLabel: Record<string, string> = {
     SUBMITTED: "Vastaanotettu",
-    CONFIRMED: "Vahvistettu",
+    CONFIRMED: "Keittiön jonossa",
     PREPARING: "Valmistelussa",
     READY: "Valmis",
     SERVED: "Tarjoiltu",

@@ -13,6 +13,7 @@ import {
   assertPendingOwner,
 } from "@/lib/pending-request";
 import type { StaffOrderDetail } from "@/lib/orders/contracts";
+import { isEuroAmount } from "@/lib/money";
 
 type Refund = {
   id: number;
@@ -54,7 +55,7 @@ function parseRefund(value: unknown): Refund {
   if (
     !Number.isSafeInteger(item.id) ||
     typeof item.amount !== "number" ||
-    !Number.isSafeInteger(item.amount) ||
+    !isEuroAmount(item.amount) ||
     item.amount < 0 ||
     !["cash", "bank"].includes(String(item.method)) ||
     !["PENDING", "FAILED", "COMPLETED"].includes(String(item.status)) ||

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { staffOrderStatusLabels } from "@/lib/orders/presentation";
 import { isAxiosError } from "axios";
 import { ClipboardList, Plus, ReceiptText } from "lucide-react";
 import { useCallback, useState } from "react";
@@ -20,6 +21,7 @@ import {
 } from "@/components/ui/table";
 import api from "@/lib/api";
 import { getApiErrorMessage, isPermissionDeniedError } from "@/lib/api-error";
+import { isEuroAmount } from "@/lib/money";
 
 const operationalMetrics = [
   { key: "activeOrders", title: "Avoimet tilaukset" },
@@ -49,17 +51,6 @@ const localTime = new Intl.DateTimeFormat("fi-FI", {
   dateStyle: "short",
   timeStyle: "short",
 });
-const statusLabels: Record<string, string> = {
-  SUBMITTED: "Odottaa",
-  CONFIRMED: "Vahvistettu",
-  REJECTED: "Hylätty",
-  PREPARING: "Valmistetaan",
-  READY: "Valmis",
-  SERVED: "Tarjoiltu",
-  PAID: "Maksettu",
-  COMPLETED: "Valmis",
-  CANCELLED: "Peruttu",
-};
 
 function isOperations(value: unknown): value is Operations {
   if (!value || typeof value !== "object") return false;
@@ -88,7 +79,7 @@ function isOperations(value: unknown): value is Operations {
       (Number.isSafeInteger((order as DashboardOrder).tableNo) ||
         ((order as DashboardOrder).channel === "COUNTER" &&
           (order as DashboardOrder).tableNo === null)) &&
-      Number.isFinite((order as DashboardOrder).total) &&
+      isEuroAmount((order as DashboardOrder).total) &&
       typeof (order as DashboardOrder).submittedAt === "string" &&
       Number.isFinite(Date.parse((order as DashboardOrder).submittedAt)),
   );
@@ -250,7 +241,9 @@ export default function Dashboard() {
                       <TableCell>{order.tableNo ?? "Mukaan"}</TableCell>
                       <TableCell>{currency.format(order.total)}</TableCell>
                       <TableCell className="pr-6">
-                        {statusLabels[order.status] ?? order.status}
+                        {staffOrderStatusLabels[
+                          order.status as keyof typeof staffOrderStatusLabels
+                        ] ?? "Tila ei saatavilla"}
                       </TableCell>
                     </TableRow>
                   ))}

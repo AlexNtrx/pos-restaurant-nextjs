@@ -2,6 +2,7 @@
 
 import { Menu, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -14,6 +15,8 @@ import type { UserLevel } from "@/lib/access-control";
 import api from "@/lib/api";
 
 import Sidebar from "./sidebar";
+import { WorkspaceNavigation } from "./workspace-navigation";
+import type { ConnectionCheck } from "./connection-status";
 
 type StaffShellProps = {
   children: React.ReactNode;
@@ -36,11 +39,20 @@ export default function StaffShell({
   name,
   userLevel,
 }: StaffShellProps) {
+  const pathname = usePathname();
+  // EN: Decide padding from the route, not delayed child markup, to avoid doubled navigation insets during transitions.
+  // FI: Päätä sisävälit reitin eikä viiveellä latautuvan lapsisisällön perusteella, jotta navigoinnin sisävälit eivät kaksinkertaistu siirtymissä.
+  const counterPage =
+    pathname === "/backoffice/sale" || pathname === "/backoffice/orders/new";
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [qrMode, setQrMode] = useState<
     "DISABLED" | "MENU_ONLY" | "ORDERING" | null
   >(null);
   const qrModeVersionRef = useRef(0);
+  const [connection, setConnection] = useState<ConnectionCheck>({
+    state: "checking",
+    checkedAt: null,
+  });
 
   useEffect(() => {
     let active = true;
@@ -50,6 +62,10 @@ export default function StaffShell({
     // FI: Päivitä kaikkien työntekijöiden laitteet näkyvissä ja palattaessa ilman päällekkäisiä lukuja tai uudemman paikallisen tilamuutoksen korvaamista.
     const refreshMode = async () => {
       if (!active || request || document.visibilityState === "hidden") return;
+      if (!navigator.onLine) {
+        setConnection({ state: "offline", checkedAt: null });
+        return;
+      }
       const controller = new AbortController();
       request = controller;
       const version = qrModeVersionRef.current;
@@ -58,14 +74,33 @@ export default function StaffShell({
           signal: controller.signal,
         });
         const mode = data?.result?.mode;
+        // EN: Only a valid server read is evidence; an online browser or a local QR-mode event never proves server availability.
+        // FI: Vain kelvollinen palvelinluku on näyttöä; selaimen verkkotila tai paikallinen QR-tilatapahtuma ei todista palvelimen saatavuutta.
+        if (active)
+          setConnection({
+            state: !navigator.onLine
+              ? "offline"
+              : ["DISABLED", "MENU_ONLY", "ORDERING"].includes(mode)
+                ? "verified"
+                : "unavailable",
+            checkedAt: Date.now(),
+          });
         if (active && version === qrModeVersionRef.current) {
           setQrMode(
-            mode === "DISABLED" || mode === "MENU_ONLY" || mode === "ORDERING"
+            navigator.onLine &&
+              (mode === "DISABLED" ||
+                mode === "MENU_ONLY" ||
+                mode === "ORDERING")
               ? mode
               : null,
           );
         }
       } catch {
+        if (active)
+          setConnection({
+            state: navigator.onLine ? "unavailable" : "offline",
+            checkedAt: null,
+          });
         if (active && version === qrModeVersionRef.current) setQrMode(null);
       } finally {
         if (request === controller) request = null;
@@ -73,15 +108,27 @@ export default function StaffShell({
     };
 
     const onReturn = () => void refreshMode();
+    const onNetworkChange = () => {
+      setConnection({
+        state: navigator.onLine ? "checking" : "offline",
+        checkedAt: null,
+      });
+      if (!navigator.onLine) setQrMode(null);
+      else void refreshMode();
+    };
     void refreshMode();
     const interval = window.setInterval(onReturn, 30_000);
     window.addEventListener("focus", onReturn);
+    window.addEventListener("online", onNetworkChange);
+    window.addEventListener("offline", onNetworkChange);
     document.addEventListener("visibilitychange", onReturn);
     return () => {
       active = false;
       request?.abort();
       window.clearInterval(interval);
       window.removeEventListener("focus", onReturn);
+      window.removeEventListener("online", onNetworkChange);
+      window.removeEventListener("offline", onNetworkChange);
       document.removeEventListener("visibilitychange", onReturn);
     };
   }, [userLevel]);
@@ -113,10 +160,21 @@ export default function StaffShell({
       {/* EN: Keep desktop rails attached to the viewport while long legacy pages continue scrolling in the document. */}
       {/* FI: Pidä työpöydän sivupalkit kiinni näkymässä, kun pitkät legacy-sivut vierivät edelleen dokumentissa. */}
       <div className="sticky top-0 hidden h-dvh self-start md:block xl:hidden">
-        <Sidebar name={name} userLevel={userLevel} qrMode={qrMode} collapsed />
+        <Sidebar
+          name={name}
+          userLevel={userLevel}
+          qrMode={qrMode}
+          connection={connection}
+          collapsed
+        />
       </div>
       <div className="sticky top-0 hidden h-dvh self-start xl:block">
-        <Sidebar name={name} userLevel={userLevel} qrMode={qrMode} />
+        <Sidebar
+          name={name}
+          userLevel={userLevel}
+          qrMode={qrMode}
+          connection={connection}
+        />
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -146,8 +204,9 @@ export default function StaffShell({
 
         <main
           id="main-content"
-          className="min-w-0 flex-1 overflow-x-hidden bg-canvas px-[16px] py-[20px] sm:px-6 md:pt-8 md:pr-10 md:pb-10 md:pl-8 xl:px-12 xl:pt-12 xl:pb-16"
+          className={`min-w-0 flex-1 overflow-x-hidden bg-canvas ${counterPage ? "p-0" : "px-[16px] py-[20px] sm:px-6 md:pt-8 md:pr-10 md:pb-10 md:pl-8 xl:px-12 xl:pt-12 xl:pb-16"}`}
         >
+          <WorkspaceNavigation userLevel={userLevel} />
           {children}
         </main>
       </div>
@@ -177,6 +236,7 @@ export default function StaffShell({
             name={name}
             userLevel={userLevel}
             qrMode={qrMode}
+            connection={connection}
             mobile
             onNavigate={() => setMobileNavigationOpen(false)}
           />
