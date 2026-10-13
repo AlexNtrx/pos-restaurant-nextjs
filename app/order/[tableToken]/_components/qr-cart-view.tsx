@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { moneySum, moneyMultiply } from "@/lib/money";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { QrItemNote } from "./qr-menu-controls";
 import { isMutationRejected } from "@/lib/mutation-outcome";
 import { pathFor } from "./qr-navigation";
 import {
@@ -30,6 +31,7 @@ export function QrCartView({ token, menu }: { token: string; menu: QrMenu }) {
   const [confirmedOrderId, setConfirmedOrderId] = useState<number | null>(null);
   const inFlight = useRef(false);
   const [error, setError] = useState("");
+  const [draftError, setDraftError] = useState("");
   const rows = cart.map((item, index) => {
     const category = menu.categories.find((row) =>
       row.food.some((food) => food.id === item.foodId),
@@ -56,6 +58,19 @@ export function QrCartView({ token, menu }: { token: string; menu: QrMenu }) {
       (row.item.tasteId && !row.taste),
   );
   const total = moneySum(rows.map((row) => row.total));
+  // EN: Retain unsaved edits in memory and disable menu navigation and new submission until storage recovers.
+  // FI: Säilytä tallentamattomat muutokset muistissa ja estä ruokalistalle siirtyminen ja uusi lähetys, kunnes tallennus toimii.
+  const persistCart = (next: QrCartItem[]) => {
+    setCart(next);
+    try {
+      writeQrCart(token, next);
+      setDraftError("");
+    } catch {
+      setDraftError(
+        "Ostoskorin muutoksia ei voitu tallentaa tälle laitteelle. Säilytä tämä sivu auki ja yritä tallentaa uudelleen.",
+      );
+    }
+  };
   const change = (index: number, quantity: number) => {
     if (inFlight.current || pending || confirmedOrderId) return;
     const next = cart.flatMap((item, itemIndex) =>
@@ -66,12 +81,23 @@ export function QrCartView({ token, menu }: { token: string; menu: QrMenu }) {
           : [],
     );
     if (next.reduce((sum, item) => sum + item.quantity, 0) > 200) return;
-    setCart(next);
-    writeQrCart(token, next);
+    persistCart(next);
+  };
+  // EN: Edit only this draft line; identical options must not merge portions with different notes or alter a saved request.
+  // FI: Muokkaa vain tätä luonnosriviä; samat valinnat eivät saa yhdistää eri huomautusten annoksia tai muuttaa tallennettua pyyntöä.
+  const changeNote = (index: number, note: string) => {
+    if (inFlight.current || pending || confirmedOrderId || note.length > 500)
+      return;
+    persistCart(
+      cart.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, note } : item,
+      ),
+    );
   };
   const submit = async () => {
     if (
       inFlight.current ||
+      (!pending && !!draftError) ||
       (confirmedOrderId && !error) ||
       (!pending && (missing || menu.state !== "ORDERING"))
     )
@@ -127,7 +153,7 @@ export function QrCartView({ token, menu }: { token: string; menu: QrMenu }) {
       <Button
         variant="secondary"
         className="mb-5 min-h-11 bg-gray-200 px-4 text-gray-900 hover:bg-gray-300"
-        disabled={busy || confirmedOrderId !== null}
+        disabled={busy || confirmedOrderId !== null || !!draftError}
         onClick={() => router.push(pathFor(token))}
       >
         ← Ruokalista
@@ -136,9 +162,11 @@ export function QrCartView({ token, menu }: { token: string; menu: QrMenu }) {
       <p className="mt-1 text-sm text-muted-foreground">
         Tarkista tilaus ennen lähettämistä pöytään P{menu.tableNo}.
       </p>
-      <p className="mt-2 text-xs text-muted-foreground">
-        Voit muuttaa huomautuksia palaamalla ruokalistaan.
-      </p>
+      {!pending && !busy && !confirmedOrderId && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Voit muuttaa huomautuksia suoraan tuotteiden kohdalla.
+        </p>
+      )}
       <div className="mt-6 space-y-3">
         {rows.length === 0 && (
           <p className="rounded-lg border border-border bg-surface p-5 text-sm">
@@ -161,11 +189,19 @@ export function QrCartView({ token, menu }: { token: string; menu: QrMenu }) {
             <p className="mt-1 text-xs text-muted-foreground">
               {[row.size?.name, row.taste?.name].filter(Boolean).join(" · ")}
             </p>
-            {row.item.note && (
+            {!pending && !busy && !confirmedOrderId ? (
+              <QrItemNote
+                id={`qr-cart-note-${row.index}`}
+                foodName={`${row.food?.name || "tuote"}, rivi ${row.index + 1}`}
+                value={row.item.note}
+                onChange={(value) => changeNote(row.index, value)}
+                fullPreview
+              />
+            ) : row.item.note ? (
               <p className="mt-2 whitespace-pre-wrap break-words text-sm text-olive">
                 Huomautus keittiölle: {row.item.note}
               </p>
-            )}
+            ) : null}
             {!pending && !busy && !confirmedOrderId && (
               <div className="mt-3 flex items-center gap-3">
                 <Button
@@ -200,6 +236,18 @@ export function QrCartView({ token, menu }: { token: string; menu: QrMenu }) {
           </article>
         ))}
       </div>
+      {draftError && (
+        <div role="alert" className="mt-4 space-y-2 text-sm text-destructive">
+          <p>{draftError}</p>
+          <Button
+            variant="outline"
+            className="min-h-11"
+            onClick={() => persistCart(cart)}
+          >
+            Tallenna ostoskori uudelleen
+          </Button>
+        </div>
+      )}
       {missing && !pending && !confirmedOrderId && (
         <p role="alert" className="mt-4 text-sm text-destructive">
           Jokin tuote tai valinta ei ole enää saatavilla. Poista se
@@ -270,6 +318,7 @@ export function QrCartView({ token, menu }: { token: string; menu: QrMenu }) {
         className="mt-6 h-12 w-full"
         disabled={
           busy ||
+          (!pending && !!draftError) ||
           (confirmedOrderId !== null && !error) ||
           (!pending && (!cart.length || missing || menu.state !== "ORDERING"))
         }

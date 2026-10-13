@@ -15,12 +15,14 @@ export function QrItemNote({
   value,
   onChange,
   disabled = false,
+  fullPreview = false,
 }: {
   id: string;
   foodName: string;
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;
+  fullPreview?: boolean;
 }) {
   // EN: Collapsing changes visibility only; the note draft stays in the parent state.
   // FI: Sulkeminen muuttaa vain näkyvyyttä; huomautusluonnos säilyy ylemmän komponentin tilassa.
@@ -47,7 +49,9 @@ export function QrItemNote({
         />
       </Button>
       {!expanded && value.trim() && (
-        <p className="line-clamp-2 whitespace-pre-wrap break-words text-xs text-olive">
+        <p
+          className={`whitespace-pre-wrap break-words text-olive ${fullPreview ? "text-sm" : "line-clamp-2 text-xs"}`}
+        >
           {value}
         </p>
       )}
