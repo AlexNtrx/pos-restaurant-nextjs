@@ -171,6 +171,7 @@ export function QrCartView({ token, menu }: { token: string; menu: QrMenu }) {
                 <Button
                   variant="outline"
                   size="icon"
+                  className="size-11"
                   aria-label={`Vähennä ${row.food?.name || "tuote"}`}
                   onClick={() => change(row.index, row.item.quantity - 1)}
                 >
@@ -180,6 +181,7 @@ export function QrCartView({ token, menu }: { token: string; menu: QrMenu }) {
                 <Button
                   variant="outline"
                   size="icon"
+                  className="size-11"
                   aria-label={`Lisää ${row.food?.name || "tuote"}`}
                   onClick={() => change(row.index, row.item.quantity + 1)}
                 >
@@ -188,7 +190,7 @@ export function QrCartView({ token, menu }: { token: string; menu: QrMenu }) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="ml-auto"
+                  className="ml-auto h-auto min-h-11 min-w-11"
                   onClick={() => change(row.index, 0)}
                 >
                   Poista
