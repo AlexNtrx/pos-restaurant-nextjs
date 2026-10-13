@@ -1295,6 +1295,8 @@ describe("POS safety net", () => {
       JSON.stringify([{ id: 1, foodId: 1, foodSizeId: null, tasteId: null }]),
     );
     let checkoutCalls = 0;
+    let rejectCheckout!: (error: Error) => void;
+    let resolveCheckout!: (response: unknown) => void;
     api.post.mockImplementation((path: string) => {
       if (path === "/counterOrder/quote")
         return Promise.resolve({
@@ -1319,15 +1321,11 @@ describe("POS safety net", () => {
       if (path === "/counterOrder/checkout") {
         checkoutCalls += 1;
         return checkoutCalls === 1
-          ? Promise.reject(new Error("network lost"))
-          : Promise.resolve({
-              data: {
-                billId: 305,
-                amount: 25,
-                inputMoney: 25,
-                returnMoney: 0,
-                replayed: true,
-              },
+          ? new Promise((_resolve, reject) => {
+              rejectCheckout = reject;
+            })
+          : new Promise((resolve) => {
+              resolveCheckout = resolve;
             });
       }
       return Promise.reject(new Error("receipt unavailable"));
@@ -1349,6 +1347,21 @@ describe("POS safety net", () => {
       }),
     );
     await waitFor(() => expect(checkoutCalls).toBe(1));
+    expect(
+      screen.getAllByText("Maksua käsitellään. Odota vahvistusta."),
+    ).toHaveLength(2);
+    expect(screen.queryByText(/Maksun tulos on epävarma/)).toBeNull();
+    expect(screen.queryByText(/aiemman maksun epäselvän/)).toBeNull();
+    expect(
+      (screen.getByRole("button", { name: "Maksa" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    await act(async () => rejectCheckout(new Error("network lost")));
+    expect(await screen.findByText(/Maksun tulos on epävarma/)).toBeTruthy();
+    expect(screen.getByText(/aiemman maksun epäselvän/)).toBeTruthy();
+    expect(
+      screen.queryByText("Maksua käsitellään. Odota vahvistusta."),
+    ).toBeNull();
     expect(localStorage.getItem("counter-draft:v1:7:1:attempt")).toContain(
       "draft-retry-key",
     );
@@ -1361,12 +1374,29 @@ describe("POS safety net", () => {
       expect((retry as HTMLButtonElement).disabled).toBe(false),
     );
     fireEvent.click(retry);
+    expect(screen.getByText(/Maksun tulos on epävarma/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /^Maksa$/i }));
     await waitFor(() => expect(checkoutCalls).toBe(2));
+    expect(
+      screen.getAllByText("Maksua käsitellään. Odota vahvistusta."),
+    ).toHaveLength(2);
+    expect(screen.queryByText(/Maksun tulos on epävarma/)).toBeNull();
+    expect(screen.queryByText(/aiemman maksun epäselvän/)).toBeNull();
     const requests = api.post.mock.calls.filter(
       ([path]) => path === "/counterOrder/checkout",
     );
     expect(requests[0][1]).toEqual(requests[1][1]);
+    await act(async () =>
+      resolveCheckout({
+        data: {
+          billId: 305,
+          amount: 25,
+          inputMoney: 25,
+          returnMoney: 0,
+          replayed: true,
+        },
+      }),
+    );
     await waitFor(() => {
       expect(localStorage.getItem("counter-draft:v1:7:1")).toBeNull();
       expect(localStorage.getItem("counter-draft:v1:7:1:attempt")).toBeNull();
@@ -1375,6 +1405,33 @@ describe("POS safety net", () => {
       "/saleTemp/endSale",
       expect.anything(),
     );
+  });
+
+  it("keeps corrupt Counter Order recovery locked without claiming a payment is processing", async () => {
+    localStorage.setItem(
+      "pending-request:v1:7:counter-order:81",
+      "invalid-json",
+    );
+    render(
+      <CounterOrderCheckout
+        order={servedCounterOrder}
+        onClose={vi.fn()}
+        onPaid={vi.fn()}
+        onBusyChange={vi.fn()}
+      />,
+    );
+    expect(await screen.findByRole("alert")).toHaveProperty(
+      "textContent",
+      expect.stringContaining("Tallennettu maksuyritys on virheellinen"),
+    );
+    expect(
+      screen.queryByText("Maksua käsitellään. Odota vahvistusta."),
+    ).toBeNull();
+    expect(
+      (screen.getByRole("button", { name: "Maksa" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(api.post).not.toHaveBeenCalled();
   });
 
   it("unlocks a draft when an old unpaid kitchen attempt was never committed", async () => {
@@ -1547,6 +1604,7 @@ describe("POS safety net", () => {
 
   it("locks uncertain cash payment details and retries the identical Order payload without double submission", async () => {
     let rejectPayment!: (error: Error) => void;
+    let resolveRetry!: (response: unknown) => void;
     api.post.mockImplementationOnce(
       () =>
         new Promise((_resolve, reject) => {
@@ -1576,6 +1634,10 @@ describe("POS safety net", () => {
     fireEvent.click(complete);
     fireEvent.click(complete);
     expect(api.post).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByText("Maksua käsitellään. Odota vahvistusta."),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Maksun tulos on epävarma/)).toBeNull();
     rejectPayment(new Error("connection lost after commit"));
     await screen.findByText(/Maksun tulos on epävarma/);
     expect(
@@ -1592,9 +1654,12 @@ describe("POS safety net", () => {
       (screen.getByRole("button", { name: "Peruuta" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
-    api.post.mockResolvedValueOnce({
-      data: { billId: 202, amount: 80, inputMoney: 100, returnMoney: 20 },
-    });
+    api.post.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveRetry = resolve;
+        }),
+    );
     view.unmount();
     render(
       <CounterOrderCheckout
@@ -1610,6 +1675,16 @@ describe("POS safety net", () => {
       expect((retry as HTMLButtonElement).disabled).toBe(false),
     );
     fireEvent.click(retry);
+    expect(
+      screen.getByText("Maksua käsitellään. Odota vahvistusta."),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Maksun tulos on epävarma/)).toBeNull();
+    expect((retry as HTMLButtonElement).disabled).toBe(true);
+    await act(async () =>
+      resolveRetry({
+        data: { billId: 202, amount: 80, inputMoney: 100, returnMoney: 20 },
+      }),
+    );
     await waitFor(() => expect(onPaid).toHaveBeenCalledWith(202));
     expect(api.post.mock.calls[0]).toEqual(api.post.mock.calls[1]);
     expect(api.post.mock.calls[1][1]).toEqual({

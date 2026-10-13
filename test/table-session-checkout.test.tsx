@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   render,
   screen,
@@ -163,6 +164,14 @@ describe("PAY-01 table checkout", () => {
   });
 
   it("recovers the exact saved request after reload, even if the table has closed", async () => {
+    let resolvePayment!: (response: unknown) => void;
+    post.mockImplementation((path: string) =>
+      path === "/table-sessions/28/settle"
+        ? new Promise((resolve) => {
+            resolvePayment = resolve;
+          })
+        : Promise.reject(new Error("Receipt unavailable")),
+    );
     const saved = {
       tableNo: 12,
       orders: [
@@ -190,6 +199,7 @@ describe("PAY-01 table checkout", () => {
     const payment = await screen.findByRole("dialog", {
       name: "Pöytä 12 · maksu",
     });
+    expect(within(payment).getByText(/Maksun tulos on epävarma/)).toBeTruthy();
     expect(
       (
         within(payment).getByRole("button", {
@@ -203,6 +213,25 @@ describe("PAY-01 table checkout", () => {
         orders: saved.orders,
         idempotencyKey: saved.idempotencyKey,
         payType: "bank",
+      }),
+    );
+    expect(within(payment).getByRole("status").textContent).toBe(
+      "Maksua käsitellään. Odota vahvistusta.",
+    );
+    expect(within(payment).queryByText(/Maksun tulos on epävarma/)).toBeNull();
+    expect(
+      (
+        within(payment).getByRole("button", {
+          name: "Maksa",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(localStorage.getItem("table-payment:v1:7:28")).toBe(
+      JSON.stringify(saved),
+    );
+    await act(async () =>
+      resolvePayment({
+        data: { billId: 91, amount: 80, inputMoney: 80, returnMoney: 0 },
       }),
     );
     expect(localStorage.getItem("table-payment:v1:7:28")).toBeNull();

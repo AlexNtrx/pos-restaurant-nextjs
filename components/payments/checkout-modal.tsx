@@ -25,6 +25,9 @@ type CheckoutModalProps = {
   payType: "cash" | "bank";
   receivedAmount: number;
   checkoutBusy: boolean;
+  // EN: Processing copy follows the request, while checkoutBusy may also lock invalid recovery data.
+  // FI: Käsittelyteksti seuraa pyyntöä; checkoutBusy voi myös lukita virheelliset palautustiedot.
+  paymentProcessing?: boolean;
   receiptBusy: boolean;
   onSelectPaymentType: (payType: "cash" | "bank") => void;
   onChangeReceivedAmount: (amount: number) => void;
@@ -47,6 +50,7 @@ export default function CheckoutModal({
   payType,
   receivedAmount,
   checkoutBusy,
+  paymentProcessing = checkoutBusy,
   receiptBusy,
   onSelectPaymentType,
   onChangeReceivedAmount,
@@ -107,10 +111,12 @@ export default function CheckoutModal({
           <DialogTitle className="font-sans !text-xl !leading-6">
             {title ?? `Maksu${orderId ? ` · #${orderId}` : ""}`}
           </DialogTitle>
-          <DialogDescription>
-            {paymentDetailsLocked
-              ? "Maksun tulos on epävarma. Yritä uudelleen samoilla tiedoilla."
-              : "Tarkista summa ja valitse maksutapa."}
+          <DialogDescription role="status">
+            {paymentProcessing
+              ? "Maksua käsitellään. Odota vahvistusta."
+              : paymentDetailsLocked
+                ? "Maksun tulos on epävarma. Yritä uudelleen samoilla tiedoilla."
+                : "Tarkista summa ja valitse maksutapa."}
           </DialogDescription>
         </DialogHeader>
         {errorMessage && (
@@ -261,7 +267,7 @@ export default function CheckoutModal({
             }
             onClick={onCompletePayment}
           >
-            {checkoutBusy ? "Käsitellään…" : "Maksa"}
+            {paymentProcessing ? "Käsitellään…" : "Maksa"}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -513,7 +513,9 @@ export default function CounterSalePage() {
           >
             {draftPending.kind === "kitchen"
               ? "Luonnos on lukittu aiemman keittiölähetyksen epäselvän tuloksen vuoksi. Valitse Tarkista aiempi lähetys."
-              : "Luonnos on lukittu aiemman maksun epäselvän tuloksen vuoksi. Valitse Tarkista aiempi maksu ja yritä uudelleen alkuperäisillä maksutiedoilla."}
+              : checkoutBusy
+                ? "Maksua käsitellään. Odota vahvistusta."
+                : "Luonnos on lukittu aiemman maksun epäselvän tuloksen vuoksi. Valitse Tarkista aiempi maksu ja yritä uudelleen alkuperäisillä maksutiedoilla."}
           </p>
         )}
         {pendingCounterPayments.length > 0 || otherPendingScopes.length > 0 ? (
@@ -864,6 +866,7 @@ export default function CounterSalePage() {
         payType={payType}
         receivedAmount={receivedAmount}
         checkoutBusy={checkoutBusy || invalidDraftAttempt}
+        paymentProcessing={checkoutBusy}
         receiptBusy={receiptBusy}
         paymentDetailsLocked={draftPending !== null}
         onSelectPaymentType={selectPaymentType}

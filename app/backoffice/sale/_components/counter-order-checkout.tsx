@@ -156,6 +156,7 @@ export default function CounterOrderCheckout({
       payType={payType}
       receivedAmount={received}
       checkoutBusy={busy || !ready || !!storageError}
+      paymentProcessing={busy}
       receiptBusy={false}
       paymentDetailsLocked={uncertain}
       errorMessage={storageError}
