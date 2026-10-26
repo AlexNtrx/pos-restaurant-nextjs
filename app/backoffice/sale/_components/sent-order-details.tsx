@@ -33,11 +33,13 @@ type Props = {
   detail: StaffOrderDetail | null;
   error: string;
   cancelling: boolean;
+  serving: boolean;
   refundBusy: boolean;
   initialCancelOpen?: boolean;
   onClose: () => void;
   onRetry: () => void;
   onCancel: (reason: string) => void;
+  onServe: () => void;
   onRefundChanged: () => Promise<void>;
   onRefundBusyChange: (busy: boolean) => void;
 };
@@ -47,11 +49,13 @@ export default function SentOrderDetails({
   detail,
   error,
   cancelling,
+  serving,
   refundBusy,
   initialCancelOpen = false,
   onClose,
   onRetry,
   onCancel,
+  onServe,
   onRefundChanged,
   onRefundBusyChange,
 }: Props) {
@@ -67,7 +71,9 @@ export default function SentOrderDetails({
   return (
     <Dialog
       open={orderId !== null}
-      onOpenChange={(open) => !open && !cancelling && !refundBusy && onClose()}
+      onOpenChange={(open) =>
+        !open && !cancelling && !serving && !refundBusy && onClose()
+      }
     >
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
@@ -113,7 +119,16 @@ export default function SentOrderDetails({
                 </p>
               ))}
             </div>
-
+            {detail.status === "READY" && (
+              <Button
+                type="button"
+                className="min-h-11"
+                disabled={serving || cancelling}
+                onClick={onServe}
+              >
+                {serving ? "Tallennetaan…" : "Merkitse tarjoilluksi"}
+              </Button>
+            )}
             {canCancel && !cancelOpen && (
               <Button
                 type="button"

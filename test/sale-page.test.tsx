@@ -679,6 +679,193 @@ describe("POS safety net", () => {
     );
   });
 
+  it.each([
+    ["DINE_IN", "SERVED", null, "detail"],
+    ["DINE_IN", "COMPLETED", 44, "detail"],
+    ["TAKEAWAY", "COMPLETED", 44, "detail"],
+    ["DINE_IN", "SERVED", null, "row"],
+    ["DINE_IN", "COMPLETED", 44, "row"],
+    ["TAKEAWAY", "COMPLETED", 44, "row"],
+  ] as const)(
+    "serves a READY %s Counter order and accepts saved %s (bill %s, %s action)",
+    async (serviceType, savedStatus, billSaleId, entry) => {
+      let status = "READY";
+      const readyDetail = {
+        ...sentDetail,
+        serviceType,
+        status,
+        version: 4,
+        paidAt: billSaleId ? "2026-09-23T12:03:00.000Z" : null,
+      };
+      api.get.mockImplementation((path: string) => {
+        if (path === "/counterOrder/sent")
+          return Promise.resolve({
+            data: {
+              results:
+                status === "COMPLETED"
+                  ? []
+                  : [
+                      {
+                        ...servedCounterOrder,
+                        serviceType,
+                        status,
+                        version: 4,
+                        billSaleId,
+                      },
+                    ],
+            },
+          });
+        if (path === "/counterOrder/81" || path === "/orders/81")
+          return Promise.resolve({ data: { result: readyDetail } });
+        return Promise.resolve({ data: { results: [] } });
+      });
+      let finish!: () => void;
+      api.patch.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finish = () => {
+              status = savedStatus;
+              resolve({
+                data: { result: { ...readyDetail, status, version: 5 } },
+              });
+            };
+          }),
+      );
+      render(<SentOrdersPage />);
+      if (serviceType === "TAKEAWAY")
+        fireEvent.click(screen.getByRole("button", { name: "Mukaan" }));
+      if (entry === "row") {
+        const serve = await screen.findByRole("button", {
+          name: "Merkitse tarjoilluksi: tilaus #81",
+        });
+        fireEvent.click(serve);
+        fireEvent.click(serve);
+        expect((serve as HTMLButtonElement).disabled).toBe(true);
+        expect(
+          (
+            screen.getByRole("button", {
+              name: "Mukaan",
+            }) as HTMLButtonElement
+          ).disabled,
+        ).toBe(true);
+        expect(api.patch).toHaveBeenCalledTimes(1);
+        expect(api.patch).toHaveBeenCalledWith("/orders/81/serve", {
+          expectedVersion: 4,
+        });
+        expect(api.get).not.toHaveBeenCalledWith("/counterOrder/81");
+        await act(async () => finish());
+        await waitFor(() =>
+          expect(toast.success).toHaveBeenCalledWith(
+            "Tilaus #81 merkitty tarjoilluksi",
+          ),
+        );
+        expect(
+          screen.queryByRole("button", {
+            name: "Merkitse tarjoilluksi: tilaus #81",
+          }),
+        ).toBeNull();
+        if (savedStatus === "COMPLETED")
+          expect(
+            screen.queryByRole("button", { name: "Näytä tilaus #81" }),
+          ).toBeNull();
+        else
+          expect(
+            screen.getByRole("button", { name: "Maksa tilaus #81" }),
+          ).toBeTruthy();
+        return;
+      }
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Näytä tilaus #81" }),
+      );
+      const dialog = await screen.findByRole("dialog");
+      fireEvent.click(
+        await within(dialog).findByRole("button", {
+          name: "Merkitse tarjoilluksi",
+        }),
+      );
+      expect(
+        (
+          within(dialog).getByRole("button", {
+            name: "Tallennetaan…",
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(true);
+      expect(api.patch).toHaveBeenCalledTimes(1);
+      expect(api.patch).toHaveBeenCalledWith("/orders/81/serve", {
+        expectedVersion: 4,
+      });
+      await act(async () => finish());
+      await waitFor(() =>
+        expect(toast.success).toHaveBeenCalledWith(
+          "Tilaus #81 merkitty tarjoilluksi",
+        ),
+      );
+      expect(
+        within(dialog).queryByRole("button", { name: "Merkitse tarjoilluksi" }),
+      ).toBeNull();
+      expect(
+        within(dialog).getByText(
+          savedStatus === "COMPLETED" ? "Päätetty" : "Tarjoiltu",
+          { exact: true },
+        ),
+      ).toBeTruthy();
+    },
+  );
+
+  it.each(["row", "detail"])(
+    "reloads a Counter order after serving conflicts from the %s without claiming success",
+    async (entry) => {
+      let status = "READY";
+      api.get.mockImplementation((path: string) => {
+        if (path === "/counterOrder/sent")
+          return Promise.resolve({
+            data: { results: [{ ...servedCounterOrder, status }] },
+          });
+        if (path === "/counterOrder/81")
+          return Promise.resolve({
+            data: { result: { ...sentDetail, status, version: 4 } },
+          });
+        return Promise.resolve({ data: { results: [] } });
+      });
+      api.patch.mockImplementation(async () => {
+        status = "SERVED";
+        throw {
+          isAxiosError: true,
+          response: {
+            status: 409,
+            data: { code: "ORDER_CONFLICT", error: "Order changed" },
+          },
+        };
+      });
+      render(<SentOrdersPage />);
+      if (entry === "row")
+        fireEvent.click(
+          await screen.findByRole("button", {
+            name: "Merkitse tarjoilluksi: tilaus #81",
+          }),
+        );
+      else {
+        fireEvent.click(
+          await screen.findByRole("button", { name: "Näytä tilaus #81" }),
+        );
+        fireEvent.click(
+          await within(await screen.findByRole("dialog")).findByRole("button", {
+            name: "Merkitse tarjoilluksi",
+          }),
+        );
+      }
+      const dialog = await screen.findByRole("dialog");
+      expect(await within(dialog).findByRole("alert")).toBeTruthy();
+      expect(
+        within(dialog).getByText("Tarjoiltu", { exact: true }),
+      ).toBeTruthy();
+      expect(
+        within(dialog).queryByRole("button", { name: "Merkitse tarjoilluksi" }),
+      ).toBeNull();
+      expect(toast.success).not.toHaveBeenCalled();
+    },
+  );
+
   it("does not offer cancellation after preparation or payment", async () => {
     for (const detail of [
       { ...sentDetail, status: "PREPARING" },

@@ -10,10 +10,14 @@ import {
 } from "@/lib/sale-contracts";
 import type { StaffOrderDetail } from "@/lib/orders/contracts";
 import { fetchOrderDetail } from "@/lib/orders/client";
+import { notifyReadyOrdersChanged } from "@/lib/ready-orders";
 import type { DraftScope } from "./use-counter-draft";
 import type { SentOrderView } from "../_components/counter-sent-orders-list";
 
-export default function useCounterSentOrders(draftScope: DraftScope) {
+export default function useCounterSentOrders(
+  draftScope: DraftScope,
+  enabled = true,
+) {
   const [sentOrders, setSentOrders] = useState<SentCounterOrder[]>([]);
   const [sentLoading, setSentLoading] = useState(true);
   const [sentListError, setSentListError] = useState("");
@@ -25,6 +29,8 @@ export default function useCounterSentOrders(draftScope: DraftScope) {
     useState<StaffOrderDetail | null>(null);
   const [sentOrderError, setSentOrderError] = useState("");
   const [sentOrderCancelling, setSentOrderCancelling] = useState(false);
+  const [sentOrderServing, setSentOrderServing] = useState(false);
+  const serveInFlight = useRef(false);
   const pendingRequestId = useRef(0);
   const sentDetailRequestId = useRef(0);
   const [sentForbidden, setSentForbidden] = useState(false);
@@ -83,7 +89,7 @@ export default function useCounterSentOrders(draftScope: DraftScope) {
   );
   const refreshSentOrders = usePolling(pollSentOrders, {
     intervalMs: 10_000,
-    enabled: !sentForbidden,
+    enabled: enabled && !sentForbidden,
   });
 
   const loadSentOrderDetail = async (
@@ -122,8 +128,8 @@ export default function useCounterSentOrders(draftScope: DraftScope) {
     setSentOrderError("");
   };
 
-  // EN: Preserve the pending refund UI while rereading receipt metadata.
-  // FI: Säilytä odottavan palautuksen näkymä kuitin tietoja luettaessa uudelleen.
+  // EN: Keep the refund component mounted while refreshing so its pending request and manual confirmation remain intact.
+  // FI: Pidä palautuskomponentti asennettuna päivityksen ajan, jotta odottava pyyntö ja käsin tehtävä vahvistus säilyvät.
   const refreshSelectedSentOrder = async () => {
     if (selectedSentOrderId === null) return;
     await Promise.all([
@@ -133,7 +139,8 @@ export default function useCounterSentOrders(draftScope: DraftScope) {
   };
 
   const cancelSentOrder = async (reason: string) => {
-    if (!sentOrderDetail || sentOrderCancelling) return;
+    if (!sentOrderDetail || sentOrderCancelling || serveInFlight.current)
+      return;
     const orderId = sentOrderDetail.id;
     setSentOrderCancelling(true);
     setSentOrderError("");
@@ -165,6 +172,73 @@ export default function useCounterSentOrders(draftScope: DraftScope) {
   const invalidateSentOrders = () => {
     pendingRequestId.current += 1;
   };
+
+  // EN: Serve the saved version once and reread after errors instead of guessing an uncertain outcome.
+  // FI: Tarjoile tallennettu versio kerran ja lue tiedot virheen jälkeen uudelleen epävarman tuloksen arvaamisen sijaan.
+  const serveSentOrder = async (
+    selectedOrder: Pick<
+      SentCounterOrder,
+      "id" | "version" | "status"
+    > | null = sentOrderDetail,
+  ) => {
+    if (
+      !selectedOrder ||
+      selectedOrder.status !== "READY" ||
+      sentOrderCancelling ||
+      serveInFlight.current
+    )
+      return;
+    // EN: A row action sends its displayed version; the server rejects stale stages or versions.
+    // FI: Rivitoiminto lähettää näytetyn version; palvelin hylkää vanhentuneet tilat tai versiot.
+    const order = selectedOrder;
+    serveInFlight.current = true;
+    setSentOrderServing(true);
+    setSentOrderError("");
+    try {
+      const response = await api.patch<{ result: StaffOrderDetail }>(
+        `/orders/${order.id}/serve`,
+        { expectedVersion: order.version },
+      );
+      const result = response.data?.result;
+      if (
+        !result ||
+        result.id !== order.id ||
+        !Number.isSafeInteger(result.version) ||
+        result.version <= order.version ||
+        !["SERVED", "COMPLETED"].includes(result.status) ||
+        !Array.isArray(result.history)
+      )
+        throw new Error("Palvelin palautti virheellisen tarjoilutilan.");
+      // EN: Serving a prepaid Counter order also completes it; only the server decides the saved status.
+      // FI: Ennakkoon maksetun kassatilauksen tarjoilu myös päättää sen; vain palvelin päättää tallennetun tilan.
+      pendingRequestId.current += 1;
+      if (selectedSentOrderId === order.id) setSentOrderDetail(result);
+      setSentOrders((current) =>
+        current.flatMap((item) =>
+          item.id !== order.id
+            ? [item]
+            : result.status === "COMPLETED"
+              ? []
+              : [{ ...item, status: result.status, version: result.version }],
+        ),
+      );
+      toast.success(`Tilaus #${order.id} merkitty tarjoilluksi`);
+      notifyReadyOrdersChanged();
+    } catch (error: unknown) {
+      await loadSentOrderDetail(order.id);
+      setSentOrderError(
+        getApiErrorMessage(
+          error,
+          "Tarjoilua ei voitu vahvistaa. Tarkista tilauksen tila.",
+        ),
+      );
+    } finally {
+      serveInFlight.current = false;
+      setSentOrderServing(false);
+      void refreshSentOrders();
+    }
+  };
+
   return {
     sentOrders,
     sentLoading,
@@ -174,11 +248,13 @@ export default function useCounterSentOrders(draftScope: DraftScope) {
     sentOrderDetail,
     sentOrderError,
     sentOrderCancelling,
+    sentOrderServing,
     refreshSentOrders,
     loadSentOrderDetail,
     refreshSelectedSentOrder,
     closeSentOrderDetail,
     cancelSentOrder,
+    serveSentOrder,
     invalidateSentOrders,
     setSentOrders,
     setSentView,

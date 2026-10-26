@@ -41,6 +41,7 @@ export default function SentOrdersPage() {
     checkoutBusy ||
     receipts.receiptBusy ||
     orders.sentOrderCancelling ||
+    orders.sentOrderServing ||
     refundBusy;
 
   useEffect(() => {
@@ -179,6 +180,7 @@ export default function SentOrdersPage() {
           setCancelOrderId(id);
           void orders.loadSentOrderDetail(id);
         }}
+        onServeOrder={(order) => void orders.serveSentOrder(order)}
         onPayOrder={setPayableOrder}
         onPrintPrebill={(id) => void receipts.printSentOrder(id)}
         onPrintReceipt={(id) => void receipts.printPaidSentOrder(id)}
@@ -210,6 +212,7 @@ export default function SentOrdersPage() {
         detail={orders.sentOrderDetail}
         error={orders.sentOrderError}
         cancelling={orders.sentOrderCancelling}
+        serving={orders.sentOrderServing}
         refundBusy={refundBusy}
         onRefundBusyChange={setRefundBusy}
         onRefundChanged={orders.refreshSelectedSentOrder}
@@ -222,6 +225,7 @@ export default function SentOrdersPage() {
             void orders.loadSentOrderDetail(orders.selectedSentOrderId);
         }}
         onCancel={(reason) => void orders.cancelSentOrder(reason)}
+        onServe={() => void orders.serveSentOrder()}
       />
       <ReceiptPreview
         billUrl={receipts.billUrl}
