@@ -1,4 +1,6 @@
 "use client";
+
+import { notifyReadyOrdersChanged } from "@/lib/ready-orders";
 import { moneySum, moneyMultiply } from "@/lib/money";
 
 import { OrderComposer } from "./order-composer";
@@ -413,6 +415,7 @@ export default function WaiterWorkspace({ children }: { children: ReactNode }) {
     setError("");
     try {
       const served = await serveWaiterOrder(order);
+      notifyReadyOrdersChanged();
       servedVersions.current.set(order.id, served.version);
       setOrders((current) =>
         current.filter((candidate) => candidate.id !== order.id),
