@@ -9,6 +9,7 @@ import {
   type SentCounterOrder,
 } from "@/lib/sale-contracts";
 import type { StaffOrderDetail } from "@/lib/orders/contracts";
+import { fetchOrderDetail } from "@/lib/orders/client";
 import type { DraftScope } from "./use-counter-draft";
 import type { SentOrderView } from "../_components/counter-sent-orders-list";
 
@@ -85,10 +86,13 @@ export default function useCounterSentOrders(draftScope: DraftScope) {
     enabled: !sentForbidden,
   });
 
-  const loadSentOrderDetail = async (orderId: number) => {
+  const loadSentOrderDetail = async (
+    orderId: number,
+    preserveDetail = false,
+  ) => {
     const requestId = ++sentDetailRequestId.current;
     setSelectedSentOrderId(orderId);
-    setSentOrderDetail(null);
+    if (!preserveDetail) setSentOrderDetail(null);
     setSentOrderError("");
     try {
       const response = await api.get<{ result: StaffOrderDetail }>(
@@ -97,7 +101,12 @@ export default function useCounterSentOrders(draftScope: DraftScope) {
       const result = response.data?.result;
       if (!result || result.id !== orderId || !Array.isArray(result.history))
         throw new Error("Invalid sent order details response");
-      if (requestId === sentDetailRequestId.current) setSentOrderDetail(result);
+      // EN: Keep the owned Counter lookup, then read original receipt metadata through the shared cashier detail API.
+      // FI: Säilytä oman kassatilauksen haku ja lue sitten alkuperäisen kuitin tiedot yhteisestä kassatyöntekijän tarkenne-API:sta.
+      const detail = result.paidAt ? await fetchOrderDetail(orderId) : result;
+      if (detail.id !== orderId)
+        throw new Error("Invalid order details response");
+      if (requestId === sentDetailRequestId.current) setSentOrderDetail(detail);
     } catch (error: unknown) {
       if (requestId === sentDetailRequestId.current)
         setSentOrderError(
@@ -111,6 +120,16 @@ export default function useCounterSentOrders(draftScope: DraftScope) {
     setSelectedSentOrderId(null);
     setSentOrderDetail(null);
     setSentOrderError("");
+  };
+
+  // EN: Preserve the pending refund UI while rereading receipt metadata.
+  // FI: Säilytä odottavan palautuksen näkymä kuitin tietoja luettaessa uudelleen.
+  const refreshSelectedSentOrder = async () => {
+    if (selectedSentOrderId === null) return;
+    await Promise.all([
+      loadSentOrderDetail(selectedSentOrderId, true),
+      refreshSentOrders(),
+    ]);
   };
 
   const cancelSentOrder = async (reason: string) => {
@@ -157,6 +176,7 @@ export default function useCounterSentOrders(draftScope: DraftScope) {
     sentOrderCancelling,
     refreshSentOrders,
     loadSentOrderDetail,
+    refreshSelectedSentOrder,
     closeSentOrderDetail,
     cancelSentOrder,
     invalidateSentOrders,

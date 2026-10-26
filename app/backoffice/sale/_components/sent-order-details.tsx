@@ -4,6 +4,7 @@ import { staffOrderStatusLabels as labels } from "@/lib/orders/presentation";
 import { useState } from "react";
 
 import { OrderItemDetails } from "@/components/orders/order-item-details";
+import { OrderRefund } from "@/components/orders/order-refund";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -32,9 +33,13 @@ type Props = {
   detail: StaffOrderDetail | null;
   error: string;
   cancelling: boolean;
+  refundBusy: boolean;
+  initialCancelOpen?: boolean;
   onClose: () => void;
   onRetry: () => void;
   onCancel: (reason: string) => void;
+  onRefundChanged: () => Promise<void>;
+  onRefundBusyChange: (busy: boolean) => void;
 };
 
 export default function SentOrderDetails({
@@ -42,11 +47,15 @@ export default function SentOrderDetails({
   detail,
   error,
   cancelling,
+  refundBusy,
+  initialCancelOpen = false,
   onClose,
   onRetry,
   onCancel,
+  onRefundChanged,
+  onRefundBusyChange,
 }: Props) {
-  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(initialCancelOpen);
   const [reason, setReason] = useState("");
   // EN: The cashier can cancel only before Kitchen preparation and before a receipt exists; the API checks this again.
   // FI: Kassatyöntekijä voi perua vain ennen keittiövalmistelua ja kuitin syntymistä; API tarkistaa tämän uudelleen.
@@ -58,7 +67,7 @@ export default function SentOrderDetails({
   return (
     <Dialog
       open={orderId !== null}
-      onOpenChange={(open) => !open && !cancelling && onClose()}
+      onOpenChange={(open) => !open && !cancelling && !refundBusy && onClose()}
     >
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
@@ -86,6 +95,14 @@ export default function SentOrderDetails({
             <p className="text-right font-semibold">
               Yhteensä {currency.format(detail.total)}
             </p>
+            {detail.paidAt && (
+              <OrderRefund
+                key={detail.id}
+                order={detail}
+                onChanged={onRefundChanged}
+                onBusyChange={onRefundBusyChange}
+              />
+            )}
             <div className="space-y-1 border-t border-border pt-3 text-xs text-muted-foreground">
               <p className="font-semibold text-foreground">Tapahtumat</p>
               {detail.history.map((event) => (
@@ -96,6 +113,7 @@ export default function SentOrderDetails({
                 </p>
               ))}
             </div>
+
             {canCancel && !cancelOpen && (
               <Button
                 type="button"

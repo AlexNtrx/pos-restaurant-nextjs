@@ -502,85 +502,124 @@ describe("POS safety net", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("opens sent order history and cancels only before preparation", async () => {
-    let detail: Omit<typeof sentDetail, "history"> & {
-      history: {
-        version: number;
-        toStatus: string;
-        at: string;
-        reason: string | null;
-      }[];
-    } = sentDetail;
-    api.get.mockImplementation((path: string) => {
-      if (path === "/food/filter/all")
-        return Promise.resolve({ data: { results: [food] } });
-      if (path === "/saleTemp/list/") return Promise.resolve({ data: cart });
-      if (path === "/counterOrder/sent")
-        return Promise.resolve({
-          data: {
-            results: [
-              {
-                ...servedCounterOrder,
-                status: detail.status,
-                version: detail.version,
-              },
-            ],
-          },
-        });
-      if (path === "/counterOrder/81")
+  it.each(["row", "detail"])(
+    "opens cancellation from the %s and requires a reason before saving",
+    async (entry) => {
+      let detail: Omit<typeof sentDetail, "history"> & {
+        history: {
+          version: number;
+          toStatus: string;
+          at: string;
+          reason: string | null;
+        }[];
+      } = sentDetail;
+      api.get.mockImplementation((path: string) => {
+        if (path === "/food/filter/all")
+          return Promise.resolve({ data: { results: [food] } });
+        if (path === "/saleTemp/list/") return Promise.resolve({ data: cart });
+        if (path === "/counterOrder/sent")
+          return Promise.resolve({
+            data: {
+              results: [
+                {
+                  ...servedCounterOrder,
+                  status: detail.status,
+                  version: detail.version,
+                },
+              ],
+            },
+          });
+        if (path === "/counterOrder/81")
+          return Promise.resolve({ data: { result: detail } });
+        return Promise.resolve({ data: { results: [] } });
+      });
+      api.patch.mockImplementation(() => {
+        detail = {
+          ...detail,
+          status: "CANCELLED",
+          version: 3,
+          history: [
+            ...detail.history,
+            {
+              version: 3,
+              toStatus: "CANCELLED",
+              at: "2026-09-23T12:02:00.000Z",
+              reason: "Customer request",
+            },
+          ],
+        };
         return Promise.resolve({ data: { result: detail } });
-      return Promise.resolve({ data: { results: [] } });
-    });
-    api.patch.mockImplementation(() => {
-      detail = {
-        ...detail,
-        status: "CANCELLED",
-        version: 3,
-        history: [
-          ...detail.history,
-          {
-            version: 3,
-            toStatus: "CANCELLED",
-            at: "2026-09-23T12:02:00.000Z",
-            reason: "Customer request",
-          },
-        ],
-      };
-      return Promise.resolve({ data: { result: detail } });
+      });
+      render(<SentOrdersPage />);
+      fireEvent.click(
+        await screen.findByRole(
+          "button",
+          { name: entry === "row" ? "Peruuta tilaus #81" : "Näytä tilaus #81" },
+          { timeout: 5_000 },
+        ),
+      );
+      const dialog = await screen.findByRole("dialog");
+      expect(within(dialog).getByText("Huom: Less salt")).toBeTruthy();
+      expect(within(dialog).getByText("Tapahtumat")).toBeTruthy();
+      if (entry === "detail")
+        fireEvent.click(
+          within(dialog).getByRole("button", { name: "Peruuta tilaus" }),
+        );
+      expect(
+        (
+          within(dialog).getByRole("button", {
+            name: "Vahvista peruutus",
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(true);
+      expect(api.patch).not.toHaveBeenCalled();
+      fireEvent.change(within(dialog).getByRole("textbox"), {
+        target: { value: "Customer request" },
+      });
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Vahvista peruutus" }),
+      );
+      await waitFor(() =>
+        expect(api.patch).toHaveBeenCalledWith("/counterOrder/81/cancel", {
+          expectedVersion: 2,
+          reason: "Customer request",
+        }),
+      );
+      expect(await within(dialog).findByText(/Customer request/)).toBeTruthy();
+      expect(
+        within(dialog).queryByRole("button", { name: "Peruuta tilaus" }),
+      ).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: "Maksa tilaus #81" }),
+      ).toBeNull();
+    },
+  );
+
+  it("rechecks a stale cancellation row before showing the reason form", async () => {
+    api.get.mockImplementation(async (path: string) => {
+      if (path === "/counterOrder/sent")
+        return {
+          data: { results: [{ ...servedCounterOrder, status: "CONFIRMED" }] },
+        };
+      if (path === "/counterOrder/81")
+        return {
+          data: { result: { ...sentDetail, status: "PREPARING", version: 3 } },
+        };
+      return { data: { results: [] } };
     });
     render(<SentOrdersPage />);
     fireEvent.click(
-      await screen.findByRole(
-        "button",
-        { name: "Näytä tilaus #81" },
-        { timeout: 5_000 },
-      ),
+      await screen.findByRole("button", { name: "Peruuta tilaus #81" }),
     );
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText("Huom: Less salt")).toBeTruthy();
-    expect(within(dialog).getByText("Tapahtumat")).toBeTruthy();
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: "Peruuta tilaus" }),
-    );
-    fireEvent.change(within(dialog).getByRole("textbox"), {
-      target: { value: "Customer request" },
-    });
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: "Vahvista peruutus" }),
-    );
-    await waitFor(() =>
-      expect(api.patch).toHaveBeenCalledWith("/counterOrder/81/cancel", {
-        expectedVersion: 2,
-        reason: "Customer request",
-      }),
-    );
-    expect(await within(dialog).findByText(/Customer request/)).toBeTruthy();
     expect(
-      within(dialog).queryByRole("button", { name: "Peruuta tilaus" }),
-    ).toBeNull();
+      await within(dialog).findByText("Valmistetaan", { exact: true }),
+    ).toBeTruthy();
+    expect(within(dialog).queryByRole("textbox")).toBeNull();
     expect(
-      screen.queryByRole("button", { name: "Maksa tilaus #81" }),
+      within(dialog).queryByRole("button", { name: "Vahvista peruutus" }),
     ).toBeNull();
+    expect(api.patch).not.toHaveBeenCalled();
   });
 
   it("shows ongoing sent orders by default and opens finished history when the active list is empty", async () => {
@@ -644,6 +683,9 @@ describe("POS safety net", () => {
     for (const detail of [
       { ...sentDetail, status: "PREPARING" },
       { ...sentDetail, status: "READY" },
+      { ...sentDetail, status: "SERVED" },
+      { ...sentDetail, status: "COMPLETED" },
+      { ...sentDetail, status: "CANCELLED" },
       { ...sentDetail, paidAt: "2026-09-23T12:03:00.000Z" },
     ]) {
       api.get.mockImplementation((path: string) => {
@@ -653,10 +695,16 @@ describe("POS safety net", () => {
         if (path === "/counterOrder/sent")
           return Promise.resolve({
             data: {
-              results: [{ ...servedCounterOrder, status: detail.status }],
+              results: [
+                {
+                  ...servedCounterOrder,
+                  status: detail.status,
+                  billSaleId: detail.paidAt ? 44 : null,
+                },
+              ],
             },
           });
-        if (path === "/counterOrder/81")
+        if (path === "/counterOrder/81" || path === "/orders/81")
           return Promise.resolve({ data: { result: detail } });
         return Promise.resolve({ data: { results: [] } });
       });
@@ -666,8 +714,23 @@ describe("POS safety net", () => {
       );
       const dialog = await screen.findByRole("dialog");
       expect(
+        screen.queryByRole("button", { name: "Peruuta tilaus #81" }),
+      ).toBeNull();
+      if (detail.status !== "READY")
+        expect(
+          screen.queryByRole("button", {
+            name: "Merkitse tarjoilluksi: tilaus #81",
+          }),
+        ).toBeNull();
+      expect(
         within(dialog).queryByRole("button", { name: "Peruuta tilaus" }),
       ).toBeNull();
+      if (detail.status !== "READY")
+        expect(
+          within(dialog).queryByRole("button", {
+            name: "Merkitse tarjoilluksi",
+          }),
+        ).toBeNull();
       view.unmount();
     }
   });

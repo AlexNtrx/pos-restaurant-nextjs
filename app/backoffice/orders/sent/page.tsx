@@ -35,8 +35,13 @@ export default function SentOrdersPage() {
   const [lastBillId, setLastBillId] = useState<number | null>(null);
   const [pending, setPending] = useState<SavedCounterPayment[]>([]);
   const [pendingError, setPendingError] = useState("");
+  const [cancelOrderId, setCancelOrderId] = useState<number | null>(null);
+  const [refundBusy, setRefundBusy] = useState(false);
   const busy =
-    checkoutBusy || receipts.receiptBusy || orders.sentOrderCancelling;
+    checkoutBusy ||
+    receipts.receiptBusy ||
+    orders.sentOrderCancelling ||
+    refundBusy;
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -166,7 +171,14 @@ export default function SentOrdersPage() {
           resetList();
           orders.setSentView(view);
         }}
-        onOpenOrder={(id) => void orders.loadSentOrderDetail(id)}
+        onOpenOrder={(id) => {
+          setCancelOrderId(null);
+          void orders.loadSentOrderDetail(id);
+        }}
+        onCancelOrder={(id) => {
+          setCancelOrderId(id);
+          void orders.loadSentOrderDetail(id);
+        }}
         onPayOrder={setPayableOrder}
         onPrintPrebill={(id) => void receipts.printSentOrder(id)}
         onPrintReceipt={(id) => void receipts.printPaidSentOrder(id)}
@@ -198,6 +210,12 @@ export default function SentOrdersPage() {
         detail={orders.sentOrderDetail}
         error={orders.sentOrderError}
         cancelling={orders.sentOrderCancelling}
+        refundBusy={refundBusy}
+        onRefundBusyChange={setRefundBusy}
+        onRefundChanged={orders.refreshSelectedSentOrder}
+        initialCancelOpen={
+          cancelOrderId !== null && cancelOrderId === orders.selectedSentOrderId
+        }
         onClose={orders.closeSentOrderDetail}
         onRetry={() => {
           if (orders.selectedSentOrderId !== null)

@@ -17,6 +17,7 @@ type Props = {
   onRefresh: () => void;
   onViewChange: (view: SentOrderView) => void;
   onOpenOrder: (orderId: number) => void;
+  onCancelOrder: (orderId: number) => void;
   onPayOrder: (order: SentCounterOrder) => void;
   onPrintPrebill: (orderId: number) => void;
   onPrintReceipt: (billId: number) => void;
@@ -34,6 +35,7 @@ export function CounterSentOrdersList({
   onRefresh,
   onViewChange,
   onOpenOrder,
+  onCancelOrder,
   onPayOrder,
   onPrintPrebill,
   onPrintReceipt,
@@ -128,6 +130,19 @@ export function CounterSentOrdersList({
             </span>
           </button>
           <div className="flex min-w-0 shrink-0 flex-wrap gap-2 lg:max-w-[45%]">
+            {["SUBMITTED", "CONFIRMED"].includes(order.status) && (
+              <Button
+                type="button"
+                size="sm"
+                className="min-h-11"
+                variant="outline"
+                aria-label={`Peruuta tilaus #${order.id}`}
+                disabled={checkoutBusy || receiptBusy || cartBusy}
+                onClick={() => onCancelOrder(order.id)}
+              >
+                Peruuta tilaus
+              </Button>
+            )}
             {order.billSaleId === null &&
             !["REJECTED", "CANCELLED", "PAID", "COMPLETED"].includes(
               order.status,

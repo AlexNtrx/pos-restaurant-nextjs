@@ -73,9 +73,11 @@ function parseRefund(value: unknown): Refund {
 export function OrderRefund({
   order,
   onChanged,
+  onBusyChange,
 }: {
   order: StaffOrderDetail;
   onChanged: () => Promise<void>;
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const [refund, setRefund] = useState<Refund | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -133,6 +135,7 @@ export function OrderRefund({
     if (inFlight.current || !loaded) return;
     inFlight.current = true;
     setBusy(true);
+    onBusyChange?.(true);
     setError("");
     const ownerKey = ownerKeyRef.current;
     try {
@@ -185,6 +188,7 @@ export function OrderRefund({
     } finally {
       inFlight.current = false;
       setBusy(false);
+      onBusyChange?.(false);
     }
   }
   const canReserve =
