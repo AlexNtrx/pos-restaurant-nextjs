@@ -65,16 +65,3 @@ export async function changeKitchenStatus(
     throw new Error("Palvelin palautti virheellisen tilaustilan.");
   return response.data.result;
 }
-
-export async function serveKitchenOrder(
-  id: number,
-  expectedVersion: number,
-): Promise<StaffOrderDetail> {
-  const response = await api.patch<{ result: StaffOrderDetail }>(
-    `/orders/${id}/serve`,
-    { expectedVersion },
-  );
-  if (!response.data?.result || !Array.isArray(response.data.result.history))
-    throw new Error("Palvelin palautti virheellisen tarjoilutilan.");
-  return response.data.result;
-}

@@ -51,14 +51,12 @@ export function KitchenCard({
   order,
   now,
   saving,
-  canServe,
   onAction,
 }: {
   order: StaffOrder;
   now: number;
   saving: boolean;
-  canServe: boolean;
-  onAction: (nextStatus: "PREPARING" | "READY" | "SERVED") => void;
+  onAction: (nextStatus: "PREPARING" | "READY") => void;
 }) {
   return (
     <Card
@@ -107,14 +105,6 @@ export function KitchenCard({
             onClick={() => onAction("READY")}
           >
             Merkitse valmiiksi
-          </Button>
-        ) : canServe ? (
-          <Button
-            className="h-auto min-h-11 w-full rounded-[5px] bg-[#e4e5e2] text-[12px] text-[#514f49] hover:bg-[#d8d4cc]"
-            disabled={saving}
-            onClick={() => onAction("SERVED")}
-          >
-            Merkitse tarjoilluksi
           </Button>
         ) : null}
       </div>

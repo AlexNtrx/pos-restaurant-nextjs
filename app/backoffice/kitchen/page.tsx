@@ -36,7 +36,6 @@ import {
   changeKitchenStatus,
   fetchKitchenSnapshot,
   mergeKitchenOrders,
-  serveKitchenOrder,
 } from "./_lib/kitchen-orders";
 
 const columns = [
@@ -72,7 +71,7 @@ const headerFormatter = new Intl.DateTimeFormat("fi-FI", {
 type PendingAction = {
   id: number;
   version: number;
-  nextStatus: "PREPARING" | "READY" | "SERVED";
+  nextStatus: "PREPARING" | "READY";
 };
 
 function matchesSearch(order: StaffOrder, query: string) {
@@ -95,7 +94,7 @@ function matchesSearch(order: StaffOrder, query: string) {
 export default function KitchenPage() {
   const level = useContext(StaffRoleContext);
   const router = useRouter();
-  const canServe = level === "admin";
+  const isAdmin = level === "admin";
   const [orders, setOrders] = useState<StaffOrder[]>([]);
   const [state, setState] = useState<
     "loading" | "ready" | "error" | "forbidden"
@@ -189,14 +188,11 @@ export default function KitchenPage() {
     setSavingId(action.id);
     setError("");
     try {
-      const updated =
-        action.nextStatus === "SERVED"
-          ? await serveKitchenOrder(action.id, action.version)
-          : await changeKitchenStatus(
-              action.id,
-              action.version,
-              action.nextStatus,
-            );
+      const updated = await changeKitchenStatus(
+        action.id,
+        action.version,
+        action.nextStatus,
+      );
       const merged = mergeKitchenOrders(currentOrders.current, [updated]);
       currentOrders.current = merged;
       setOrders(merged);
@@ -204,9 +200,7 @@ export default function KitchenPage() {
       setNotice(
         action.nextStatus === "PREPARING"
           ? `Tilaus #${action.id} siirretty valmisteluun.`
-          : action.nextStatus === "READY"
-            ? `Tilaus #${action.id} merkitty valmiiksi.`
-            : `Tilaus #${action.id} merkitty tarjoilluksi.`,
+          : `Tilaus #${action.id} merkitty valmiiksi.`,
       );
       void sync();
     } catch (cause: unknown) {
@@ -275,7 +269,7 @@ export default function KitchenPage() {
           >
             <Search aria-hidden="true" />
           </Button>
-          {canServe && (
+          {isAdmin && (
             <Button
               asChild
               variant="ghost"
@@ -391,11 +385,7 @@ export default function KitchenPage() {
                     <EmptyState
                       className="min-h-[224px] bg-[#fbfaf7]"
                       title={query ? "Ei hakutuloksia" : "Ei tilauksia"}
-                      description={
-                        query
-                          ? "Kokeile toista hakua."
-                          : "Uudet tilaukset näkyvät tässä automaattisesti."
-                      }
+                      description={query ? "Kokeile toista hakua." : undefined}
                     />
                   ) : (
                     visible.map((order) => (
@@ -404,7 +394,6 @@ export default function KitchenPage() {
                         order={order}
                         now={now}
                         saving={savingId === order.id}
-                        canServe={canServe}
                         onAction={(nextStatus) =>
                           setPending({
                             id: order.id,
@@ -422,8 +411,8 @@ export default function KitchenPage() {
         )}
         <p className="pt-3 text-[12px] text-[#767168]">
           {lastUpdate
-            ? `Päivitetty ${timeFormatter.format(new Date(lastUpdate))} · kysely 5 s · WebSocket myöhemmässä vaiheessa`
-            : "Kysely 5 s · WebSocket myöhemmässä vaiheessa"}
+            ? `Päivitetty ${timeFormatter.format(new Date(lastUpdate))}`
+            : null}
         </p>
       </main>
 
@@ -436,9 +425,7 @@ export default function KitchenPage() {
             <AlertDialogTitle>
               {pending?.nextStatus === "PREPARING"
                 ? "Aloita valmistelu?"
-                : pending?.nextStatus === "READY"
-                  ? "Merkitse valmiiksi?"
-                  : "Merkitse tarjoilluksi?"}
+                : "Merkitse valmiiksi?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
               Tilaus #{pending?.id} siirretään seuraavaan keittiön tilaan.

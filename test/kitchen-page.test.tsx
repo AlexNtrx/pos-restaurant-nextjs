@@ -172,29 +172,17 @@ describe("KDS-01 Kitchen board", () => {
     expect(localStorage.getItem("next_user_id")).toBeNull();
     expect(replace).toHaveBeenCalledWith("/signin");
   });
-  it("serves a READY Order through the dedicated staff action and removes it from Kitchen", async () => {
+  it("keeps READY orders visible without a serving action even for admin", async () => {
     currentStatus = "READY";
-    api.patch.mockImplementation(async () => {
-      currentStatus = "SERVED";
-      return detail({ ...base, status: "SERVED", version: 4 });
-    });
-    const user = userEvent.setup();
     render(<KitchenPage />);
     const ready = await screen.findByRole("region", { name: "Valmis" });
     await within(ready).findByRole("heading", { name: "#41" });
-    await user.click(
-      within(ready).getByRole("button", { name: "Merkitse tarjoilluksi" }),
-    );
-    await user.click(
-      within(screen.getByRole("alertdialog")).getByRole("button", {
-        name: "Vahvista",
-      }),
-    );
-    await waitFor(() =>
-      expect(api.patch).toHaveBeenCalledWith("/orders/41/serve", {
-        expectedVersion: 3,
-      }),
-    );
+    expect(
+      within(ready).queryByRole("button", { name: "Merkitse tarjoilluksi" }),
+    ).toBeNull();
+    expect(api.patch).not.toHaveBeenCalled();
+    currentStatus = "SERVED";
+    await act(async () => poll?.());
     await waitFor(() =>
       expect(screen.queryByRole("heading", { name: "#41" })).toBeNull(),
     );
