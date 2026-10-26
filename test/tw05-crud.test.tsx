@@ -261,13 +261,7 @@ describe("TW-05 CRUD dialogs", () => {
         },
       },
     };
-    api.get.mockImplementation((path: string) =>
-      Promise.resolve(
-        path === "/organization/tax-draft"
-          ? { data: { organizationConfigured: true, draft: null, version: 0 } }
-          : restaurantResponse,
-      ),
-    );
+    api.get.mockResolvedValue(restaurantResponse);
     let uploaded!: (value: { data: { fileName: string } }) => void;
     let failed!: (reason: Error) => void;
     api.post.mockImplementation((path: string) =>
@@ -284,6 +278,9 @@ describe("TW-05 CRUD dialogs", () => {
     const name = (await screen.findByDisplayValue(
       "Ravintola POS",
     )) as HTMLInputElement;
+    expect(api.get.mock.calls.map(([path]) => path)).toEqual([
+      "/organization/info",
+    ]);
     const file = new File(["logo"], "new.webp", { type: "image/webp" });
     await user.upload(screen.getByLabelText("Vaihda logo"), file);
     await user.click(
