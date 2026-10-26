@@ -744,7 +744,7 @@ describe("POS safety net", () => {
         expect(
           (
             screen.getByRole("button", {
-              name: "Mukaan",
+              name: "QR-tilaukset",
             }) as HTMLButtonElement
           ).disabled,
         ).toBe(true);

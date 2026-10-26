@@ -1,5 +1,7 @@
 "use client";
 
+import { RefreshButton } from "@/components/ui/refresh-button";
+
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -17,16 +19,19 @@ import { CounterSentOrdersList } from "../../sale/_components/counter-sent-order
 import CounterOrderCheckout from "../../sale/_components/counter-order-checkout";
 import SentOrderDetails from "../../sale/_components/sent-order-details";
 import type { DraftScope } from "../../sale/_hooks/use-counter-draft";
+import { QrSentOrdersList } from "./_components/qr-sent-orders-list";
+import { useQrSentOrders } from "./_hooks/use-qr-sent-orders";
 
 export default function SentOrdersPage() {
   // EN: These filters are independent of the persisted, unsent cashier cart.
   // FI: Nämä suodattimet ovat riippumattomia tallennetusta, lähettämättömästä kassan ostoskorista.
   const [table, setTable] = useState(1);
-  const [serviceType, setServiceType] = useState<"DINE_IN" | "TAKEAWAY">(
+  const [serviceType, setServiceType] = useState<"DINE_IN" | "TAKEAWAY" | "QR">(
     "DINE_IN",
   );
   const scope: DraftScope = serviceType === "TAKEAWAY" ? "TAKEAWAY" : table;
-  const orders = useCounterSentOrders(scope);
+  const orders = useCounterSentOrders(scope, serviceType !== "QR");
+  const qrOrders = useQrSentOrders(serviceType === "QR");
   const receipts = useCounterReceipts();
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [payableOrder, setPayableOrder] = useState<SentCounterOrder | null>(
@@ -42,7 +47,8 @@ export default function SentOrdersPage() {
     receipts.receiptBusy ||
     orders.sentOrderCancelling ||
     orders.sentOrderServing ||
-    refundBusy;
+    refundBusy ||
+    qrOrders.workingId !== null;
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -65,9 +71,77 @@ export default function SentOrdersPage() {
     setPayableOrder(null);
   };
 
+  const filters = (
+    <div className="flex flex-wrap items-end gap-4">
+      <div
+        role="group"
+        aria-label="Tilaustapa"
+        className="flex flex-wrap gap-2"
+      >
+        {(["DINE_IN", "TAKEAWAY", "QR"] as const).map((type) => (
+          <Button
+            className="min-h-11"
+            key={type}
+            variant={serviceType === type ? "default" : "outline"}
+            aria-pressed={serviceType === type}
+            disabled={busy}
+            onClick={() => {
+              if (serviceType === type) return;
+              resetList();
+              orders.setSentView("active");
+              setServiceType(type);
+            }}
+          >
+            {type === "DINE_IN"
+              ? "Paikan päällä"
+              : type === "TAKEAWAY"
+                ? "Mukaan"
+                : "QR-tilaukset"}
+          </Button>
+        ))}
+      </div>
+      {serviceType === "DINE_IN" && (
+        <div className="w-32">
+          <label htmlFor="sent-table" className="text-sm">
+            Pöytä
+          </label>
+          <Input
+            className="h-11"
+            id="sent-table"
+            type="number"
+            min="1"
+            step="1"
+            value={Number.isFinite(table) ? table : ""}
+            disabled={busy}
+            onChange={(event) => {
+              resetList();
+              orders.setSentView("active");
+              setTable(Number(event.target.value));
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="min-w-0 max-w-6xl space-y-5">
-      <PageHeader title="Keittiöön lähetetyt" />
+      <PageHeader
+        title="Keittiöön lähetetyt"
+        actions={
+          <RefreshButton
+            type="button"
+            disabled={busy}
+            onClick={() =>
+              void (serviceType === "QR"
+                ? qrOrders.refresh()
+                : orders.refreshSentOrders())
+            }
+          >
+            Päivitä
+          </RefreshButton>
+        }
+      />
       {pendingError && (
         <p role="alert" className="text-destructive">
           {pendingError}
@@ -110,81 +184,37 @@ export default function SentOrdersPage() {
           </Button>
         </div>
       )}
-      <CounterSentOrdersList
-        filters={
-          <div className="flex flex-wrap items-end gap-4">
-            <div
-              role="group"
-              aria-label="Tilaustapa"
-              className="flex flex-wrap gap-2"
-            >
-              {(["DINE_IN", "TAKEAWAY"] as const).map((type) => (
-                <Button
-                  className="min-h-11"
-                  key={type}
-                  variant={serviceType === type ? "default" : "outline"}
-                  aria-pressed={serviceType === type}
-                  disabled={busy}
-                  onClick={() => {
-                    if (serviceType === type) return;
-                    resetList();
-                    orders.setSentView("active");
-                    setServiceType(type);
-                  }}
-                >
-                  {type === "DINE_IN" ? "Paikan päällä" : "Mukaan"}
-                </Button>
-              ))}
-            </div>
-            {serviceType === "DINE_IN" && (
-              <div className="w-32">
-                <label htmlFor="sent-table" className="text-sm">
-                  Pöytä
-                </label>
-                <Input
-                  className="h-11"
-                  id="sent-table"
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={Number.isFinite(table) ? table : ""}
-                  disabled={busy}
-                  onChange={(event) => {
-                    resetList();
-                    orders.setSentView("active");
-                    setTable(Number(event.target.value));
-                  }}
-                />
-              </div>
-            )}
-          </div>
-        }
-        sentOrders={orders.sentOrders}
-        sentView={orders.sentView}
-        checkoutBusy={busy}
-        receiptBusy={receipts.receiptBusy}
-        cartBusy={orders.sentLoading}
-        loading={orders.sentLoading}
-        error={orders.sentListError}
-        onRefresh={() => void orders.refreshSentOrders()}
-        onViewChange={(view) => {
-          if (view === orders.sentView) return;
-          resetList();
-          orders.setSentView(view);
-        }}
-        onOpenOrder={(id) => {
-          setCancelOrderId(null);
-          void orders.loadSentOrderDetail(id);
-        }}
-        onCancelOrder={(id) => {
-          setCancelOrderId(id);
-          void orders.loadSentOrderDetail(id);
-        }}
-        onServeOrder={(order) => void orders.serveSentOrder(order)}
-        onPayOrder={setPayableOrder}
-        onPrintPrebill={(id) => void receipts.printSentOrder(id)}
-        onPrintReceipt={(id) => void receipts.printPaidSentOrder(id)}
-      />
+      {serviceType === "QR" ? (
+        <QrSentOrdersList filters={filters} busy={busy} queue={qrOrders} />
+      ) : (
+        <CounterSentOrdersList
+          filters={filters}
+          sentOrders={orders.sentOrders}
+          sentView={orders.sentView}
+          onViewChange={(view) => {
+            if (view === orders.sentView) return;
+            resetList();
+            orders.setSentView(view);
+          }}
+          checkoutBusy={busy}
+          receiptBusy={receipts.receiptBusy}
+          cartBusy={orders.sentLoading}
+          loading={orders.sentLoading}
+          error={orders.sentListError}
+          onOpenOrder={(id) => {
+            setCancelOrderId(null);
+            void orders.loadSentOrderDetail(id);
+          }}
+          onCancelOrder={(id) => {
+            setCancelOrderId(id);
+            void orders.loadSentOrderDetail(id);
+          }}
+          onServeOrder={(order) => void orders.serveSentOrder(order)}
+          onPayOrder={setPayableOrder}
+          onPrintPrebill={(id) => void receipts.printSentOrder(id)}
+          onPrintReceipt={(id) => void receipts.printPaidSentOrder(id)}
+        />
+      )}
       {payableOrder && (
         <CounterOrderCheckout
           key={payableOrder.id}

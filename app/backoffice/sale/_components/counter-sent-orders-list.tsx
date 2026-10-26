@@ -4,18 +4,18 @@ import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { staffOrderStatusLabels } from "@/lib/orders/presentation";
 import type { SentCounterOrder } from "@/lib/sale-contracts";
+import { SentOrdersPanel } from "../../orders/sent/_components/sent-orders-panel";
 export type SentOrderView = "active" | "history";
 type Props = {
-  sentOrders: SentCounterOrder[];
   sentView: SentOrderView;
+  onViewChange: (view: SentOrderView) => void;
+  sentOrders: SentCounterOrder[];
   checkoutBusy: boolean;
   receiptBusy: boolean;
   cartBusy: boolean;
   loading?: boolean;
   error?: string;
   filters: ReactNode;
-  onRefresh: () => void;
-  onViewChange: (view: SentOrderView) => void;
   onOpenOrder: (orderId: number) => void;
   onCancelOrder: (orderId: number) => void;
   onServeOrder: (order: SentCounterOrder) => void;
@@ -25,16 +25,15 @@ type Props = {
 };
 
 export function CounterSentOrdersList({
-  sentOrders,
   sentView,
+  onViewChange,
+  sentOrders,
   checkoutBusy,
   receiptBusy,
   cartBusy,
   loading = false,
   error = "",
   filters,
-  onRefresh,
-  onViewChange,
   onOpenOrder,
   onCancelOrder,
   onServeOrder,
@@ -43,59 +42,15 @@ export function CounterSentOrdersList({
   onPrintReceipt,
 }: Props) {
   return (
-    <section
-      className="overflow-hidden rounded-lg border border-border bg-surface"
-      aria-label="Lähetetyt tilaukset"
-      aria-busy={loading}
+    <SentOrdersPanel
+      filters={filters}
+      view={sentView}
+      busy={checkoutBusy}
+      onViewChange={onViewChange}
+      loading={loading}
+      error={error}
+      empty={sentOrders.length === 0}
     >
-      {/* EN: Keep scope, view and refresh together; wrap the toolbar without shrinking touch targets. */}
-      {/* FI: Pidä rajaus, näkymä ja päivitys yhdessä; rivitä työkalupalkki pienentämättä kosketuskohteita. */}
-      <div className="flex flex-col gap-4 border-b border-border p-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between sm:p-5">
-        {filters}
-        <div className="flex items-center gap-3">
-          <div className="flex gap-2" role="group" aria-label="Tilausnäkymä">
-            {(["active", "history"] as const).map((view) => (
-              <Button
-                key={view}
-                type="button"
-                className="min-h-11"
-                variant={sentView === view ? "default" : "outline"}
-                aria-pressed={sentView === view}
-                disabled={checkoutBusy}
-                onClick={() => onViewChange(view)}
-              >
-                {view === "active" ? "Käynnissä" : "Historia"}
-              </Button>
-            ))}
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            className="min-h-11"
-            disabled={checkoutBusy}
-            onClick={onRefresh}
-          >
-            Päivitä
-          </Button>
-        </div>
-      </div>
-      {error && (
-        <p role="alert" className="p-4 text-sm text-destructive sm:p-5">
-          {error}
-        </p>
-      )}
-      {loading && (
-        <p role="status" className="p-6 text-sm text-muted-foreground">
-          Tilauksia ladataan…
-        </p>
-      )}
-      {!loading && !error && sentOrders.length === 0 ? (
-        <p className="flex min-h-40 items-center justify-center p-6 text-center text-sm text-muted-foreground">
-          {sentView === "active"
-            ? "Ei keskeneräisiä tilauksia."
-            : "Ei päättyneitä tilauksia."}
-        </p>
-      ) : null}
       {sentOrders.map((order) => (
         <article
           key={order.id}
@@ -108,27 +63,27 @@ export function CounterSentOrdersList({
             disabled={checkoutBusy}
             onClick={() => onOpenOrder(order.id)}
           >
-            <span className="flex flex-wrap justify-between gap-x-4 gap-y-1 font-semibold">
-              <span className="min-w-0 break-words">
-                {order.serviceType === "TAKEAWAY"
-                  ? `Nouto #${order.id}`
-                  : `#${order.id}`}{" "}
-                ·{" "}
-                {staffOrderStatusLabels[
-                  order.status as keyof typeof staffOrderStatusLabels
-                ] ?? "Tila ei saatavilla"}
+            <span className="block font-semibold break-words">
+              {order.serviceType === "TAKEAWAY"
+                ? `Nouto #${order.id}`
+                : `#${order.id}`}{" "}
+              ·{" "}
+              {staffOrderStatusLabels[
+                order.status as keyof typeof staffOrderStatusLabels
+              ] ?? "Tila ei saatavilla"}
+            </span>
+            <span className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+              <span className="min-w-0 break-words text-muted-foreground">
+                {order.Items.map(
+                  (item) => `${item.quantity} × ${item.foodName}`,
+                ).join(", ")}
               </span>
-              <span className="shrink-0 tabular-nums">
+              <span className="font-semibold tabular-nums whitespace-nowrap">
                 {order.total.toLocaleString("fi-FI", {
                   minimumFractionDigits: 2,
                 })}{" "}
                 €
               </span>
-            </span>
-            <span className="mt-1 block break-words text-muted-foreground">
-              {order.Items.map(
-                (item) => `${item.quantity} × ${item.foodName}`,
-              ).join(", ")}
             </span>
           </button>
           <div className="flex min-w-0 shrink-0 flex-wrap gap-2 lg:max-w-[45%]">
@@ -200,6 +155,6 @@ export function CounterSentOrdersList({
           </div>
         </article>
       ))}
-    </section>
+    </SentOrdersPanel>
   );
 }
