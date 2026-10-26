@@ -160,9 +160,6 @@ function DailySalesChart({ rows }: { rows: DailySalesRow[] }) {
       >
         Päivittäinen nettomyynti
       </h2>
-      <p className="mt-1.5 mb-0 text-[11px] leading-[15px] text-muted-foreground md:text-xs">
-        Kaikki päivät näkyvät aikajanalla.
-      </p>
 
       <div
         role="img"
@@ -479,19 +476,10 @@ export function DailySalesReportView({
           <h1 className="m-0 text-[26px] leading-8 font-semibold text-foreground md:text-[28px] md:leading-[34px]">
             Päivämyynti
           </h1>
-          <p className="mt-1 mb-0 h-[23px] text-[13px] leading-[23px] text-muted-foreground md:h-auto md:text-sm md:leading-[17px]">
-            Päivittäinen myynti valitulta kuukaudelta.
-          </p>
         </div>
         <div className="hidden text-right md:block">
           <p className="m-0 text-[13px] font-semibold text-foreground">
             {period}
-          </p>
-          <p className="m-0 text-[11px] text-muted-foreground xl:hidden">
-            Europe/Helsinki · EUR
-          </p>
-          <p className="m-0 hidden text-[11px] text-muted-foreground xl:block">
-            Raportin aikavyöhyke: Europe/Helsinki · Valuutta: EUR
           </p>
         </div>
       </header>
@@ -534,9 +522,6 @@ export function DailySalesReportView({
           <span className="md:hidden">Näytä raportti</span>
           <span className="hidden md:inline">Näytä</span>
         </Button>
-        <p className="m-0 hidden min-w-0 text-xs text-muted-foreground md:block">
-          Raportti päivittyy valitulle jaksolle.
-        </p>
       </section>
 
       <div className="mt-[18px] md:mt-5 xl:mt-6">
@@ -623,14 +608,6 @@ export function DailySalesReportView({
               />
             </section>
 
-            <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
-              Myynti ja palautukset kohdistuvat alkuperäiseen myyntipäivään
-              (Europe/Helsinki), eivät rahan palautuspäivään. Tämä ei ole
-              kassavirtaraportti. Perutut tilaukset kohdistuvat peruutuspäivään
-              (Europe/Helsinki). Peruutussummia ei vähennetä myynnistä
-              uudelleen.
-            </p>
-
             <div className="mt-[18px] grid gap-[18px] md:mt-5 md:gap-5 xl:mt-6 xl:gap-4">
               <DailySalesChart rows={rows} />
               <DailyBreakdown
@@ -644,9 +621,21 @@ export function DailySalesReportView({
         )}
       </div>
 
-      <p className="mt-[18px] mb-0 text-[10px] text-muted-foreground">
-        Europe/Helsinki · Päivä vaihtuu klo 00.00 · EUR
-      </p>
+      <details className="mt-[18px] text-xs text-muted-foreground">
+        <summary className="min-h-11 cursor-pointer content-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+          Miten luvut lasketaan?
+        </summary>
+        <div className="mt-2 max-w-2xl space-y-2 leading-relaxed">
+          <p>
+            Myynti ja palautukset kohdistuvat alkuperäiseen myyntipäivään, eivät
+            rahan palautuspäivään. Tämä ei ole kassavirtaraportti.
+          </p>
+          <p>
+            Perutut tilaukset kohdistuvat peruutuspäivään. Peruutussummia ei
+            vähennetä myynnistä uudelleen.
+          </p>
+        </div>
+      </details>
     </div>
   );
 }

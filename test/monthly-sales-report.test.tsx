@@ -67,7 +67,11 @@ describe("Kuukausimyynti report", () => {
         year: 2027,
       }),
     );
-    expect(screen.getByText(/kassavirtaraportti/)).toBeTruthy();
+    const details = screen.getByText(/kassavirtaraportti/).closest("details")!;
+    expect(details.open).toBe(false);
+    await userEvent.click(screen.getByText("Miten luvut lasketaan?"));
+    expect(details.open).toBe(true);
+    expect(screen.queryByText(/Europe\/Helsinki/)).toBeNull();
   });
   it.each(["success", "failure"])(
     "ignores a stale year's %s after the selected report has loaded",

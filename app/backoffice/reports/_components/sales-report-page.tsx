@@ -1,5 +1,7 @@
 "use client";
 
+import { RefreshButton } from "@/components/ui/refresh-button";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -103,15 +105,13 @@ export function SalesReportPage() {
     <div className="tw04-layout space-y-6 font-sans">
       <PageHeader
         title="Kuukausimyynti"
-        description="Myynti kuukausittain valitulta vuodelta."
         actions={
-          <Button
-            size="sm"
+          <RefreshButton
             onClick={() => void load()}
             disabled={status === "loading"}
           >
             Päivitä
-          </Button>
+          </RefreshButton>
         }
       />
       <section
@@ -205,11 +205,15 @@ export function SalesReportPage() {
           </TableFooter>
         </Table>
       )}
-      <p className="text-[11px] text-muted-foreground">
-        Aikavyöhyke: Europe/Helsinki · Päivä vaihtuu klo 00.00 · EUR.
-        Palautukset oikaisevat alkuperäistä myyntipäivää; tämä ei ole
-        kassavirtaraportti.
-      </p>
+      <details className="text-xs text-muted-foreground">
+        <summary className="min-h-11 cursor-pointer content-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+          Miten luvut lasketaan?
+        </summary>
+        <p className="mt-2 max-w-2xl leading-relaxed">
+          Palautukset oikaisevat alkuperäistä myyntipäivää; tämä ei ole
+          kassavirtaraportti.
+        </p>
+      </details>
     </div>
   );
 }

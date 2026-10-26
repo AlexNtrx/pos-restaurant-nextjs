@@ -74,7 +74,12 @@ describe("Päivämyynti report", () => {
         month: 1,
       }),
     );
-    expect(screen.getByText(/Päivä vaihtuu klo 00.00/)).toBeTruthy();
+    const explanation = screen.getByText(/Tämä ei ole kassavirtaraportti/);
+    const details = explanation.closest("details")!;
+    expect(details.open).toBe(false);
+    await userEvent.click(screen.getByText("Miten luvut lasketaan?"));
+    expect(details.open).toBe(true);
+    expect(screen.queryByText(/Europe\/Helsinki/)).toBeNull();
   });
   it("shows the report breakdown and hides empty rows by default", async () => {
     api.post.mockImplementation(async (_path, { year, month }) => ({
