@@ -5,10 +5,7 @@ import { Button } from "@/components/ui/button";
 import { staffOrderStatusLabels } from "@/lib/orders/presentation";
 import type { SentCounterOrder } from "@/lib/sale-contracts";
 import { SentOrdersPanel } from "../../orders/sent/_components/sent-orders-panel";
-export type SentOrderView = "active" | "history";
 type Props = {
-  sentView: SentOrderView;
-  onViewChange: (view: SentOrderView) => void;
   sentOrders: SentCounterOrder[];
   checkoutBusy: boolean;
   receiptBusy: boolean;
@@ -25,8 +22,6 @@ type Props = {
 };
 
 export function CounterSentOrdersList({
-  sentView,
-  onViewChange,
   sentOrders,
   checkoutBusy,
   receiptBusy,
@@ -44,9 +39,6 @@ export function CounterSentOrdersList({
   return (
     <SentOrdersPanel
       filters={filters}
-      view={sentView}
-      busy={checkoutBusy}
-      onViewChange={onViewChange}
       loading={loading}
       error={error}
       empty={sentOrders.length === 0}

@@ -88,7 +88,6 @@ export default function SentOrdersPage() {
             onClick={() => {
               if (serviceType === type) return;
               resetList();
-              orders.setSentView("active");
               setServiceType(type);
             }}
           >
@@ -115,7 +114,6 @@ export default function SentOrdersPage() {
             disabled={busy}
             onChange={(event) => {
               resetList();
-              orders.setSentView("active");
               setTable(Number(event.target.value));
             }}
           />
@@ -190,12 +188,6 @@ export default function SentOrdersPage() {
         <CounterSentOrdersList
           filters={filters}
           sentOrders={orders.sentOrders}
-          sentView={orders.sentView}
-          onViewChange={(view) => {
-            if (view === orders.sentView) return;
-            resetList();
-            orders.setSentView(view);
-          }}
           checkoutBusy={busy}
           receiptBusy={receipts.receiptBusy}
           cartBusy={orders.sentLoading}

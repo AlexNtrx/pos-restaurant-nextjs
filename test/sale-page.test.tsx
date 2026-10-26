@@ -622,7 +622,7 @@ describe("POS safety net", () => {
     expect(api.patch).not.toHaveBeenCalled();
   });
 
-  it("shows ongoing sent orders by default and opens finished history when the active list is empty", async () => {
+  it("shows only ongoing Counter work and leaves finished history to Tilaushistoria", async () => {
     api.get.mockImplementation(
       (path: string, options?: { params?: { view?: string } }) => {
         if (path === "/food/filter/all")
@@ -658,25 +658,25 @@ describe("POS safety net", () => {
         params: { tableNo: 1, view: "active" },
       }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Historia" }));
+    expect(screen.queryByRole("button", { name: "Historia" })).toBeNull();
     expect(
-      await screen.findByRole("button", { name: "Näytä tilaus #81" }),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Tulosta kuitti: tilaus #81" }),
-    ).toBeTruthy();
-    expect(api.get).toHaveBeenCalledWith(
-      "/counterOrder/sent",
-      expect.objectContaining({
-        params: { tableNo: 1, view: "history" },
-      }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Käynnissä" }));
+      screen.queryByRole("button", { name: "Näytä tilaus #81" }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Mukaan" }));
     await waitFor(() =>
-      expect(
-        screen.queryByRole("button", { name: "Näytä tilaus #81" }),
-      ).toBeNull(),
+      expect(api.get).toHaveBeenCalledWith(
+        "/counterOrder/sent",
+        expect.objectContaining({
+          params: { serviceType: "TAKEAWAY", view: "active" },
+        }),
+      ),
     );
+    expect(screen.queryByRole("button", { name: "Historia" })).toBeNull();
+    expect(
+      api.get.mock.calls
+        .filter(([path]) => path === "/counterOrder/sent")
+        .every(([, options]) => options.params.view === "active"),
+    ).toBe(true);
   });
 
   it.each([

@@ -255,7 +255,7 @@ it("keeps QR focused on active work without history, status filters or page cont
   ).toBe(true);
   fireEvent.click(screen.getByRole("button", { name: "Mukaan" }));
   await tick();
-  expect(screen.getByRole("button", { name: "Historia" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Historia" })).toBeNull();
 });
 
 it.each([401, 403])(

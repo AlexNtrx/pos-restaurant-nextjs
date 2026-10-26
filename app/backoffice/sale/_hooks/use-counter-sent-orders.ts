@@ -12,7 +12,6 @@ import type { StaffOrderDetail } from "@/lib/orders/contracts";
 import { fetchOrderDetail } from "@/lib/orders/client";
 import { notifyReadyOrdersChanged } from "@/lib/ready-orders";
 import type { DraftScope } from "./use-counter-draft";
-import type { SentOrderView } from "../_components/counter-sent-orders-list";
 
 export default function useCounterSentOrders(
   draftScope: DraftScope,
@@ -21,7 +20,6 @@ export default function useCounterSentOrders(
   const [sentOrders, setSentOrders] = useState<SentCounterOrder[]>([]);
   const [sentLoading, setSentLoading] = useState(true);
   const [sentListError, setSentListError] = useState("");
-  const [sentView, setSentView] = useState<SentOrderView>("active");
   const [selectedSentOrderId, setSelectedSentOrderId] = useState<number | null>(
     null,
   );
@@ -35,7 +33,7 @@ export default function useCounterSentOrders(
   const sentDetailRequestId = useRef(0);
   const [sentForbidden, setSentForbidden] = useState(false);
   const readSentOrders = useCallback(
-    async (scope: DraftScope, view: SentOrderView, signal: AbortSignal) => {
+    async (scope: DraftScope, signal: AbortSignal) => {
       const requestId = ++pendingRequestId.current;
       if (scope !== "TAKEAWAY" && (!Number.isSafeInteger(scope) || scope < 1)) {
         setSentOrders([]);
@@ -49,8 +47,8 @@ export default function useCounterSentOrders(
           signal,
           params:
             scope === "TAKEAWAY"
-              ? { serviceType: "TAKEAWAY", view }
-              : { tableNo: scope, view },
+              ? { serviceType: "TAKEAWAY", view: "active" }
+              : { tableNo: scope, view: "active" },
         });
         const parsed = parseSentCounterOrders(response.data);
         if (!parsed) throw new Error("Invalid sent orders response");
@@ -84,8 +82,8 @@ export default function useCounterSentOrders(
   );
 
   const pollSentOrders = useCallback(
-    (signal: AbortSignal) => readSentOrders(draftScope, sentView, signal),
-    [readSentOrders, draftScope, sentView],
+    (signal: AbortSignal) => readSentOrders(draftScope, signal),
+    [readSentOrders, draftScope],
   );
   const refreshSentOrders = usePolling(pollSentOrders, {
     intervalMs: 10_000,
@@ -243,7 +241,6 @@ export default function useCounterSentOrders(
     sentOrders,
     sentLoading,
     sentListError,
-    sentView,
     selectedSentOrderId,
     sentOrderDetail,
     sentOrderError,
@@ -257,6 +254,5 @@ export default function useCounterSentOrders(
     serveSentOrder,
     invalidateSentOrders,
     setSentOrders,
-    setSentView,
   };
 }
