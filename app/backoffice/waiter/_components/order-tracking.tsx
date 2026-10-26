@@ -32,9 +32,6 @@ export function OrderTracking({
             ({orders.length})
           </span>
         </h2>
-        <p className="text-sm text-muted-foreground">
-          Näet jokaisen pöytätilauksen nykyisen vaiheen ja etenemisen.
-        </p>
       </div>
       {orders.length === 0 ? (
         <p className="text-sm text-muted-foreground">Ei tilauksia.</p>
@@ -45,7 +42,9 @@ export function OrderTracking({
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="font-semibold">
-                    Pöytä {order.tableNo} · Tilaus #{order.id}
+                    {order.serviceType === "TAKEAWAY"
+                      ? `Mukaan · Nouto #${order.id}`
+                      : `Pöytä ${order.tableNo} · Tilaus #${order.id}`}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {order.channel === "QR"

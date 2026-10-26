@@ -104,7 +104,7 @@ export function mergeWaiterOrders(
   return [...orders.values()]
     .filter(
       (order) =>
-        order.serviceType === "DINE_IN" &&
+        ["DINE_IN", "TAKEAWAY"].includes(order.serviceType) &&
         ["SUBMITTED", "CONFIRMED", "PREPARING", "READY"].includes(order.status),
     )
     .sort((left, right) => left.id - right.id);

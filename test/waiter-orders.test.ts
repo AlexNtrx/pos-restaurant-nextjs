@@ -27,10 +27,15 @@ it("accepts serving only after the selected order advances to a saved served sta
       "virheellisen tilaustilan",
     );
   }
-  vi.mocked(api.patch).mockResolvedValueOnce({
-    data: { result: { ...order, version: 5, status: "SERVED" } },
-  });
-  expect((await serveWaiterOrder(order)).status).toBe("SERVED");
+  for (const status of ["SERVED", "COMPLETED"]) {
+    vi.mocked(api.patch).mockResolvedValueOnce({
+      data: { result: { ...order, version: 5, status } },
+    });
+    expect((await serveWaiterOrder(order)).status).toBe(status);
+    expect(api.patch).toHaveBeenLastCalledWith("/orders/23/serve", {
+      expectedVersion: 4,
+    });
+  }
 });
 
 // EN: Axios 1.20 treats params as unknown; assert the request shape inside the mock.
@@ -47,7 +52,7 @@ const requestStatus = (params: unknown): string => {
   return params.status;
 };
 
-it("loads every active dine-in stage without including takeaway orders", async () => {
+it("loads every active stage for both dine-in and takeaway orders", async () => {
   const stages = ["SUBMITTED", "CONFIRMED", "PREPARING", "READY"];
   vi.mocked(api.get).mockImplementation(async (_url, config) => ({
     data: {
@@ -59,7 +64,8 @@ it("loads every active dine-in stage without including takeaway orders", async (
           serviceType: "DINE_IN",
         },
         {
-          id: 20,
+          id: stages.indexOf(requestStatus(config?.params)) + 20,
+          version: 1,
           status: requestStatus(config?.params),
           serviceType: "TAKEAWAY",
         },
@@ -69,8 +75,12 @@ it("loads every active dine-in stage without including takeaway orders", async (
     },
   }));
   const { results: orders } = await loadWaiterSnapshot();
-  expect(orders.map((order) => order.status)).toEqual(stages);
-  expect(orders.every((order) => order.serviceType === "DINE_IN")).toBe(true);
+  for (const serviceType of ["DINE_IN", "TAKEAWAY"])
+    expect(
+      orders
+        .filter((order) => order.serviceType === serviceType)
+        .map((order) => order.status),
+    ).toEqual(stages);
   expect(api.get).not.toHaveBeenCalledWith(
     "/orders",
     expect.objectContaining({
