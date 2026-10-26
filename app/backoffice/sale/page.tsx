@@ -579,7 +579,7 @@ export default function CounterSalePage() {
             </Button>
           </div>
         </div>
-        {serviceType === "DINE_IN" ? (
+        {serviceType === "DINE_IN" && (
           <>
             <label
               htmlFor="pos-table"
@@ -599,11 +599,6 @@ export default function CounterSalePage() {
               className="mt-1 h-11 border-transparent bg-[#f1efea] font-medium"
             />
           </>
-        ) : (
-          <p className="mt-4 text-xs text-muted-foreground">
-            Noutonumero muodostuu, kun tilaus lähetetään keittiöön tai
-            maksetaan.
-          </p>
         )}
         <div className="mt-7 flex min-h-0 flex-1 flex-col overflow-y-auto">
           {draftMode &&

@@ -1,5 +1,7 @@
 "use client";
 
+import { RefreshButton } from "@/components/ui/refresh-button";
+
 import { useCallback, useRef, useState } from "react";
 import { isAxiosError } from "axios";
 import { usePolling } from "@/lib/use-polling";
@@ -155,14 +157,9 @@ export default function QrTableOrders({ tableNo }: { tableNo: number }) {
     >
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold">Pöydän tilaukset</h3>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => void refresh()}
-        >
+        <RefreshButton type="button" onClick={() => void refresh()}>
           Päivitä
-        </Button>
+        </RefreshButton>
       </div>
       {error && (
         <p role="alert" className="mt-2 text-xs text-destructive">

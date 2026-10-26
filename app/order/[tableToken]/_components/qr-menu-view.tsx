@@ -177,11 +177,11 @@ export function QrMenuView({
   return (
     <>
       <h1 className="font-heading text-3xl font-semibold">Tilaa pöytään</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {menu.state === "ORDERING"
-          ? "Valitse tuotteet ja lähetä tilaus suoraan keittiöön."
-          : "Voit selata ruokalistaa. QR-tilaaminen ei ole juuri nyt käytettävissä."}
-      </p>
+      {menu.state !== "ORDERING" && (
+        <p className="mt-1 text-sm text-muted-foreground">
+          Voit selata ruokalistaa. QR-tilaaminen ei ole juuri nyt käytettävissä.
+        </p>
+      )}
       <label className="mt-5 block">
         <span className="sr-only">Hae ruokalistasta</span>
         <input
@@ -298,9 +298,6 @@ export function QrMenuView({
           </Button>
         </div>
       )}
-      <p className="mt-7 text-xs text-muted-foreground">
-        Ruokalista voi muuttua saatavuuden ja ajankohdan mukaan.
-      </p>
     </>
   );
 }

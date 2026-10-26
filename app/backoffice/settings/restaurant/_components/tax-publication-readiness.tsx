@@ -1,5 +1,6 @@
 "use client";
-import { Button } from "@/components/ui/button";
+
+import { RefreshButton } from "@/components/ui/refresh-button";
 import {
   readinessChecks,
   type TaxPublicationReadiness,
@@ -165,15 +166,14 @@ export function TaxPublicationReadinessReport({
           </p>
         </>
       )}
-      <Button
+      <RefreshButton
         type="button"
-        variant="outline"
-        className="min-h-11 whitespace-normal"
+        className="whitespace-normal"
         disabled={busy}
         onClick={refresh}
       >
         Päivitä julkaisun tarkistus
-      </Button>
+      </RefreshButton>
     </section>
   );
 }

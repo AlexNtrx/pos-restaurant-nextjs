@@ -327,10 +327,7 @@ export default function TablesSettingsPage() {
           <StaffPage />
         ) : (
           <>
-            <PageHeader
-              title="QR-tilaaminen"
-              description="Hallinnoi asiakkaiden QR-tilaamisen tilaa."
-            />
+            <PageHeader title="QR-tilaaminen" />
             <QrModePanel
               mode={mode}
               isAdmin={isAdmin}
@@ -352,7 +349,6 @@ export default function TablesSettingsPage() {
       />
       <PageHeader
         title="Pöydät ja QR-istunnot"
-        description="Hallinnoi ravintolan pöytiä, istuntoja ja QR-koodeja."
         actions={
           isAdmin ? (
             <Button onClick={() => startEditor("new")}>

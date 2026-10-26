@@ -1,5 +1,7 @@
 "use client";
 
+import { RefreshButton } from "@/components/ui/refresh-button";
+
 import Link from "next/link";
 import { staffOrderStatusLabels } from "@/lib/orders/presentation";
 import { isAxiosError } from "axios";
@@ -89,19 +91,16 @@ const quickActions = [
   {
     href: "/backoffice/orders/new",
     label: "Uusi tilaus",
-    description: "Aloita tilaus kassalla",
     icon: Plus,
   },
   {
     href: "/backoffice/orders/history/orders",
     label: "Tilaushistoria",
-    description: "Tarkastele tilauksia, kuitteja ja palautuksia",
     icon: ReceiptText,
   },
   {
     href: "/backoffice/catalog/menu-items",
     label: "Ruokalista",
-    description: "Tarkastele ruokalistan tuotteita",
     icon: ClipboardList,
   },
 ] as const;
@@ -164,11 +163,8 @@ export default function Dashboard() {
     <div className="tw04-layout space-y-8 font-sans">
       <PageHeader
         title="Tänään"
-        description="Tilausten ajantasainen operatiivinen tilanne"
         actions={
-          <Button size="sm" onClick={() => void load()}>
-            Päivitä
-          </Button>
+          <RefreshButton onClick={() => void load()}>Päivitä</RefreshButton>
         }
       />
 
@@ -209,10 +205,7 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent className="overflow-x-auto px-0 pb-0">
             {operations!.recentOrders.length === 0 ? (
-              <EmptyState
-                title="Tilauksia ei löytynyt"
-                description="Uudet tilaukset näkyvät tässä automaattisesti."
-              />
+              <EmptyState title="Tilauksia ei löytynyt" />
             ) : (
               <Table className="min-w-[680px] text-[13px] lg:min-w-0">
                 <TableHeader className="bg-transparent">
@@ -258,7 +251,7 @@ export default function Dashboard() {
             <CardTitle className="font-sans text-xl">Pikatoiminnot</CardTitle>
           </CardHeader>
           <CardContent className="space-y-1 px-4 pb-5 sm:px-5">
-            {quickActions.map(({ href, label, description, icon: Icon }) => (
+            {quickActions.map(({ href, label, icon: Icon }) => (
               <Link
                 key={href}
                 href={href}
@@ -271,9 +264,6 @@ export default function Dashboard() {
                   <span className="block text-[15px] font-medium text-foreground">
                     {label}
                   </span>
-                  <span className="mt-1 block text-xs text-muted-foreground">
-                    {description}
-                  </span>
                 </span>
               </Link>
             ))}
@@ -282,9 +272,7 @@ export default function Dashboard() {
       </section>
 
       <p className="text-xs leading-5 text-muted-foreground" role="note">
-        {updatedAt
-          ? `Päivitetty ${localTime.format(updatedAt)} · kysely 15 s. `
-          : ""}
+        {updatedAt ? `Päivitetty ${localTime.format(updatedAt)}. ` : ""}
         Tilaussummat eivät ole myyntiraportin tuloja.
       </p>
     </div>
@@ -301,7 +289,6 @@ function OperationalMetric({ title, value }: { title: string; value: number }) {
       </CardHeader>
       <CardContent className="px-4">
         <p className="text-[27px] leading-8 font-semibold">{value}</p>
-        <p className="mt-2 text-xs text-muted-foreground">Nykyinen tilanne</p>
       </CardContent>
     </Card>
   );

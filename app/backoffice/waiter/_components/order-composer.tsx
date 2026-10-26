@@ -71,9 +71,6 @@ export function OrderComposer({
     <section className="space-y-5 rounded-xl border border-border bg-surface p-5">
       <div>
         <h2 className="font-heading text-xl font-semibold">Ota pöytätilaus</h2>
-        <p className="text-sm text-muted-foreground">
-          Tilaus lähetetään keittiöön. Maksu käsitellään kassalla myöhemmin.
-        </p>
       </div>
       <label className="block space-y-1 text-sm font-medium">
         Pöytä
@@ -222,9 +219,7 @@ export function OrderComposer({
       <div className="space-y-2 border-t border-border pt-4">
         <h3 className="font-semibold">Tilausluonnos</h3>
         {items.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Valitse tuote ja lisää se tilaukseen.
-          </p>
+          <p className="text-sm text-muted-foreground">Ei tuotteita.</p>
         ) : (
           <ul aria-label="Tilausluonnoksen tuotteet" className="space-y-2">
             {items.map((item, index) => {

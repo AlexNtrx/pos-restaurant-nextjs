@@ -64,7 +64,6 @@ export default function RestaurantSettingsPage() {
       <PageHeader
         className="min-h-0 gap-2 sm:gap-6 [&_h1]:!m-0 [&_h1]:!text-[30px] [&_h1]:!leading-[37px] [&_p]:!m-0 [&_p]:!leading-[17px]"
         title="Ravintolan tiedot"
-        description="Hallinnoi ravintolan yhteys-, yritys- ja maksutietoja."
         actions={
           <p className="!m-0 text-xs !leading-[15px] text-muted-foreground">
             * Pakollinen kenttä

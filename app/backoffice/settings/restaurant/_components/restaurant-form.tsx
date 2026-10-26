@@ -6,12 +6,10 @@ import { Input } from "@/components/ui/input";
 import type { OrganizationForm, ValidatedField } from "../_lib/types";
 function SettingsSection({
   title,
-  description,
   children,
   className = "",
 }: {
   title: string;
-  description: string;
   children: ReactNode;
   className?: string;
 }) {
@@ -21,9 +19,6 @@ function SettingsSection({
         <h2 className="!m-0 !text-[20px] !leading-[24px] font-semibold text-foreground">
           {title}
         </h2>
-        <p className="!m-0 text-[13px] !leading-[16px] text-muted-foreground">
-          {description}
-        </p>
       </CardHeader>
       <CardContent className="px-[20px] pt-[18px] pb-[20px] md:px-[24px] md:pb-[24px]">
         {children}
@@ -72,10 +67,7 @@ export function RestaurantForm({
       }
       onSubmit={save}
     >
-      <SettingsSection
-        title="Perustiedot"
-        description="Ravintolan nimi ja asiakkaiden yhteystiedot."
-      >
+      <SettingsSection title="Perustiedot">
         <div className="space-y-4">
           <FormField
             id="restaurant-name"
@@ -174,7 +166,6 @@ export function RestaurantForm({
       <div className="grid gap-[18px] md:grid-cols-2">
         <SettingsSection
           title="Yritystiedot"
-          description="Virallinen tunniste kuitteja varten."
           className="[&_[data-slot=card-content]]:pt-[15px] md:[&_[data-slot=card-header]]:px-[20px] md:[&_[data-slot=card-header]]:pt-[20px] md:[&_[data-slot=card-content]]:px-[20px] md:[&_[data-slot=card-content]]:pb-[20px]"
         >
           <FormField
@@ -201,7 +192,6 @@ export function RestaurantForm({
         </SettingsSection>
         <SettingsSection
           title="Maksutiedot"
-          description="Ravintolan pankkitilin numero."
           className="[&_[data-slot=card-content]]:pt-[15px] md:[&_[data-slot=card-header]]:px-[20px] md:[&_[data-slot=card-header]]:pt-[20px] md:[&_[data-slot=card-content]]:px-[20px] md:[&_[data-slot=card-content]]:pb-[20px]"
         >
           <FormField
@@ -221,7 +211,6 @@ export function RestaurantForm({
 
       <SettingsSection
         title="Brändi / Logo"
-        description="Logo näkyy ravintolan tulosteissa, kun tiedosto on käytettävissä."
         className="[&_[data-slot=card-header]]:px-[20px] [&_[data-slot=card-header]]:pt-[20px] [&_[data-slot=card-content]]:px-[20px] [&_[data-slot=card-content]]:pt-[12px] [&_[data-slot=card-content]]:pb-[20px]"
       >
         <div className="flex flex-col items-start gap-3 md:flex-row md:items-center md:gap-5">
@@ -246,8 +235,7 @@ export function RestaurantForm({
               {logoFileName || "Logoa ei ole valittu"}
             </p>
             <p className="!m-0 text-xs !leading-[15px] text-muted-foreground">
-              JPEG, PNG, WEBP tai GIF · enintään 5 MB, 24 megapikseliä ja 8000
-              px/sivu
+              JPEG, PNG, WEBP tai GIF · enintään 5 MB
             </p>
             <label
               htmlFor="restaurant-logo"
@@ -281,12 +269,7 @@ export function RestaurantForm({
         </div>
       )}
 
-      <div className="flex flex-col gap-3 rounded-[10px] border border-border bg-muted/55 p-[16px] md:flex-row md:items-center md:justify-between md:px-[20px]">
-        <p className="!m-0 text-[13px] !leading-[16px] text-muted-foreground">
-          {isSaving
-            ? "Tallennetaan ravintolan tietoja…"
-            : "Tarkista pakolliset tiedot ennen tallentamista."}
-        </p>
+      <div className="flex flex-col gap-3 rounded-[10px] border border-border bg-muted/55 p-[16px] md:flex-row md:items-center md:justify-end md:px-[20px]">
         <Button
           type="submit"
           disabled={isSaving}

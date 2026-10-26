@@ -201,9 +201,6 @@ export default function CustomizationModal({
           </tbody>
         </table>
 
-        <p className="m-0 text-xs text-muted-foreground">
-          Voit lisätä toisen annoksen tai poistaa tämän rivin.
-        </p>
         <Button
           type="button"
           variant="default"

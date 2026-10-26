@@ -173,12 +173,6 @@ export function QrStatusView({
           <span>{qrMoney(order.total)}</span>
         </div>
       </section>
-      <p className="mt-7 text-sm text-muted-foreground">
-        Tämä näkymä päivittyy automaattisesti.
-      </p>
-      <p className="mt-5 text-sm text-olive">
-        Ota yhteys henkilökuntaan, jos haluat muuttaa tilausta.
-      </p>
       {canOrderAgain && (
         <Button
           variant="outline"

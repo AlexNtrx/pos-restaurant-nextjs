@@ -43,7 +43,6 @@ export default function StaffPage() {
     <div className="tw04-layout space-y-6 font-sans">
       <PageHeader
         title="Henkilöstö"
-        description="Hallitse henkilöstötilejä ja käyttöoikeustasoja."
         actions={
           <Button onClick={openCreate}>
             <Plus aria-hidden="true" /> Lisää työntekijä

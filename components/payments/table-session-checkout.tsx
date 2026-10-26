@@ -1,4 +1,6 @@
 "use client";
+
+import { RefreshButton } from "@/components/ui/refresh-button";
 import { isEuroAmount, moneySum } from "@/lib/money";
 import { getApiErrorMessage } from "@/lib/api-error";
 
@@ -295,13 +297,9 @@ export default function TableSessionCheckout({
           )}
           <p className="text-lg font-semibold">Yhteensä {euros(total)}</p>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => void load()}
-              disabled={busy}
-            >
+            <RefreshButton onClick={() => void load()} disabled={busy}>
               Päivitä
-            </Button>
+            </RefreshButton>
             <Button
               disabled={
                 !allServed || busy || invalidSaved || loadState !== "ready"

@@ -1,5 +1,7 @@
 "use client";
 
+import { RefreshButton } from "@/components/ui/refresh-button";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -169,15 +171,13 @@ export default function OrderRecordsPage() {
     <div className="tw04-layout space-y-6 font-sans">
       <PageHeader
         title="Tilaushistoria"
-        description="Tilaukset, kuitit sekä peruutukset ja palautukset yhdessä paikassa."
         actions={
-          <Button
-            size="sm"
+          <RefreshButton
             onClick={() => void load()}
             disabled={state === "loading"}
           >
             Päivitä
-          </Button>
+          </RefreshButton>
         }
       />
       <section

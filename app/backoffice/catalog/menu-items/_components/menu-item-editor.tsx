@@ -159,7 +159,7 @@ export function MenuItemEditor({
           <FormField
             id="menu-item-image"
             label="Ruokalistan kuva"
-            description="Näkyy ruokalistassa. JPEG, PNG, WEBP tai GIF, enintään 5 MB, 24 megapikseliä ja 8000 px/sivu."
+            description="JPEG, PNG, WEBP tai GIF · enintään 5 MB."
           >
             <Input
               disabled={saving}
@@ -174,7 +174,7 @@ export function MenuItemEditor({
           <FormField
             id="menu-item-detail-image"
             label="Lisätietokuva"
-            description="Näkyy Lisätiedot-ikkunassa. JPEG, PNG, WEBP tai GIF, enintään 5 MB, 24 megapikseliä ja 8000 px/sivu."
+            description="JPEG, PNG, WEBP tai GIF · enintään 5 MB."
           >
             <Input
               disabled={saving}

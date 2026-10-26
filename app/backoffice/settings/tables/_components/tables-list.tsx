@@ -1,6 +1,8 @@
 "use client";
 
-import { Pencil, QrCode, RefreshCw, Trash2 } from "lucide-react";
+import { RefreshButton } from "@/components/ui/refresh-button";
+
+import { Pencil, QrCode, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -70,14 +72,9 @@ export function TablesList({
               {tables.length} aktiivista pöytää
             </p>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={busy}
-            onClick={onRefresh}
-          >
-            <RefreshCw aria-hidden="true" /> Päivitä
-          </Button>
+          <RefreshButton disabled={busy} onClick={onRefresh}>
+            Päivitä
+          </RefreshButton>
         </div>
         {tables.length === 0 ? (
           <EmptyState

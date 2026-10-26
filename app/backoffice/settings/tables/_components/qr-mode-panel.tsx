@@ -43,10 +43,6 @@ export function QrModePanel({ mode, isAdmin, busy, onModeChange }: Props) {
             Nykyinen tila: {modeLabel(mode)}. Muutokset koskevat kaikkia avoimia
             istuntoja.
           </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Jaa QR-koodi vasta, kun asiakasnäkymä, API ja QR-avain on otettu
-            käyttöön.
-          </p>
         </div>
         <StatusBadge tone={mode === "DISABLED" ? "neutral" : "success"}>
           {modeLabel(mode)}

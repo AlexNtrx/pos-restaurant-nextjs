@@ -50,7 +50,6 @@ type LoadStatus = "loading" | "ready" | "error" | "forbidden";
 const configs = {
   categories: {
     title: "Kategoriat",
-    description: "Hallitse ruokalistan kategorioita.",
     singular: "kategoria",
     endpoint: "/foodType/list",
     createEndpoint: "/foodtype/create",
@@ -60,7 +59,6 @@ const configs = {
   },
   "size-options": {
     title: "Kokovaihtoehdot",
-    description: "Hallitse kategorioihin liitettyjä kokoja ja hinnanlisiä.",
     singular: "kokovaihtoehto",
     endpoint: "/foodSize/list",
     createEndpoint: "/foodSize/create",
@@ -70,7 +68,6 @@ const configs = {
   },
   modifiers: {
     title: "Lisävalinnat",
-    description: "Hallitse kategorioihin liitettyjä maku- ja lisävalintoja.",
     singular: "lisävalinta",
     endpoint: "/taste/list",
     createEndpoint: "/taste/create",
@@ -243,9 +240,6 @@ export function CatalogManagementPage({ kind }: { kind: ManagementKind }) {
           <h1 className="text-[28px] leading-9 font-semibold text-foreground">
             {config.title}
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {config.description}
-          </p>
         </div>
         <Button onClick={openCreate} disabled={createDisabled}>
           <Plus aria-hidden="true" /> Lisää {config.singular}

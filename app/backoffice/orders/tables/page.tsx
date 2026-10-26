@@ -1,5 +1,7 @@
 "use client";
 
+import { RefreshButton } from "@/components/ui/refresh-button";
+
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
@@ -52,11 +54,8 @@ export default function TablePaymentsPage() {
     <main className="space-y-5">
       <PageHeader
         title="Pöytien maksut"
-        description="Katso pöydän tilaukset tai tarkista ja maksa pöydän koko lasku."
         actions={
-          <Button variant="outline" onClick={() => void load()}>
-            Päivitä
-          </Button>
+          <RefreshButton onClick={() => void load()}>Päivitä</RefreshButton>
         }
       />
       {pending.length > 0 && (
