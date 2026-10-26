@@ -337,7 +337,7 @@ describe("TW-03 staff shell and navigation", () => {
     expect(screen.getAllByText("Tilaaminen käytössä").length).toBeGreaterThan(
       0,
     );
-    expect(screen.getAllByText("Palvelin vastasi").length).toBeGreaterThan(0);
+    expect(screen.queryByLabelText("Yhteystarkistus")).toBeNull();
     expect(screen.queryByText("Ruokalistan tuotteet")).toBeNull();
     expect(screen.queryByText("Tulossa")).toBeNull();
     expect(screen.getAllByLabelText("Kirjaudu ulos").length).toBeGreaterThan(0);

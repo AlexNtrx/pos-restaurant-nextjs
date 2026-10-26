@@ -35,7 +35,6 @@ import {
   type UserLevel,
 } from "@/lib/access-control";
 import { cn } from "@/lib/utils";
-import { ConnectionStatus, type ConnectionCheck } from "./connection-status";
 
 const navigationIcons = {
   overview: House,
@@ -54,7 +53,6 @@ type SidebarProps = {
   collapsed?: boolean;
   mobile?: boolean;
   onNavigate?: () => void;
-  connection?: ConnectionCheck;
 };
 
 export default function Sidebar({
@@ -64,7 +62,6 @@ export default function Sidebar({
   collapsed = false,
   mobile = false,
   onNavigate,
-  connection = { state: "checking", checkedAt: null },
 }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -183,7 +180,6 @@ export default function Sidebar({
                         ? "Tilaaminen käytössä"
                         : "Tila ei saatavilla"}
                 </StatusBadge>
-                <ConnectionStatus check={connection} />
               </div>
             )}
           </div>
@@ -195,7 +191,7 @@ export default function Sidebar({
                   {roleLabel}: {displayName}
                 </div>
                 <div className="truncate text-[10px] text-[#c6c3b5]">
-                  Versio 0.1 · Työpaja
+                  Versio 2.1.0
                 </div>
               </div>
               <Button

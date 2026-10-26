@@ -16,7 +16,6 @@ import api from "@/lib/api";
 
 import Sidebar from "./sidebar";
 import { WorkspaceNavigation } from "./workspace-navigation";
-import type { ConnectionCheck } from "./connection-status";
 
 type StaffShellProps = {
   children: React.ReactNode;
@@ -49,10 +48,6 @@ export default function StaffShell({
     "DISABLED" | "MENU_ONLY" | "ORDERING" | null
   >(null);
   const qrModeVersionRef = useRef(0);
-  const [connection, setConnection] = useState<ConnectionCheck>({
-    state: "checking",
-    checkedAt: null,
-  });
 
   useEffect(() => {
     let active = true;
@@ -62,10 +57,7 @@ export default function StaffShell({
     // FI: Päivitä kaikkien työntekijöiden laitteet näkyvissä ja palattaessa ilman päällekkäisiä lukuja tai uudemman paikallisen tilamuutoksen korvaamista.
     const refreshMode = async () => {
       if (!active || request || document.visibilityState === "hidden") return;
-      if (!navigator.onLine) {
-        setConnection({ state: "offline", checkedAt: null });
-        return;
-      }
+      if (!navigator.onLine) return;
       const controller = new AbortController();
       request = controller;
       const version = qrModeVersionRef.current;
@@ -74,17 +66,6 @@ export default function StaffShell({
           signal: controller.signal,
         });
         const mode = data?.result?.mode;
-        // EN: Only a valid server read is evidence; an online browser or a local QR-mode event never proves server availability.
-        // FI: Vain kelvollinen palvelinluku on näyttöä; selaimen verkkotila tai paikallinen QR-tilatapahtuma ei todista palvelimen saatavuutta.
-        if (active)
-          setConnection({
-            state: !navigator.onLine
-              ? "offline"
-              : ["DISABLED", "MENU_ONLY", "ORDERING"].includes(mode)
-                ? "verified"
-                : "unavailable",
-            checkedAt: Date.now(),
-          });
         if (active && version === qrModeVersionRef.current) {
           setQrMode(
             navigator.onLine &&
@@ -96,11 +77,6 @@ export default function StaffShell({
           );
         }
       } catch {
-        if (active)
-          setConnection({
-            state: navigator.onLine ? "unavailable" : "offline",
-            checkedAt: null,
-          });
         if (active && version === qrModeVersionRef.current) setQrMode(null);
       } finally {
         if (request === controller) request = null;
@@ -109,10 +85,6 @@ export default function StaffShell({
 
     const onReturn = () => void refreshMode();
     const onNetworkChange = () => {
-      setConnection({
-        state: navigator.onLine ? "checking" : "offline",
-        checkedAt: null,
-      });
       if (!navigator.onLine) setQrMode(null);
       else void refreshMode();
     };
@@ -160,21 +132,10 @@ export default function StaffShell({
       {/* EN: Keep desktop rails attached to the viewport while long legacy pages continue scrolling in the document. */}
       {/* FI: Pidä työpöydän sivupalkit kiinni näkymässä, kun pitkät legacy-sivut vierivät edelleen dokumentissa. */}
       <div className="sticky top-0 hidden h-dvh self-start md:block xl:hidden">
-        <Sidebar
-          name={name}
-          userLevel={userLevel}
-          qrMode={qrMode}
-          connection={connection}
-          collapsed
-        />
+        <Sidebar name={name} userLevel={userLevel} qrMode={qrMode} collapsed />
       </div>
       <div className="sticky top-0 hidden h-dvh self-start xl:block">
-        <Sidebar
-          name={name}
-          userLevel={userLevel}
-          qrMode={qrMode}
-          connection={connection}
-        />
+        <Sidebar name={name} userLevel={userLevel} qrMode={qrMode} />
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -236,7 +197,6 @@ export default function StaffShell({
             name={name}
             userLevel={userLevel}
             qrMode={qrMode}
-            connection={connection}
             mobile
             onNavigate={() => setMobileNavigationOpen(false)}
           />
