@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { usePolling } from "@/lib/use-polling";
 import { isAxiosError } from "axios";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import {
 } from "@/lib/service-calls";
 
 const COOLDOWN_MS = 60_000;
+const RESOLVED_NOTICE_MS = 5_000;
 
 export default function ServiceCallCard({ token }: { token: string }) {
   const [call, setCall] = useState<ServiceCall | null>(null);
@@ -20,6 +21,7 @@ export default function ServiceCallCard({ token }: { token: string }) {
   const [error, setError] = useState("");
   const [now, setNow] = useState(0);
   const [unavailable, setUnavailable] = useState(false);
+  const [dismissedNotice, setDismissedNotice] = useState<string | null>(null);
 
   const poll = useCallback(
     async (signal: AbortSignal) => {
@@ -55,6 +57,21 @@ export default function ServiceCallCard({ token }: { token: string }) {
     call?.status === "RESOLVED" &&
     call.resolvedAt !== null &&
     now < Date.parse(call.resolvedAt) + COOLDOWN_MS;
+  const resolvedNoticeKey =
+    coolingDown && call ? `${token}:${call.id}:${call.resolvedAt}` : null;
+  const showResolvedNotice =
+    resolvedNoticeKey !== null && dismissedNotice !== resolvedNoticeKey;
+
+  // EN: Dismiss each resolved notice after display without changing the call cooldown.
+  // FI: Piilota jokainen valmistumisviesti näyttämisen jälkeen muuttamatta kutsun odotusaikaa.
+  useEffect(() => {
+    if (!resolvedNoticeKey) return;
+    const timer = window.setTimeout(
+      () => setDismissedNotice(resolvedNoticeKey),
+      RESOLVED_NOTICE_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [resolvedNoticeKey]);
 
   const request = async () => {
     setSubmitting(true);
@@ -75,15 +92,17 @@ export default function ServiceCallCard({ token }: { token: string }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold">Tarvitsetko apua?</h2>
-          <p className="mt-1 text-sm text-muted-foreground" aria-live="polite">
-            {call?.status === "REQUESTED"
-              ? "Kutsu lähetetty. Henkilökunta näkee pöytäsi."
-              : call?.status === "ACKNOWLEDGED"
-                ? "Henkilökunta on tulossa pöytääsi."
-                : call?.status === "RESOLVED"
-                  ? "Edellinen pyyntö on hoidettu."
-                  : "Kutsu henkilökunta pöytääsi."}
-          </p>
+          <div aria-live="polite">
+            {(active || showResolvedNotice) && (
+              <p className="mt-1 text-sm text-muted-foreground">
+                {call?.status === "REQUESTED"
+                  ? "Kutsu lähetetty."
+                  : call?.status === "ACKNOWLEDGED"
+                    ? "Henkilökunta on tulossa pöytääsi."
+                    : "Edellinen pyyntö on hoidettu."}
+              </p>
+            )}
+          </div>
         </div>
         <Button
           type="button"

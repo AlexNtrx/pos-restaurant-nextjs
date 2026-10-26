@@ -331,9 +331,23 @@ it("handles service calls in a dialog without navigation or losing the order dra
     resolvedAt: null,
   };
   mocks.loadCalls.mockResolvedValue([call]);
-  render(waiterPage());
+  const view = render(waiterPage());
   await screen.findByLabelText("Tuote");
   await user.type(screen.getByLabelText("Huomautus"), "Ei sipulia");
+  expect(
+    within(screen.getByRole("button", { name: "Palvelukutsut" })).getByRole(
+      "status",
+    ),
+  ).toBeTruthy();
+  const callReads = mocks.loadCalls.mock.calls.length;
+  view.rerender(waiterPage(true));
+  expect(
+    within(screen.getByRole("button", { name: "Palvelukutsut" })).getByRole(
+      "status",
+    ),
+  ).toBeTruthy();
+  view.rerender(waiterPage());
+  expect(mocks.loadCalls).toHaveBeenCalledTimes(callReads);
   const originalUrl = window.location.href;
   expect(screen.queryByRole("link", { name: "Palvelukutsut" })).toBeNull();
   await user.click(screen.getByRole("button", { name: "Palvelukutsut" }));
@@ -350,6 +364,11 @@ it("handles service calls in a dialog without navigation or losing the order dra
   const resolve = await screen.findByRole("button", {
     name: "Merkitse hoidetuksi",
   });
+  expect(
+    within(
+      screen.getByLabelText("Palvelukutsut", { selector: "button" }),
+    ).queryByRole("status", { hidden: true }),
+  ).toBeNull();
   mocks.loadCalls.mockResolvedValue([]);
   await user.click(resolve);
   await waitFor(() =>
@@ -410,6 +429,64 @@ it("takes a table order and tracks progress without a waiter QR confirmation tas
   ).toBeTruthy();
 });
 
+it("shows takeaway pickup numbers and removes a prepaid order only after saved completion", async () => {
+  const takeaway: StaffOrder = {
+    ...ready,
+    id: 40,
+    channel: "COUNTER",
+    serviceType: "TAKEAWAY",
+    tableNo: null,
+    tableSessionId: null,
+    paidAt: "2026-10-15T12:00:00.000Z",
+  };
+  const preparing = { ...takeaway, id: 41, status: "PREPARING" as const };
+  mocks.loadQueues.mockResolvedValue([incoming, takeaway, preparing]);
+  let finish!: (order: StaffOrder) => void;
+  mocks.serveOrder.mockImplementationOnce(
+    () =>
+      new Promise<StaffOrder>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const user = userEvent.setup();
+  render(waiterPage(true));
+  const card = (await screen.findByText("Mukaan · Nouto #40")).closest("li")!;
+  expect(screen.getByText("Pöytä 4 · Tilaus #31")).toBeTruthy();
+  expect(within(card).queryByText(/Pöytä/)).toBeNull();
+  expect(
+    within(card).queryByRole("button", { name: "Peru tilaus" }),
+  ).toBeNull();
+  expect(
+    within(screen.getByText("Mukaan · Nouto #41").closest("li")!).queryByRole(
+      "button",
+      { name: "Merkitse tarjoilluksi" },
+    ),
+  ).toBeNull();
+  await user.click(
+    within(card).getByRole("button", { name: "Merkitse tarjoilluksi" }),
+  );
+  expect(mocks.serveOrder).toHaveBeenCalledWith(takeaway);
+  expect(screen.getByText("Mukaan · Nouto #40")).toBeTruthy();
+  expect(
+    (
+      within(card).getByRole("button", {
+        name: "Tallennetaan…",
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+  await act(async () =>
+    finish({ ...takeaway, version: 5, status: "COMPLETED" }),
+  );
+  await waitFor(() =>
+    expect(screen.queryByText("Mukaan · Nouto #40")).toBeNull(),
+  );
+  expect(screen.getByText("Mukaan · Nouto #41")).toBeTruthy();
+  expect(
+    screen.getByRole("heading", { name: "Tilausten seuranta (2)" }),
+  ).toBeTruthy();
+  expect(mocks.serveOrder).toHaveBeenCalledTimes(1);
+});
+
 it("keeps the ready order visible if serving fails", async () => {
   mocks.serveOrder.mockRejectedValue(new Error("Tallennus epäonnistui."));
   const user = userEvent.setup();
@@ -433,7 +510,7 @@ it("discards a delayed READY read after serving and coalesces the post-action re
       resolveOld = resolve;
     });
   });
-  await user.click(screen.getByRole("button", { name: "Päivitä tilaukset" }));
+  await user.click(screen.getByRole("button", { name: "Päivitä" }));
   await user.click(
     screen.getByRole("button", { name: "Merkitse tarjoilluksi" }),
   );

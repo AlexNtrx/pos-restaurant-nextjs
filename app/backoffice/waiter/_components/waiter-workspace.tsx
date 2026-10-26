@@ -1,5 +1,8 @@
 "use client";
 
+import { RefreshButton } from "@/components/ui/refresh-button";
+import { NotificationDot } from "@/components/ui/notification-dot";
+import { useStaffServiceCalls } from "@/lib/use-staff-service-calls";
 import { notifyReadyOrdersChanged } from "@/lib/ready-orders";
 import { moneySum, moneyMultiply } from "@/lib/money";
 
@@ -39,7 +42,7 @@ import {
 import { PageHeader } from "@/components/ui/page-header";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { getApiErrorMessage, isPermissionDeniedError } from "@/lib/api-error";
-import ServiceCallQueue from "@/app/backoffice/service-calls/_components/service-call-queue";
+import { ServiceCallQueueView } from "@/app/backoffice/service-calls/_components/service-call-queue";
 import type { StaffOrder } from "@/lib/orders/contracts";
 import { fetchOrderPages } from "@/lib/orders/client";
 import { usePolling } from "@/lib/use-polling";
@@ -103,6 +106,7 @@ export default function WaiterWorkspace({ children }: { children: ReactNode }) {
   const [state, setState] = useState<
     "loading" | "ready" | "error" | "forbidden"
   >("loading");
+  const serviceCalls = useStaffServiceCalls({ enabled: state !== "forbidden" });
   const [error, setError] = useState("");
   const [queueError, setQueueError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -478,32 +482,28 @@ export default function WaiterWorkspace({ children }: { children: ReactNode }) {
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 font-sans">
-      <PageHeader
-        title="Tarjoilijan työpiste"
-        description={
-          trackingPage
-            ? "Seuraa tilausten etenemistä keittiöstä pöytään."
-            : "Ota pöytätilaus ja lähetä se keittiöön."
-        }
-      />
+      <PageHeader title="Tarjoilijan työpiste" />
       <div className="flex flex-wrap gap-3">
         <Button
           type="button"
           variant="outline"
-          className="min-h-11"
+          className="relative min-h-11"
+          aria-label="Palvelukutsut"
           onClick={() => setServiceCallsOpen(true)}
         >
           Palvelukutsut
+          {serviceCalls.calls.some((call) => call.status === "REQUESTED") && (
+            <NotificationDot label="Uusia palvelukutsuja" />
+          )}
         </Button>
         {trackingPage && (
-          <Button
+          <RefreshButton
             type="button"
-            variant="outline"
-            className="min-h-11"
+            className="ml-auto"
             onClick={() => void refreshQueues()}
           >
-            Päivitä tilaukset
-          </Button>
+            Päivitä
+          </RefreshButton>
         )}
       </div>
       {(error || queueError) && (
@@ -668,7 +668,7 @@ export default function WaiterWorkspace({ children }: { children: ReactNode }) {
               Vastaanota asiakkaan kutsu ja merkitse se hoidetuksi.
             </DialogDescription>
           </DialogHeader>
-          <ServiceCallQueue />
+          <ServiceCallQueueView queue={serviceCalls} />
         </DialogContent>
       </Dialog>
       <OrderCancelDialog

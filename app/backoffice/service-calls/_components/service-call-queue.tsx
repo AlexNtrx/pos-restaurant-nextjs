@@ -1,15 +1,12 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import { isAxiosError } from "axios";
-import { usePolling } from "@/lib/use-polling";
+import { RefreshButton } from "@/components/ui/refresh-button";
+
 import { Button } from "@/components/ui/button";
 import {
-  changeServiceCallStatus,
-  loadStaffServiceCalls,
-  serviceCallErrorText,
-  type StaffServiceCall,
-} from "@/lib/service-calls";
+  useStaffServiceCalls,
+  type StaffServiceCallsState,
+} from "@/lib/use-staff-service-calls";
 
 const timeOf = (value: string) =>
   new Date(value).toLocaleTimeString("fi-FI", {
@@ -18,66 +15,22 @@ const timeOf = (value: string) =>
   });
 
 export default function ServiceCallQueue() {
-  const [calls, setCalls] = useState<StaffServiceCall[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [workingId, setWorkingId] = useState<number | null>(null);
-  const [forbidden, setForbidden] = useState(false);
+  const queue = useStaffServiceCalls();
+  return <ServiceCallQueueView queue={queue} />;
+}
 
-  const poll = useCallback(async (signal: AbortSignal) => {
-    try {
-      const calls = await loadStaffServiceCalls(signal);
-      if (signal.aborted) return;
-      setCalls(calls);
-      setError("");
-    } catch (failure) {
-      if (signal.aborted) return;
-      if (
-        isAxiosError(failure) &&
-        [401, 403].includes(failure.response?.status ?? 0)
-      ) {
-        setCalls([]);
-        setForbidden(true);
-      }
-      setError(serviceCallErrorText(failure));
-      throw failure;
-    } finally {
-      if (!signal.aborted) setLoading(false);
-    }
-  }, []);
-
-  const refresh = usePolling(poll, { enabled: !forbidden });
-
-  const advance = async (call: StaffServiceCall) => {
-    setWorkingId(call.id);
-    try {
-      await changeServiceCallStatus(
-        call,
-        call.status === "REQUESTED" ? "ACKNOWLEDGED" : "RESOLVED",
-      );
-      await refresh();
-    } catch (failure) {
-      await refresh();
-      setError(serviceCallErrorText(failure));
-    } finally {
-      setWorkingId(null);
-    }
-  };
-
+export function ServiceCallQueueView({
+  queue,
+}: {
+  queue: StaffServiceCallsState;
+}) {
+  const { calls, loading, error, workingId, refresh, advance } = queue;
   return (
     <section className="font-sans">
-      <header className="mb-7 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-sm text-muted-foreground">Henkilökunnan työjono</p>
-
-          <p className="mt-2 text-sm text-muted-foreground">
-            Asiakkaiden QR-sivulta lähettämät kutsut päivittyvät
-            automaattisesti.
-          </p>
-        </div>
-        <Button type="button" variant="outline" onClick={() => void refresh()}>
+      <header className="mb-7 flex justify-end">
+        <RefreshButton type="button" onClick={() => void refresh()}>
           Päivitä
-        </Button>
+        </RefreshButton>
       </header>
 
       {error && (
